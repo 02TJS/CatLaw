@@ -208,7 +208,7 @@ describe("0.8.0 building market and all-category bounties", () => {
     legacy.discoveryBounties = legacy.discoveryBounties.slice(0, 15);
     legacy.discoveredItems = ["wood", "cable"];
     const migrated = migrateSaveSnapshot(legacy);
-    expect(migrated.schemaVersion).toBe(6);
+    expect(migrated.schemaVersion).toBe(7);
     expect(migrated.buildings).toEqual([]);
     expect(migrated.playerBuildingInventory.factory).toBe(1);
     expect(migrated.treasuryCoins).toBe(10_900);

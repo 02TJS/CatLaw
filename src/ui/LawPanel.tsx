@@ -37,7 +37,7 @@ export function LawPanel({ controller }: { controller: GameController }) {
         <span>{starterLawsActive ? `${starterLawsActive} 条预制指引运行中` : "费用由国库支付"}</span>
       </div>
 
-      <div className="recipe-note">全体猫共用一份逻辑，且只看曼哈顿距离 2。DeepSeek 自行选择直接动作、条件判断、修改候选评分或混合使用；不强制固定模板。新版本替换旧逻辑，法典不接收配料表。</div>
+      <div className="recipe-note">全体猫共用一份逻辑，基础视野为曼哈顿半径 2，量子信标最高提升到 5。DeepSeek 可读取地标加成并自行选择直接动作、条件判断、修改候选评分或混合使用；新版本替换旧逻辑，法典不接收配料表。</div>
 
       <label className="field-label" htmlFor="law-text">新法条</label>
       <textarea id="law-text" data-testid="law-input" value={text} onChange={(event) => setText(event.target.value)} rows={3} />

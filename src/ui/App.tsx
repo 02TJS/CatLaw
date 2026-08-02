@@ -10,7 +10,8 @@ import { canUnlockRecipe, ITEM_BY_ID, ITEMS, MARKET_CERTIFICATION_ITEM_IDS, RECI
 import { localVisibleCats, LOCAL_VISION_RADIUS } from "../game/localPlanner";
 import { DIFFICULTY_PROFILES } from "../game/difficulty";
 import type { DifficultyProfile } from "../game/difficulty";
-import type { DifficultyLevel } from "../game/types";
+import type { DifficultyLevel, LandmarkId } from "../game/types";
+import { LANDMARK_DEFINITIONS, landmarkEffectsAt } from "../game/landmarks";
 import { positionKey, resourceHarvestTiles, resourceNodesAtPosition } from "../game/world";
 import {
   bountyBroadcastsForCat,
@@ -34,6 +35,13 @@ interface PlacementFeedback {
   error?: string;
 }
 
+interface LandmarkPlacementFeedback {
+  landmarkId: LandmarkId;
+  position: { x: number; y: number };
+  ok: boolean;
+  error?: string;
+}
+
 export function App() {
   useSyncExternalStore((listener) => controller.subscribe(listener), controller.getRevision, controller.getRevision);
   const [selectedCatId, setSelectedCatId] = useState("cat-0");
@@ -42,13 +50,19 @@ export function App() {
   const [expansionMode, setExpansionMode] = useState(false);
   const [placingBuildingItemId, setPlacingBuildingItemId] = useState<string | null>(null);
   const placingBuildingRef = useRef<string | null>(placingBuildingItemId);
+  const [placingLandmarkId, setPlacingLandmarkId] = useState<LandmarkId | null>(null);
+  const placingLandmarkRef = useRef<LandmarkId | null>(placingLandmarkId);
   const [placementFeedback, setPlacementFeedback] = useState<PlacementFeedback | null>(null);
   const placementFeedbackRef = useRef<PlacementFeedback | null>(placementFeedback);
+  const [landmarkFeedback, setLandmarkFeedback] = useState<LandmarkPlacementFeedback | null>(null);
+  const landmarkFeedbackRef = useRef<LandmarkPlacementFeedback | null>(landmarkFeedback);
   const state = controller.state;
 
   useEffect(() => { selectedCatRef.current = selectedCatId; }, [selectedCatId]);
   useEffect(() => { placingBuildingRef.current = placingBuildingItemId; }, [placingBuildingItemId]);
+  useEffect(() => { placingLandmarkRef.current = placingLandmarkId; }, [placingLandmarkId]);
   useEffect(() => { placementFeedbackRef.current = placementFeedback; }, [placementFeedback]);
+  useEffect(() => { landmarkFeedbackRef.current = landmarkFeedback; }, [landmarkFeedback]);
 
   useEffect(() => {
     void controller.initialize();
@@ -58,12 +72,15 @@ export function App() {
       selectedCatRef.current,
       placingBuildingRef.current,
       placementFeedbackRef.current,
+      placingLandmarkRef.current,
+      landmarkFeedbackRef.current,
     );
     window.__CAT_WORKSHOP__ = { reset: () => controller.reset(), state: () => controller.state };
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setExpansionMode(false);
         setPlacingBuildingItemId(null);
+        setPlacingLandmarkId(null);
       }
       if (event.key.toLowerCase() === "f" && !["INPUT", "TEXTAREA"].includes((event.target as HTMLElement)?.tagName)) {
         if (document.fullscreenElement) void document.exitFullscreen();
@@ -101,6 +118,7 @@ export function App() {
         </button>
         <button className={`expand-button ${expansionMode ? "active" : ""}`} onClick={() => {
           setPlacingBuildingItemId(null);
+          setPlacingLandmarkId(null);
           setExpansionMode((value) => !value);
         }} data-testid="expand-mode-button">
           {expansionMode ? "退出开拓" : `开拓 · ${state.unlockedParcels.length}块`}
@@ -114,6 +132,7 @@ export function App() {
           setPanel("laws");
           setExpansionMode(false);
           setPlacingBuildingItemId(null);
+          setPlacingLandmarkId(null);
         }}>
           {(Object.values(DIFFICULTY_PROFILES) as DifficultyProfile[]).map((profile) => (
             <option key={profile.level} value={profile.level}>{profile.level} · {profile.name}</option>
@@ -128,20 +147,25 @@ export function App() {
             selectedCatId={selectedCatId}
             expansionMode={expansionMode}
             placingBuildingItemId={placingBuildingItemId}
+            placingLandmarkId={placingLandmarkId}
             onBuildingPlacementResult={(feedback) => {
               setPlacementFeedback(feedback);
               if (feedback.ok) setPlacingBuildingItemId(null);
             }}
+            onLandmarkPlacementResult={(feedback) => {
+              setLandmarkFeedback(feedback);
+              if (feedback.ok) setPlacingLandmarkId(null);
+            }}
             onSelectCat={(id) => { setSelectedCatId(id); setPanel("cat"); }}
           />
-          <div className="canvas-hint">{placingBuildingItemId ? "建筑放置中 · 点击有效地块 · Esc 取消" : "拖动 · 缩放 · 点击空白处放猫 · F 全屏"}</div>
+          <div className="canvas-hint">{placingLandmarkId ? "地标选址中 · 点击普通空地 · Esc 取消" : placingBuildingItemId ? "建筑放置中 · 点击有效地块 · Esc 取消" : "拖动 · 缩放 · 点击空白处放猫 · F 全屏"}</div>
         </section>
 
         <aside className="side-panel">
           <nav className="panel-tabs">
             <button className={panel === "laws" ? "active" : ""} onClick={() => setPanel("laws")}>法典</button>
             <button className={panel === "catalog" ? "active" : ""} onClick={() => setPanel("catalog")}>配方图</button>
-            <button className={panel === "buildings" ? "active" : ""} onClick={() => setPanel("buildings")}>仓库</button>
+            <button className={panel === "buildings" ? "active" : ""} onClick={() => { setPanel("buildings"); setLandmarkFeedback(null); }}>仓库</button>
             <button className={panel === "cat" ? "active" : ""} onClick={() => setPanel("cat")}>猫咪</button>
           </nav>
           <div className="panel-content">
@@ -153,10 +177,20 @@ export function App() {
               feedback={placementFeedback}
               onStartPlacement={(itemId) => {
                 setExpansionMode(false);
+                setPlacingLandmarkId(null);
                 setPlacementFeedback(null);
                 setPlacingBuildingItemId(itemId);
               }}
               onCancelPlacement={() => setPlacingBuildingItemId(null)}
+              placingLandmarkId={placingLandmarkId}
+              landmarkFeedback={landmarkFeedback}
+              onStartLandmarkPlacement={(landmarkId) => {
+                setExpansionMode(false);
+                setPlacingBuildingItemId(null);
+                setLandmarkFeedback(null);
+                setPlacingLandmarkId(landmarkId);
+              }}
+              onCancelLandmarkPlacement={() => { setPlacingLandmarkId(null); setLandmarkFeedback(null); }}
             />}
             {panel === "cat" && <Inspector cat={selectedCat} controller={controller} totalItems={selectedInventoryCount} />}
           </div>
@@ -167,7 +201,9 @@ export function App() {
                 setSelectedCatId("cat-0");
                 setExpansionMode(false);
                 setPlacingBuildingItemId(null);
+                setPlacingLandmarkId(null);
                 setPlacementFeedback(null);
+                setLandmarkFeedback(null);
               }
             }}>清空存档</button>
           </footer>
@@ -186,6 +222,8 @@ function renderGameToText(
   selectedCatId: string,
   placingBuildingItemId: string | null,
   placementFeedback: PlacementFeedback | null,
+  placingLandmarkId: LandmarkId | null,
+  landmarkFeedback: LandmarkPlacementFeedback | null,
 ): string {
   const craftedItems = ITEMS.filter((item) => state.itemStats[item.id].crafted > 0).map((item) => item.id);
   const certifiedItems = MARKET_CERTIFICATION_ITEM_IDS.filter((itemId) => state.itemStats[itemId].crafted > 0);
@@ -237,6 +275,22 @@ function renderGameToText(
         lastAttempt: placementFeedback,
         blockedTileRules: ["locked parcel", "cat", "building", "resource center", "resource harvest tile"],
       },
+      landmarkEngineering: {
+        blueprints: LANDMARK_DEFINITIONS.map((definition) => ({
+          id: definition.id,
+          name: definition.name,
+          emoji: definition.emoji,
+          radius: definition.radius,
+          blueprintPriceCents: definition.blueprintPriceCents,
+          unlocked: state.unlockedLandmarkIds.includes(definition.id),
+          discoveredMaterials: definition.materials.filter((material) => state.discoveredItems.includes(material.itemId)).length,
+          materialCount: definition.materials.length,
+          materials: definition.materials.map((material) => ({ ...material, stored: state.playerBuildingInventory[material.itemId] ?? 0 })),
+          description: definition.description,
+        })),
+        deployed: state.landmarks,
+        placement: { landmarkId: placingLandmarkId, lastAttempt: landmarkFeedback },
+      },
     },
     logistics: state.logisticsStatus,
     market: {
@@ -284,6 +338,7 @@ function renderGameToText(
     laws: state.laws.map((law, priority) => ({ priority, id: law.id, title: law.title, category: law.category, taxRate: law.taxRate, priceItemId: law.priceItemId, priceMultiplier: law.priceMultiplier, status: law.status, hits: law.hitCount })),
     prices: Object.fromEntries(state.discoveredItems.map((id) => [id, itemPrice(state, id)])),
     cats: state.cats.slice(0, 200).map((cat) => ({
+      landmarkEffects: landmarkEffectsAt(state, cat.position),
       id: cat.id,
       selected: cat.id === selectedCatId,
       position: cat.position,
@@ -317,7 +372,7 @@ function renderGameToText(
           custodianCatId: contract.custodianCatId,
         })),
       lastDecision: cat.lastDecision,
-      visibleWorkstations: localVisibleCats(state, cat, positionMap).filter((entry) => entry.id !== cat.id).map((entry) => ({
+      visibleWorkstations: localVisibleCats(state, cat, positionMap, landmarkEffectsAt(state, cat.position).effectiveVisionRadius).filter((entry) => entry.id !== cat.id).map((entry) => ({
         id: entry.id,
         position: entry.position,
         distance: Math.abs(entry.position.x - cat.position.x) + Math.abs(entry.position.y - cat.position.y),

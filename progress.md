@@ -2,6 +2,13 @@ Original prompt: Implement the approved “猫咪工坊：法条驱动的自动�
 
 ## Progress
 
+- 2026-08-02: Began 0.11.0 player landmarks. Added the six fixed landmark definitions, schema 7 state, atomic blueprint/place/dismantle APIs, Manhattan stack effects and a per-batch-capable spatial index.
+- 2026-08-02: Integrated locked action duration and external-sale gross, dynamic vision/credit, and locked carrier fee bonuses. Added seven focused landmark tests plus schema 6→7 migration coverage; focused tests and the production web build pass.
+- 2026-08-02: Added the warehouse-top landmark engineering UI, six blueprint/material cards, independent placement mode, Canvas Emoji markers and Manhattan auras, deployed-landmark dismantling, cat inspector totals, DeepSeek landmark context, and complete `render_game_to_text` landmark state.
+- 2026-08-02: Browser acceptance passed blueprint locks, exact purchase, insufficient materials, placement aura, atomic build/failure, three-layer stacking, inspector effects, dismantle refunds, standard skill client state and zero console errors. Eight focused screenshots plus the standalone README render were visually inspected.
+- 2026-08-02: Final game regression passes 110/110 Vitest tests, web/server production builds and the 1000-cat spatial acceptance. Built the 0.11.0 fast-start portable EXE; its visible window and embedded port 18788 appeared in about eight seconds, ASAR reports 0.11.0 with no `.env`, and SHA-256 is `FF0012955CD5F2661040D60B3AE6FA927D7FC8BEE25AC95E175E0773ED8A00A5`.
+- 2026-08-02: Resynchronized Codex Toolbox for the six landmark blueprints and enhanced vision. Python compilation, 24/24 Toolbox tests, rebuild and packaged `--self-test` pass; repair/GPU/COL remain the first three entries and the Toolbox UI was not opened.
+
 - 2026-08-01: Confirmed the workspace initially contained only the eight-frame cat sprite/GIF assets and no application project.
 - 2026-08-01: Began the full-stack TypeScript scaffold. The exposed API key will not be written to the workspace; `.env.example` contains a placeholder only.
 - 2026-08-01: Added the validated 65-item/65-recipe catalog, deterministic 5-second action resolver, discovery/unlock rules, private cat wallets, player treasury, and priority-based sales tax laws.

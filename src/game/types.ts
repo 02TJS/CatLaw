@@ -1,6 +1,7 @@
 export type ItemId = string;
 export type DifficultyLevel = 1 | 2 | 3 | 4 | 5;
 export type Direction = "north" | "east" | "south" | "west";
+export type LandmarkId = "founders_plaza" | "craft_academy" | "logistics_hub" | "market_center" | "energy_spire" | "quantum_beacon";
 
 export interface Position {
   x: number;
@@ -60,6 +61,7 @@ export interface CatObservation {
     amountCents: number;
     claimedBySelf: boolean;
   }>;
+  landmarkEffects?: LandmarkEffects;
 }
 
 export type CatAction =
@@ -130,6 +132,11 @@ export interface ActionCommand {
   lawId: string;
   contractId?: string;
   expectedGainCents?: number;
+  /** External-sale gross locked when the action starts, after price law and landmark bonus. */
+  saleGrossCents?: number;
+  salePriceLawId?: string;
+  /** Landmark speed reduction locked when the action starts. */
+  speedReduction?: number;
 }
 
 export interface CatState {
@@ -159,6 +166,38 @@ export interface DeployedBuilding {
   hostCatId?: string;
   position: Position;
   deployedAt: number;
+}
+
+export interface LandmarkDefinition {
+  id: LandmarkId;
+  emoji: string;
+  name: string;
+  radius: number;
+  blueprintPriceCents: number;
+  materials: Ingredient[];
+  description: string;
+  effects: Partial<Pick<LandmarkEffects,
+    "actionSpeedReduction" | "craftSpeedReduction" | "passSpeedReduction" |
+    "saleValueBonus" | "creditBonusCents" | "carrierFeeBonus" | "visionRadiusBonus">>;
+}
+
+export interface DeployedLandmark {
+  id: string;
+  landmarkId: LandmarkId;
+  position: Position;
+  deployedAt: number;
+}
+
+export interface LandmarkEffects {
+  effectiveVisionRadius: number;
+  actionSpeedReduction: number;
+  craftSpeedReduction: number;
+  passSpeedReduction: number;
+  saleValueBonus: number;
+  creditBonusCents: number;
+  carrierFeeBonus: number;
+  visionRadiusBonus: number;
+  stacks: Record<LandmarkId, number>;
 }
 
 export type BuildingOfferStatus = "open" | "purchased" | "cancelled";
@@ -306,7 +345,7 @@ export interface FloatingEvent {
 }
 
 export interface GameState {
-  schemaVersion: 6;
+  schemaVersion: 7;
   difficulty: DifficultyLevel;
   catalogVersion: string;
   worldSeed: number;
@@ -317,6 +356,9 @@ export interface GameState {
   unlockedParcels: Position[];
   resourceNodes: ResourceNode[];
   buildings: DeployedBuilding[];
+  landmarks: DeployedLandmark[];
+  unlockedLandmarkIds: LandmarkId[];
+  nextLandmarkIndex: number;
   buildingOffers: BuildingOffer[];
   /** Legacy field name retained for save compatibility; stores every item in the player's warehouse. */
   playerBuildingInventory: Record<ItemId, number>;

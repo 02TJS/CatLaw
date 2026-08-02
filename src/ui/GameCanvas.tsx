@@ -2,8 +2,9 @@ import { useEffect, useRef } from "react";
 import catSpriteUrl from "../assets/cat-workshop-sprite.png?url";
 import { ITEM_BY_ID } from "../game/catalog";
 import type { GameController } from "../game/controller";
-import { buildingPlacementFailure, formatMoney } from "../game/engine";
-import type { ActionCommand, CatState, DeployedBuilding, Direction, FloatingEvent, Position, ResourceNode } from "../game/types";
+import { buildingPlacementFailure, formatMoney, landmarkPlacementFailure } from "../game/engine";
+import { LANDMARK_BY_ID } from "../game/landmarks";
+import type { ActionCommand, CatState, DeployedBuilding, DeployedLandmark, Direction, FloatingEvent, LandmarkId, Position, ResourceNode } from "../game/types";
 import { frontierParcels, isPositionUnlocked, parcelBounds, parcelCost, parcelForPosition, parcelKey, resourceHarvestTiles } from "../game/world";
 import {
   type Camera,
@@ -37,11 +38,14 @@ interface Props {
   expansionMode: boolean;
   placingBuildingItemId: string | null;
   onBuildingPlacementResult: (feedback: { itemId: string; position: Position; ok: boolean; error?: string }) => void;
+  placingLandmarkId: LandmarkId | null;
+  onLandmarkPlacementResult: (feedback: { landmarkId: LandmarkId; position: Position; ok: boolean; error?: string }) => void;
 }
 
 type SceneEntry =
   | { kind: "resource"; position: Position; layer: number; order: number; node: ResourceNode }
   | { kind: "building"; position: Position; layer: number; order: number; building: DeployedBuilding }
+  | { kind: "landmark"; position: Position; layer: number; order: number; landmark: DeployedLandmark }
   | { kind: "actor"; position: Position; layer: number; order: number; cat: CatState };
 
 export function GameCanvas({
@@ -51,6 +55,8 @@ export function GameCanvas({
   expansionMode,
   placingBuildingItemId,
   onBuildingPlacementResult,
+  placingLandmarkId,
+  onLandmarkPlacementResult,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const camera = useRef<Camera>({ ...DEFAULT_CAMERA });
@@ -92,6 +98,7 @@ export function GameCanvas({
         hoveredTile.current,
         expansionMode,
         placingBuildingItemId,
+        placingLandmarkId,
         reducedMotion,
         groundCache,
       );
@@ -102,7 +109,7 @@ export function GameCanvas({
       cancelAnimationFrame(frameHandle);
       observer.disconnect();
     };
-  }, [controller, selectedCatId, expansionMode, placingBuildingItemId]);
+  }, [controller, selectedCatId, expansionMode, placingBuildingItemId, placingLandmarkId]);
 
   const pointToTile = (clientX: number, clientY: number) => {
     const rect = canvasRef.current!.getBoundingClientRect();
@@ -119,6 +126,11 @@ export function GameCanvas({
     if (placingBuildingItemId) {
       const result = controller.placeBuilding(placingBuildingItemId, tile);
       onBuildingPlacementResult({ itemId: placingBuildingItemId, position: { ...tile }, ...result });
+      return;
+    }
+    if (placingLandmarkId) {
+      const result = controller.placeLandmark(placingLandmarkId, tile);
+      onLandmarkPlacementResult({ landmarkId: placingLandmarkId, position: { ...tile }, ...result });
       return;
     }
     if (expansionMode) {
@@ -202,6 +214,7 @@ function drawWorld(
   hoveredTile: Position | null,
   expansionMode: boolean,
   placingBuildingItemId: string | null,
+  placingLandmarkId: LandmarkId | null,
   reducedMotion: boolean,
   groundCache: GroundLayerCache,
 ) {
@@ -243,6 +256,11 @@ function drawWorld(
     && building.position.y <= bounds.maxY + 1).forEach((building, index) => scene.push({
     kind: "building", position: building.position, layer: 0.35, order: index * 4 + 1, building,
   }));
+  state.landmarks.filter((landmark) => landmark.position.x >= bounds.minX - 1
+    && landmark.position.x <= bounds.maxX + 1 && landmark.position.y >= bounds.minY - 1
+    && landmark.position.y <= bounds.maxY + 1).forEach((landmark, index) => scene.push({
+    kind: "landmark", position: landmark.position, layer: 0.4, order: 500_000 + index, landmark,
+  }));
   scene.sort(sceneDepthCompare);
 
   // Workstations are terrain, not scene actors. Drawing every base before the
@@ -256,10 +274,17 @@ function drawWorld(
     drawCatStationBase(context, cat, state.simTime, camera.zoom, cat.id === selectedCatId, reducedMotion);
   }
 
-  if (hoveredTile && placingBuildingItemId) {
+  if (hoveredTile && placingLandmarkId) {
+    const failure = landmarkPlacementFailure(state, placingLandmarkId, hoveredTile);
+    drawLandmarkAura(context, hoveredTile, placingLandmarkId);
+    drawLandmarkPlacementPreview(context, hoveredTile, placingLandmarkId, !failure, dpr);
+  } else if (hoveredTile && placingBuildingItemId) {
     const failure = buildingPlacementFailure(state, placingBuildingItemId, hoveredTile);
     drawBuildingAura(context, hoveredTile, placingBuildingItemId);
     drawBuildingPlacementPreview(context, hoveredTile, placingBuildingItemId, !failure, dpr);
+  } else if (hoveredTile && state.landmarks.some((landmark) => landmark.position.x === hoveredTile.x && landmark.position.y === hoveredTile.y)) {
+    const landmark = state.landmarks.find((entry) => entry.position.x === hoveredTile.x && entry.position.y === hoveredTile.y)!;
+    drawLandmarkAura(context, landmark.position, landmark.landmarkId);
   } else if (hoveredTile && !expansionMode && isPositionUnlocked(state.unlockedParcels, hoveredTile)) {
     const occupied = state.cats.some((cat) => cat.position.x === hoveredTile.x && cat.position.y === hoveredTile.y);
     const resourceCenter = state.resourceNodes.some((node) => node.position.x === hoveredTile.x && node.position.y === hoveredTile.y);
@@ -273,6 +298,9 @@ function drawWorld(
         break;
       case "building":
         drawBuildingMarker(context, entry.building, dpr);
+        break;
+      case "landmark":
+        drawLandmarkMarker(context, entry.landmark, dpr);
         break;
       case "actor":
         drawCatActor(context, entry.cat, state.simTime, image, dpr, reducedMotion);
@@ -295,6 +323,8 @@ function drawWorld(
     state.difficulty,
     placingBuildingItemId,
     hoveredTile && placingBuildingItemId ? buildingPlacementFailure(state, placingBuildingItemId, hoveredTile) : null,
+    placingLandmarkId,
+    hoveredTile && placingLandmarkId ? landmarkPlacementFailure(state, placingLandmarkId, hoveredTile) : null,
   );
   if (state.milestoneAt !== null && state.simTime - state.milestoneAt < 2_400) {
     drawMilestone(context, width, height, state.simTime - state.milestoneAt, reducedMotion);
@@ -441,6 +471,61 @@ function drawBuildingMarker(context: CanvasRenderingContext2D, building: Deploye
   context.strokeStyle = "rgba(98,112,103,.36)";
   context.stroke();
   context.drawImage(emoji, center.x + 14, center.y - 39, 30, 30);
+  context.restore();
+}
+
+function drawLandmarkMarker(context: CanvasRenderingContext2D, landmark: DeployedLandmark, dpr: number) {
+  const center = worldToIso(landmark.position);
+  const definition = LANDMARK_BY_ID.get(landmark.landmarkId);
+  const emoji = getEmojiCanvas(definition?.emoji ?? "🏛️", 38, dpr);
+  context.save();
+  context.beginPath();
+  context.ellipse(center.x, center.y + 7, 30, 12, 0, 0, Math.PI * 2);
+  context.fillStyle = "rgba(82, 126, 181, .14)";
+  context.fill();
+  context.strokeStyle = "rgba(76, 106, 147, .32)";
+  context.lineWidth = 1.4;
+  context.stroke();
+  context.drawImage(emoji, center.x - 21, center.y - 45, 42, 42);
+  context.restore();
+}
+
+function drawLandmarkAura(context: CanvasRenderingContext2D, position: Position, landmarkId: LandmarkId) {
+  const radius = LANDMARK_BY_ID.get(landmarkId)?.radius ?? 2;
+  context.save();
+  for (let dx = -radius; dx <= radius; dx += 1) {
+    const height = radius - Math.abs(dx);
+    for (let dy = -height; dy <= height; dy += 1) {
+      tracePolygon(context, tileDiamond({ x: position.x + dx, y: position.y + dy }));
+      context.fillStyle = "rgba(101, 116, 205, .075)";
+      context.fill();
+      context.strokeStyle = "rgba(80, 96, 190, .23)";
+      context.lineWidth = 0.9;
+      context.stroke();
+    }
+  }
+  context.restore();
+}
+
+function drawLandmarkPlacementPreview(
+  context: CanvasRenderingContext2D,
+  position: Position,
+  landmarkId: LandmarkId,
+  valid: boolean,
+  dpr: number,
+) {
+  const center = worldToIso(position);
+  tracePolygon(context, tileDiamond(position));
+  context.fillStyle = valid ? "rgba(75, 109, 204, .24)" : "rgba(215, 92, 85, .24)";
+  context.fill();
+  context.strokeStyle = valid ? "rgba(57, 82, 170, .92)" : "rgba(188, 61, 54, .9)";
+  context.lineWidth = 2.2;
+  context.stroke();
+  const definition = LANDMARK_BY_ID.get(landmarkId);
+  const emoji = getEmojiCanvas(definition?.emoji ?? "🏛️", 40, dpr);
+  context.save();
+  context.globalAlpha = valid ? 0.92 : 0.5;
+  context.drawImage(emoji, center.x - 22, center.y - 49, 44, 44);
   context.restore();
 }
 
@@ -907,11 +992,15 @@ function drawCanvasHud(
   difficulty: import("../game/types").DifficultyLevel,
   placingBuildingItemId: string | null,
   buildingPlacementError: string | null,
+  placingLandmarkId: LandmarkId | null,
+  landmarkPlacementError: string | null,
 ) {
   if (hoveredTile) {
     const parcel = parcelForPosition(hoveredTile);
     const unlocked = unlockedParcels.some((entry) => parcelKey(entry) === parcelKey(parcel));
-    const label = placingBuildingItemId
+    const label = placingLandmarkId
+      ? `${hoveredTile.x}, ${hoveredTile.y} · ${landmarkPlacementError ?? "可以建造"}`
+      : placingBuildingItemId
       ? `${hoveredTile.x}, ${hoveredTile.y} · ${buildingPlacementError ?? "可以放置"}`
       : expansionMode && !unlocked
       ? `地块 (${parcel.x}, ${parcel.y}) · ${formatMoney(parcelCost(parcel, difficulty))}${treasuryCoins >= parcelCost(parcel, difficulty) ? "" : " · 金币不足"}`
@@ -928,7 +1017,19 @@ function drawCanvasHud(
     context.textBaseline = "middle";
     context.fillText(label, 28 + textWidth / 2, height - 29.5);
   }
-  if (placingBuildingItemId) {
+  if (placingLandmarkId) {
+    roundedPath(context, width / 2 - 92, 18, 184, 32, 9);
+    context.fillStyle = "rgba(244, 246, 255, .97)";
+    context.fill();
+    context.strokeStyle = "rgba(71, 91, 177, .58)";
+    context.stroke();
+    context.fillStyle = "#3e519b";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.font = "800 12px 'Microsoft YaHei UI', system-ui";
+    const definition = LANDMARK_BY_ID.get(placingLandmarkId);
+    context.fillText(`建造 ${definition?.emoji ?? ""} ${definition?.name ?? placingLandmarkId}`, width / 2, 34);
+  } else if (placingBuildingItemId) {
     roundedPath(context, width / 2 - 78, 18, 156, 32, 9);
     context.fillStyle = "rgba(241, 250, 243, .96)";
     context.fill();

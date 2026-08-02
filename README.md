@@ -2,7 +2,7 @@
 
 法条驱动的自动化制造沙盒。玩家通过自然语言法条影响猫咪共享决策逻辑，在带私人产权、税收、信用、有偿物流和 65 种商品科技树的等距世界中建设工坊。
 
-当前版本：`0.10.0`
+当前版本：`0.11.0`
 
 ## Windows 下载即玩
 
@@ -11,6 +11,7 @@
 下载后双击即可运行，不需要安装 Node.js、npm 或浏览器。完整发布页与 SHA-256 校验文件见 [Releases](https://github.com/TingJShen/CatLaw2/releases/latest)。
 
 - 65 种商品通用玩家仓库
+- 6 种玩家地标工程与范围叠层加成
 - 五档累计难度与空间工业建筑
 - React + TypeScript + Vite + Canvas 2D
 - Electron Windows 桌面版

@@ -20,6 +20,16 @@ import { executeLawSource } from "./lawInterpreter";
 import { chooseAdjustedLocalAction, chooseWeightedLocalAction, localVisibleCats, planLocalLogistics, type LocalScoreAdjustment } from "./localPlanner";
 import { resourceItemAt, resourceItemsAt, siteFailure } from "./logistics";
 import {
+  actionSpeedReductionAt,
+  buyLandmarkBlueprint,
+  createLandmarkSpatialIndex,
+  dismantleLandmark,
+  landmarkEffectsAt,
+  landmarkPlacementFailure,
+  placeLandmark,
+  type LandmarkSpatialIndex,
+} from "./landmarks";
+import {
   applyPrivateIncome,
   bountyBroadcastsForCat,
   broadcastsForCat,
@@ -121,7 +131,7 @@ export function createInitialState(options: { withStarter?: boolean; worldSeed?:
   const laws = starter?.laws ?? [];
   const resourceNodes = structuredClone(starterWorld.resourceNodes);
   const state: GameState = {
-    schemaVersion: 6,
+    schemaVersion: 7,
     difficulty,
     catalogVersion: CATALOG_VERSION,
     worldSeed,
@@ -132,6 +142,9 @@ export function createInitialState(options: { withStarter?: boolean; worldSeed?:
     unlockedParcels: [{ x: 0, y: 0 }],
     resourceNodes,
     buildings: [],
+    landmarks: [],
+    unlockedLandmarkIds: [],
+    nextLandmarkIndex: 0,
     buildingOffers: [],
     playerBuildingInventory: {},
     nextBuildingOfferIndex: 0,
@@ -188,6 +201,8 @@ export function buildingAt(state: GameState, position: Position): DeployedBuildi
   return state.buildings.find((building) => building.position.x === position.x && building.position.y === position.y);
 }
 
+export { buyLandmarkBlueprint, dismantleLandmark, landmarkEffectsAt, landmarkPlacementFailure, placeLandmark };
+
 export function recipeSiteFailure(state: GameState, cat: CatState, recipe: RecipeDefinition): string | null {
   return siteFailure(state, cat, recipe);
 }
@@ -219,6 +234,7 @@ export function placeCat(state: GameState, position: Position): CatState | null 
   if (!isPositionUnlocked(state.unlockedParcels, position)) return null;
   if (resourceAt(state, position)) return null;
   if (buildingAt(state, position)) return null;
+  if (state.landmarks.some((landmark) => positionKey(landmark.position) === positionKey(position))) return null;
   if (state.cats.some((cat) => cat.position.x === position.x && cat.position.y === position.y)) return null;
   const cat: CatState = {
     id: `cat-${state.nextCatIndex}`,
@@ -238,7 +254,13 @@ export function placeCat(state: GameState, position: Position): CatState | null 
   return cat;
 }
 
-export function buildObservation(state: GameState, cat: CatState, map = catMap(state)): CatObservation {
+export function buildObservation(
+  state: GameState,
+  cat: CatState,
+  map = catMap(state),
+  landmarkIndex: LandmarkSpatialIndex = createLandmarkSpatialIndex(state),
+): CatObservation {
+  const effects = landmarkEffectsAt(state, cat.position, landmarkIndex);
   const neighbors = {} as CatObservation["neighbors"];
   for (const [direction, offset] of Object.entries(DIRECTION_OFFSETS) as Array<[Direction, Position]>) {
     const neighbor = map.get(`${cat.position.x + offset.x},${cat.position.y + offset.y}`);
@@ -269,7 +291,7 @@ export function buildObservation(state: GameState, cat: CatState, map = catMap(s
     position: { ...cat.position },
     inventory: { ...cat.inventory },
     neighbors,
-    nearby: localVisibleCats(state, cat, map).filter((entry) => entry.id !== cat.id).map((entry) => ({
+    nearby: localVisibleCats(state, cat, map, effects.effectiveVisionRadius).filter((entry) => entry.id !== cat.id).map((entry) => ({
       position: { ...entry.position },
       inventory: { ...entry.inventory },
       distance: Math.abs(entry.position.x - cat.position.x) + Math.abs(entry.position.y - cat.position.y),
@@ -304,6 +326,7 @@ export function buildObservation(state: GameState, cat: CatState, map = catMap(s
       amountCents: bounty.amountCents,
       claimedBySelf: state.discoveryBounties.some((entry) => entry.itemId === bounty.itemId && entry.claimedByCatId === cat.id),
     })),
+    landmarkEffects: effects,
   };
 }
 
@@ -378,17 +401,26 @@ function beginAction(state: GameState, cat: CatState, action: Exclude<CatAction,
     reserved[itemId] = 1;
   }
   const contract = action.type === "pass" ? contractForAction(state, cat, action) : undefined;
+  const speedReduction = actionSpeedReductionAt(state, cat.position, action.type);
+  const baseDuration = Math.max(2_000, ACTION_DURATION_MS * (1 - speedReduction));
+  const saleGrossCents = action.type === "sell"
+    ? Math.ceil(itemPrice(state, itemId) * (1 + landmarkEffectsAt(state, cat.position).saleValueBonus))
+    : undefined;
+  const salePriceLawId = action.type === "sell" ? activePriceLaw(state, itemId)?.id : undefined;
   cat.action = {
     type: action.type,
     recipeId: action.type === "craft" ? action.recipeId : undefined,
     direction: action.type === "pass" ? action.direction : undefined,
     itemId,
     startedAt: state.simTime,
-    endsAt: state.simTime + Math.max(1, ACTION_DURATION_MS / state.simulationSpeed),
+    endsAt: state.simTime + Math.max(1, baseDuration / state.simulationSpeed),
     reserved,
     lawId,
     contractId: contract?.id,
     expectedGainCents: expectedActionGainCents(state, cat, action, (id) => itemPrice(state, id)),
+    saleGrossCents,
+    salePriceLawId,
+    speedReduction,
   };
   cat.lastDecision = `${lawId} → ${action.type}:${itemId}`;
 }
@@ -449,6 +481,7 @@ export function dismantleBuilding(state: GameState, buildingId: string): { ok: b
 }
 
 export function buildingPlacementFailure(state: GameState, itemId: ItemId, position: Position): string | null {
+  if (state.landmarks.some((landmark) => positionKey(landmark.position) === positionKey(position))) return "该格已有地标";
   if (!DEPLOYABLE_BUILDING_IDS.includes(itemId as typeof DEPLOYABLE_BUILDING_IDS[number])) return "该物品不能放置为建筑";
   if (!Number.isInteger(position.x) || !Number.isInteger(position.y)) return "建筑坐标必须是整数";
   if (!isPositionUnlocked(state.unlockedParcels, position)) return "只能放在已开拓土地";
@@ -553,7 +586,8 @@ export function decideIdleCats(state: GameState): void {
     refreshCatMarket(state, cat, (itemId) => itemPrice(state, itemId));
   }
   resolveBuildingOrders(state);
-  const spatialPlan = planLocalLogistics(state, (itemId) => itemPrice(state, itemId));
+  const landmarkIndex = createLandmarkSpatialIndex(state);
+  const spatialPlan = planLocalLogistics(state, (itemId) => itemPrice(state, itemId), landmarkIndex);
   const spatialMap = catMap(state);
   state.logisticsStatus = spatialPlan.status;
   for (const cat of [...state.cats].sort((a, b) => a.createdIndex - b.createdIndex)) {
@@ -561,7 +595,7 @@ export function decideIdleCats(state: GameState): void {
     const trace = spatialPlan.traces.get(cat.id) ?? [];
     let action: Exclude<CatAction, null> | undefined = contractActionForCat(state, cat) ?? undefined;
     let lawId = action ? "binding-contract" : "local-greedy";
-    const observation = buildObservation(state, cat, spatialMap);
+    const observation = buildObservation(state, cat, spatialMap, landmarkIndex);
     const law = state.laws.find((entry) => entry.status === "active" && entry.category === "behavior");
     if (law && !action) {
       const scoreAdjustments: LocalScoreAdjustment[] = [];
@@ -750,8 +784,10 @@ function resolveAction(state: GameState, cat: CatState, map: Map<string, CatStat
       cat.lastDecision = "运输合同异常，物品已退回";
     }
   } else {
-    const value = itemPrice(state, command.itemId);
-    const priceLaw = activePriceLaw(state, command.itemId);
+    const value = command.saleGrossCents ?? itemPrice(state, command.itemId);
+    const priceLaw = command.salePriceLawId
+      ? state.laws.find((law) => law.id === command.salePriceLawId)
+      : activePriceLaw(state, command.itemId);
     if (priceLaw) priceLaw.hitCount += 1;
     const taxLaw = state.laws.find((law) => law.status === "active" && law.category === "tax" && law.taxRate !== null);
     const rate = taxLaw?.taxRate ?? 0;

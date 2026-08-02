@@ -228,6 +228,28 @@ pre { max-height: 180px; overflow: auto; padding: 8px; color: #e7ece7; backgroun
 .warehouse-actions { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 5px; }
 .warehouse-actions button { flex: 1 1 auto; min-width: 0; padding: 4px 5px; color: #3c704c; border: 1px solid #bfd4c5; border-radius: 5px; background: #f2f8f4; font-size: 7px; font-weight: 800; }
 .warehouse-actions button.active { color: #fff; border-color: #4c8c5e; background: #57986a; }
+.landmark-engineering { margin: 10px 0 14px; padding: 10px; border: 1px solid #c9d0ee; border-radius: 11px; background: linear-gradient(180deg, #f7f8ff, #fff); }
+.landmark-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin: 8px 0 10px; }
+.landmark-card { min-width: 0; padding: 8px; border: 1px solid #dfe2f1; border-radius: 9px; background: #fff; }
+.landmark-card.unlocked { border-color: #aeb9e6; box-shadow: inset 0 0 0 1px rgba(79, 96, 183, .06); }
+.landmark-card.locked { background: #fafafa; }
+.landmark-title { display: grid; grid-template-columns: 29px minmax(0, 1fr); align-items: start; gap: 6px; }
+.landmark-title > span { font: 23px "Segoe UI Emoji", "Apple Color Emoji"; text-align: center; }
+.landmark-title strong, .landmark-title small, .landmark-progress { display: block; }
+.landmark-title strong { color: #3e4755; font-size: 9px; }
+.landmark-title small, .landmark-progress { margin-top: 2px; color: #7c8492; font-size: 7px; line-height: 1.4; }
+.landmark-materials { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; }
+.landmark-materials span { padding: 2px 4px; border-radius: 4px; background: #f1f2f6; color: #737b87; font-size: 7px; }
+.landmark-materials span.enough { color: #34744a; background: #edf7f0; }
+.landmark-materials span.short { color: #a75a55; background: #fbf1f0; }
+.landmark-actions { display: flex; align-items: center; gap: 4px; margin-top: 7px; }
+.landmark-actions button { flex: 1; min-width: 0; padding: 5px; color: #445797; border: 1px solid #bdc5e4; border-radius: 6px; background: #f4f6ff; font-size: 7px; font-weight: 800; }
+.landmark-actions button.active { color: #fff; border-color: #5063ac; background: #6073bd; }
+.landmark-actions button:disabled { color: #a2a6ae; border-color: #dddfe4; background: #f3f3f3; }
+.blueprint-owned { flex: 1; color: #4e65aa; font-size: 7px; font-weight: 800; }
+.landmark-placement-card { border-color: #aeb9e6; background: #f3f5ff; }
+.landmark-placement-card strong { color: #435597; }
+.landmark-list { margin-top: 6px; }
 
 @media (max-width: 1100px) {
   .workspace { grid-template-columns: minmax(470px, 1fr) 330px; }

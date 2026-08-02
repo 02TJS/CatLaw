@@ -27,6 +27,20 @@ function emptyObservation(): CatObservation {
     position: { x: 0, y: 0 },
     inventory: {},
     neighbors: { north: null, east: null, south: null, west: null },
+    landmarkEffects: {
+      effectiveVisionRadius: 2,
+      actionSpeedReduction: 0,
+      craftSpeedReduction: 0,
+      passSpeedReduction: 0,
+      saleValueBonus: 0,
+      creditBonusCents: 0,
+      carrierFeeBonus: 0,
+      visionRadiusBonus: 0,
+      stacks: {
+        founders_plaza: 0, craft_academy: 0, logistics_hub: 0,
+        market_center: 0, energy_spire: 0, quantum_beacon: 0,
+      },
+    },
   };
 }
 
@@ -222,7 +236,8 @@ tax 条例用 taxRate 表示 0 到 1 的税率；最高优先级税法生效，�
 price/tax 的 sourceCode 固定输出 function decide(ctx) { return null; }。warnings 和 examples 通常为空数组。
 输出格式：{"title":"...","summary":"...","category":"behavior|price|tax","taxRate":null,"priceItemId":null,"priceMultiplier":null,"sourceCode":"function decide(ctx) { return earnCoins(); }","warnings":[],"examples":[]}。
 商品 ID、中文名与基础价格（不是配料表）：${priceCatalog}
-现行法摘要：${JSON.stringify(existingLaws)}`;
+现行法摘要：${JSON.stringify(existingLaws)}
+地标上下文更新：前述“半径2”是基础值；量子信标可把 nearby 的有效曼哈顿半径提升到最高5。ctx.landmarkEffects 提供 effectiveVisionRadius、actionSpeedReduction、craftSpeedReduction、passSpeedReduction、saleValueBonus、creditBonusCents、carrierFeeBonus、visionRadiusBonus 与六类地标 stacks。生成法条可读取这些字段，但不得修改它们。`;
 }
 
 async function callDeepSeek(apiKey: string, text: string, existingLaws: Array<{ title: string; summary: string; category: "behavior" | "price" | "tax" }>): Promise<z.infer<typeof modelOutputSchema>> {

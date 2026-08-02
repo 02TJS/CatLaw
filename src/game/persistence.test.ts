@@ -25,7 +25,7 @@ describe("schema 5 building-market migration", () => {
     delete legacy.logisticsStatus;
 
     const migrated = migrateSaveSnapshot(legacy, 999);
-    expect(migrated.schemaVersion).toBe(6);
+    expect(migrated.schemaVersion).toBe(7);
     expect(migrated.difficulty).toBe(2);
     expect(migrated.treasuryCoins).toBe(32_100);
     expect(migrated.cats).toHaveLength(original.cats.length);
@@ -58,7 +58,7 @@ describe("schema 5 building-market migration", () => {
       position: { ...cat.position },
     }));
     const migrated = migrateSaveSnapshot(schema2);
-    expect(migrated.schemaVersion).toBe(6);
+    expect(migrated.schemaVersion).toBe(7);
     expect(migrated.cats.map((cat) => cat.position)).toEqual(schema2.cats.map((cat: any) => cat.position));
     expect(migrated.resourceNodes.every((node) => !migrated.cats.some((cat) => node.position.x === cat.position.x
       && node.position.y === cat.position.y))).toBe(true);

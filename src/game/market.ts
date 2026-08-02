@@ -9,6 +9,7 @@ import {
 } from "./catalog";
 import { difficultyProfile, effectiveRecipeInputs } from "./difficulty";
 import { resourceItemAt, siteFailure } from "./logistics";
+import { landmarkEffectsAt } from "./landmarks";
 import type {
   CatAction,
   CatState,
@@ -172,6 +173,13 @@ export function externalNetCents(state: GameState, itemId: ItemId, priceOf: (ite
   return Math.max(0, gross - tax);
 }
 
+export function externalNetCentsAt(state: GameState, itemId: ItemId, priceOf: (itemId: ItemId) => number, cat: CatState): number {
+  const gross = Math.ceil(priceOf(itemId) * (1 + landmarkEffectsAt(state, cat.position).saleValueBonus));
+  const rate = activeTaxRate(state);
+  const tax = rate > 0 ? Math.min(gross, Math.ceil(gross * rate)) : 0;
+  return Math.max(0, gross - tax);
+}
+
 export function netWorthCents(state: GameState, cat: CatState, priceOf: (itemId: ItemId) => number): number {
   const inventoryValue = Object.entries(cat.inventory).reduce((sum, [itemId, quantity]) => (
     sum + Math.max(0, quantity) * externalNetCents(state, itemId, priceOf)
@@ -185,7 +193,9 @@ export function netWorthCents(state: GameState, cat: CatState, priceOf: (itemId:
 }
 
 export function creditLimitCents(state: GameState, cat: CatState, priceOf: (itemId: ItemId) => number): number {
-  return difficultyProfile(state.difficulty).baseCreditCents + Math.max(0, netWorthCents(state, cat, priceOf));
+  return difficultyProfile(state.difficulty).baseCreditCents
+    + landmarkEffectsAt(state, cat.position).creditBonusCents
+    + Math.max(0, netWorthCents(state, cat, priceOf));
 }
 
 export function creditAvailableCents(state: GameState, cat: CatState, priceOf: (itemId: ItemId) => number): number {
@@ -521,7 +531,7 @@ function tryCreateBountyPlanForCat(state: GameState, cat: CatState, priceOf: (it
       - (priority.get(right.itemId) ?? catalog.get(right.itemId) ?? 999));
   for (const broadcast of candidates) {
     const recipe = RECIPE_BY_OUTPUT.get(broadcast.itemId)!;
-    const revenue = externalNetCents(state, recipe.output, priceOf) + broadcast.amountCents;
+    const revenue = externalNetCentsAt(state, recipe.output, priceOf, cat) + broadcast.amountCents;
     if (revenue <= estimatedInputCost(state, recipe.id, priceOf)) continue;
     if (buyingPowerCents(state, cat, priceOf) < requiredWorkingCapitalCents(state, cat, recipe.id, priceOf)) continue;
     if (!claimDiscoveryBounty(state, cat.id, recipe.output)) continue;
@@ -547,12 +557,12 @@ function tryCreateExternalPlanForCat(state: GameState, cat: CatState, priceOf: (
   const recipes = state.unlockedRecipes.map((id) => RECIPE_BY_ID.get(id))
     .filter((recipe): recipe is NonNullable<typeof recipe> => Boolean(recipe && localRecipeIsUsable(state, cat, recipe.output)))
     .sort((left, right) => {
-      const rateLeft = externalNetCents(state, left.output, priceOf) / (CATALOG_ANALYSIS.workUnits[left.output] || 1);
-      const rateRight = externalNetCents(state, right.output, priceOf) / (CATALOG_ANALYSIS.workUnits[right.output] || 1);
+      const rateLeft = externalNetCentsAt(state, left.output, priceOf, cat) / (CATALOG_ANALYSIS.workUnits[left.output] || 1);
+      const rateRight = externalNetCentsAt(state, right.output, priceOf, cat) / (CATALOG_ANALYSIS.workUnits[right.output] || 1);
       return rateRight - rateLeft || right.output.localeCompare(left.output);
     });
   for (const recipe of recipes) {
-    const revenue = externalNetCents(state, recipe.output, priceOf);
+    const revenue = externalNetCentsAt(state, recipe.output, priceOf, cat);
     if (recipe.inputs.length > 0 && revenue <= estimatedInputCost(state, recipe.id, priceOf)) continue;
     if (buyingPowerCents(state, cat, priceOf) < requiredWorkingCapitalCents(state, cat, recipe.id, priceOf)) continue;
     return Boolean(createPlan(state, cat, recipe.output, null, revenue, "external-sale"));
@@ -566,11 +576,12 @@ function outstandingCarrierLegs(state: GameState, catId: string): number {
     && contract.routeCatIds.indexOf(catId) >= contract.currentLeg).length;
 }
 
-function carrierFeeCents(state: GameState, cat: CatState, priceOf: (itemId: ItemId) => number): number {
+export function carrierFeeCents(state: GameState, cat: CatState, priceOf: (itemId: ItemId) => number): number {
   const bestLiquidation = Object.entries(cat.inventory).reduce((best, [itemId, quantity]) => (
     quantity > 0 ? Math.max(best, externalNetCents(state, itemId, priceOf)) : best
   ), 0);
-  return Math.max(1, Math.min(25, Math.floor(bestLiquidation / 100) + 1));
+  const base = Math.max(1, Math.min(25, Math.floor(bestLiquidation / 100) + 1));
+  return Math.ceil(base * (1 + landmarkEffectsAt(state, cat.position).carrierFeeBonus));
 }
 
 export function unreservedOwnedQuantity(state: GameState, cat: CatState, itemId: ItemId): number {
@@ -853,7 +864,7 @@ export function expectedActionGainCents(
     if (!contract) return -1;
     return contract.currentLeg === 0 ? contract.sellerPriceCents : contract.feesByCatId[cat.id] ?? 1;
   }
-  if (action.type === "sell") return externalNetCents(state, action.itemId, priceOf);
+  if (action.type === "sell") return externalNetCentsAt(state, action.itemId, priceOf, cat);
   const recipe = RECIPE_BY_ID.get(action.recipeId);
   if (!recipe) return -1;
   const plan = planForCat(state, cat.id);

@@ -12,6 +12,7 @@ import {
 } from "./market";
 import type { CatAction, CatState, GameState, ItemId, LogisticsStatus } from "./types";
 import { positionKey } from "./world";
+import { landmarkEffectsAt, type LandmarkSpatialIndex } from "./landmarks";
 
 export const LOCAL_VISION_RADIUS = 2;
 
@@ -42,11 +43,12 @@ export interface LocalScoreAdjustment {
   bonus: number;
 }
 
-export function localVisibleCats(state: GameState, origin: CatState, positionMap?: Map<string, CatState>): CatState[] {
+export function localVisibleCats(state: GameState, origin: CatState, positionMap?: Map<string, CatState>, radius = LOCAL_VISION_RADIUS): CatState[] {
   const map = positionMap ?? new Map(state.cats.map((cat) => [positionKey(cat.position), cat]));
   const visible: CatState[] = [];
-  for (let dy = -LOCAL_VISION_RADIUS; dy <= LOCAL_VISION_RADIUS; dy += 1) {
-    const width = LOCAL_VISION_RADIUS - Math.abs(dy);
+  const effectiveRadius = Math.max(LOCAL_VISION_RADIUS, Math.min(5, Math.floor(radius)));
+  for (let dy = -effectiveRadius; dy <= effectiveRadius; dy += 1) {
+    const width = effectiveRadius - Math.abs(dy);
     for (let dx = -width; dx <= width; dx += 1) {
       const cat = map.get(`${origin.position.x + dx},${origin.position.y + dy}`);
       if (cat) visible.push(cat);
@@ -57,13 +59,13 @@ export function localVisibleCats(state: GameState, origin: CatState, positionMap
   ));
 }
 
-export function planLocalLogistics(state: GameState, priceOf: (itemId: ItemId) => number): LocalLogisticsPlan {
+export function planLocalLogistics(state: GameState, priceOf: (itemId: ItemId) => number, landmarkIndex?: LandmarkSpatialIndex): LocalLogisticsPlan {
   const assignments = new Map<string, Exclude<CatAction, null>>();
   const traces = new Map<string, string[]>();
   const status: LogisticsStatus[] = [];
   const map = new Map(state.cats.map((cat) => [positionKey(cat.position), cat]));
   for (const cat of [...state.cats].sort((a, b) => a.createdIndex - b.createdIndex)) {
-    const visible = localVisibleCats(state, cat, map);
+    const visible = localVisibleCats(state, cat, map, landmarkEffectsAt(state, cat.position, landmarkIndex).effectiveVisionRadius);
     if (cat.action) {
       traces.set(cat.id, [`局部视野 ${visible.length} 个工位 · 已在工作`]);
       continue;

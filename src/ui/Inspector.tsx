@@ -15,6 +15,7 @@ import {
   signalsForCat,
 } from "../game/market";
 import catSpriteUrl from "../assets/cat-workshop-sprite.png?url";
+import { LANDMARK_BY_ID, landmarkEffectsAt } from "../game/landmarks";
 
 export function Inspector({ cat, controller, totalItems }: { cat?: CatState; controller: GameController; totalItems: number }) {
   const state = controller.state;
@@ -34,11 +35,25 @@ export function Inspector({ cat, controller, totalItems }: { cat?: CatState; con
   const netWorth = netWorthCents(state, cat, (itemId) => itemPrice(state, itemId));
   const creditLimit = creditLimitCents(state, cat, (itemId) => itemPrice(state, itemId));
   const creditAvailable = creditAvailableCents(state, cat, (itemId) => itemPrice(state, itemId));
+  const landmarkEffects = landmarkEffectsAt(state, cat.position);
+  const coveredLandmarks = Object.entries(landmarkEffects.stacks).filter(([, count]) => count > 0);
 
   return <div className="inspector">
     <section className="cat-profile">
       <div className="cat-avatar" style={{ backgroundImage: `url(${catSpriteUrl})` }} role="img" aria-label="姜黄色工匠猫" />
       <div><span className="eyebrow">猫咪 #{cat.createdIndex}</span><h2>工位 ({cat.position.x}, {cat.position.y})</h2><p>{resourceItemId ? `${ITEM_BY_ID.get(resourceItemId)?.emoji} ${ITEM_BY_ID.get(resourceItemId)?.name}采集区` : "普通工位"}</p></div>
+    </section>
+
+    <div className="section-heading"><h3>地标加成</h3><span>{coveredLandmarks.length ? `${coveredLandmarks.length} 类覆盖` : "无覆盖"}</span></div>
+    <section className="detail-block landmark-effect-block" data-testid="cat-landmark-effects">
+      <Detail label="覆盖层数" value={coveredLandmarks.length ? coveredLandmarks.map(([id, count]) => `${LANDMARK_BY_ID.get(id as import("../game/types").LandmarkId)?.emoji ?? ""}${LANDMARK_BY_ID.get(id as import("../game/types").LandmarkId)?.name ?? id}×${count}`).join(" · ") : "无"} />
+      <Detail label="有效视野" value={`曼哈顿半径 ${landmarkEffects.effectiveVisionRadius}`} />
+      <Detail label="全部动作加速" value={`${Math.round(landmarkEffects.actionSpeedReduction * 100)}%`} />
+      <Detail label="制作专项加速" value={`${Math.round(landmarkEffects.craftSpeedReduction * 100)}%`} />
+      <Detail label="传递专项加速" value={`${Math.round(landmarkEffects.passSpeedReduction * 100)}%`} />
+      <Detail label="外部售价" value={`+${Math.round(landmarkEffects.saleValueBonus * 100)}%`} />
+      <Detail label="额外信用" value={`+${formatMoney(landmarkEffects.creditBonusCents)}`} />
+      <Detail label="中转费" value={`+${Math.round(landmarkEffects.carrierFeeBonus * 100)}%`} />
     </section>
 
     <div className="section-heading"><h3>资产</h3><span>{totalItems} 件自有物品</span></div>

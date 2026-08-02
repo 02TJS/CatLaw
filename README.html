@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>猫咪工坊 0.10.0 · 项目说明</title>
+  <title>猫咪工坊 0.11.0 · 项目说明</title>
   <style>
     :root { color-scheme: light; --ink:#172033; --muted:#667085; --paper:#fff; --card:#f8faf9; --line:#dfe4e1; --accent:#c58b1b; --green:#3f8f5d; }
     * { box-sizing: border-box; }
@@ -28,9 +28,9 @@
 </head>
 <body>
 <main>
-  <span class="badge">0.10.0 · 全品类仓库 · 快速启动</span>
+  <span class="badge">0.11.0 · 玩家地标工程 · 快速启动</span>
   <h1>🐾 猫咪工坊</h1>
-  <p class="lead">一款逻辑法驱动的空间自动化制造沙盒。每只猫都短视且利己：它只观察两格内工位，却能署名发布全局即时广播；订单、悬赏、报价与结案因此全体可知，实物仍必须沿相邻猫链有偿运输。玩家通过自然语言修改全体猫共用的决策逻辑。</p>
+  <p class="lead">一款逻辑法驱动的空间自动化制造沙盒。每只猫都短视且利己：基础只观察两格内工位，却能署名发布全局即时广播；玩家既可通过自然语言修改共享决策逻辑，也可把仓库商品建成覆盖周边工位的地标。</p>
 
   <h2>9×9 地块与真实物流</h2>
   <div class="grid">
@@ -49,6 +49,18 @@
     <div class="card"><strong>生产与合同受保护</strong>正在执行的动作、生产计划配料、订单合同托管物和既有建筑报价不会被仓库按钮抽走，只出售真正空闲的现货。</div>
     <div class="card"><strong>建筑仍可放置</strong>工厂、机床、天线、实验室和反应堆收购后也进入同一仓库；有库存时可直接进入地面放置模式，拆除后退回仓库。</div>
   </div>
+
+  <h2>六种玩家地标工程</h2>
+  <p>六张图纸始终陈列；全部建材曾被发现后，才可按固定价格从国库永久购买。点击“建造”后在已开拓普通空地选址，只有成功落成才原子扣除仓库材料；拆除返还每项建材数量的一半并向下取整。</p>
+  <div class="grid">
+    <div class="card"><strong>⛲ 创业广场 · 半径 2</strong>石料×6、木板×2、工具×1；图纸 10 金币。范围内全部动作加速 10%。</div>
+    <div class="card"><strong>🏛️ 工匠学院 · 半径 3</strong>砖×4、纸×4、工具×2、玻璃×2；图纸 30 金币。制作加速 20%。</div>
+    <div class="card"><strong>🚉 物流枢纽 · 半径 4</strong>底盘×4、车轮×4、燃料×2、无线电×1；图纸 158 金币。传递加速 25%，中转费 +20%。</div>
+    <div class="card"><strong>🏦 商贸中心 · 半径 3</strong>砖×6、显示器×2、无线电×2、计算机×1；图纸 317 金币。外部售价 +15%，信用额度 +25 金币。</div>
+    <div class="card"><strong>⚡ 能源尖塔 · 半径 4</strong>电池×6、线缆×4、控制器×2、太阳能阵列×2；图纸 190 金币。制作和传递加速 15%。</div>
+    <div class="card"><strong>🗼 量子信标 · 半径 5</strong>卫星×2、AI 核心×2、量子传感器×1、超导体×2；图纸 2870 金币。有效视野 +1，全部动作加速 5%。</div>
+  </div>
+  <p>相同地标的覆盖最多计算 3 层，不同类型相加；动作加速最高 60%，基础 5 秒动作最短 2 秒。售价、信用与中转费分别封顶 +45%、+75 金币与 +60%，有效观察半径最高 5。地标只提供加成，不算作商品、工业建筑或配方场地。</p>
 
   <h2>资源采集区与建筑范围</h2>
   <div class="grid">
@@ -127,37 +139,38 @@ npm run dev</code></pre>
 
   <h2>Windows 桌面版</h2>
   <p><a href="https://github.com/TingJShen/CatLaw2/releases/latest/download/CatWorkshop.exe"><strong>⬇️ 下载 CatWorkshop.exe（Windows 64 位，下载后双击即玩）</strong></a></p>
-  <p>运行 <code>release/CatWorkshop.exe</code> 即可直接打开游戏，不需要另行启动 npm、Vite 或浏览器。0.10.0 使用免压缩便携载荷，修复旧版单文件 EXE 首次启动约需 30 秒、看似没有响应的问题。该 EXE 已注册为 Codex Toolbox 中的“猫咪工坊”。如需真实 DeepSeek 编译，把未提交的 <code>.env</code> 放在 EXE 同一目录。</p>
+  <p>运行 <code>release/CatWorkshop.exe</code> 即可直接打开游戏，不需要另行启动 npm、Vite 或浏览器。0.11.0 继续使用免压缩便携载荷，避免单文件 EXE 首次启动长时间无窗口。该 EXE 已注册为 Codex Toolbox 中的“猫咪工坊”。如需真实 DeepSeek 编译，把未提交的 <code>.env</code> 放在 EXE 同一目录。</p>
 
   <h2>核心规则</h2>
   <table>
     <thead><tr><th>对象</th><th>规则</th></tr></thead>
     <tbody>
       <tr><td>地块</td><td>每块 9×9；中央免费，新地块只能相邻开拓，费用为 50 + 25 × 地块曼哈顿距离。</td></tr>
-      <tr><td>动作</td><td>制作、向四邻传递、出售；每个动作固定耗时 5 秒。传递必须匹配不可撤销的有偿运输合同。</td></tr>
+      <tr><td>动作</td><td>制作、向四邻传递、出售；基础耗时 5 秒，地标加速后最短 2 秒。传递必须匹配不可撤销的有偿运输合同。</td></tr>
       <tr><td>资源</td><td>资源中心不可放猫；中心周围 8 个彩色采集格均可采集对应资源。生成器优先保证不同资源采集区不重叠。</td></tr>
       <tr><td>仓库</td><td>65 种商品全部陈列；玩家用国库收购猫咪未被计划、动作、合同或报价占用的现货，货款归猫，商品进入独立玩家仓库。</td></tr>
       <tr><td>建筑</td><td>工厂、机床、天线、实验室和反应堆提供制造范围；玩家收购后从通用仓库放置到普通空地。</td></tr>
+      <tr><td>地标</td><td>玩家购买永久图纸、消耗仓库建材即时落成；六类地标提供速度、售价、信用、中转费或视野加成，不满足工业建筑场地要求。</td></tr>
       <tr><td>经济</td><td>金额统一为整数分。猫持有现金、债务、信用和保守净资产；内部交易免税，外部销售才应用最高优先级税法。</td></tr>
-      <tr><td>立法</td><td>所有猫共用一份半径 2 决策逻辑。DeepSeek 可直接决策或修正局部候选评分；价格法和税法继续作为经济修正。法典不接收配料表，玩家前 5 次成功颁布免费。</td></tr>
+      <tr><td>立法</td><td>所有猫共用一份逻辑，基础视野半径 2、受地标提升到最高 5。DeepSeek 可读取有效加成并直接决策或修正局部候选评分；法典不接收配料表。</td></tr>
       <tr><td>科技</td><td>共 65 项固定物品与配方；前 9 项免费，第 10–15 项用国库购买且保持教学目标，第 16–20 项要求六种中间品均已实际制造。</td></tr>
       <tr><td>存档</td><td>IndexedDB 自动保存；切至后台时暂停，不结算离线产量。</td></tr>
     </tbody>
   </table>
 
   <h2>操作</h2>
-  <p>拖拽平移，滚轮缩放；在已开拓地块内点击空位或按空格放置新猫，资源 emoji 中心格除外。点击“开拓”购买相邻土地；点击猫查看资产、信用、订单、合同和署名广播；在“仓库”页查看 65 种货架、收购现货并放置建筑。按 <kbd>F</kbd> 切换全屏，按 <kbd>Esc</kbd> 退出全屏或当前模式。</p>
+  <p>拖拽平移，滚轮缩放；在已开拓地块内点击空位或按空格放置新猫。点击“开拓”购买相邻土地；点击猫查看资产、信用、合同与当前地标覆盖；在“仓库”页收购现货、放置工业建筑或购买图纸并选址建造地标。按 <kbd>F</kbd> 切换全屏，按 <kbd>Esc</kbd> 退出全屏或当前模式。</p>
 
   <h2>验证命令</h2>
   <pre><code>npm test
 npm run build
 npx tsx scripts/qa-35.mts 1
 npm start</code></pre>
-  <p>自动化测试还可调用 <code>window.advanceTime(ms)</code>、<code>window.render_game_to_text()</code> 和 <code>window.__CAT_WORKSHOP__.reset()</code>。文本状态包含 <code>visionRadius: 2</code>、现金/债务/净资产/信用、带来源猫的全局广播、65 项仓库库存与可收购报价、合同实物路线、托管物、共享逻辑与拒绝原因。</p>
+  <p>自动化测试还可调用 <code>window.advanceTime(ms)</code>、<code>window.render_game_to_text()</code> 和 <code>window.__CAT_WORKSHOP__.reset()</code>。文本状态包含图纸、地标坐标与材料、放置模式，以及每只猫的有效视野、速度、售价、信用、中转费和各地标层数。</p>
 
   <h2>安全说明</h2>
   <div class="notice">请轮换任何曾经出现在聊天记录中的 DeepSeek 密钥。新密钥只应保存在未提交的本地 <code>.env</code> 中，不能写进浏览器代码、存档、日志或 README。</div>
-  <p>模型生成的共享逻辑会执行，但只在 Acorn 白名单解释器中读取半径 2 快照，最多解释 200 个 AST 节点；它不能访问 DOM、网络、存储、时间、随机数或原型链，也不使用 <code>eval</code> 或 <code>new Function</code>。这种沙箱只限制权限，不规定 DeepSeek 必须采用 if/else 还是评分逻辑。</p>
+  <p>模型生成的共享逻辑会执行，但只在 Acorn 白名单解释器中读取基础半径 2、受量子信标提升到最高 5 的只读快照，最多解释 200 个 AST 节点；它不能访问 DOM、网络、存储、时间、随机数或原型链，也不使用 <code>eval</code> 或 <code>new Function</code>。</p>
 
   <footer>猫咪工坊 · 桌面 Chrome / Edge 单机版</footer>
 </main>

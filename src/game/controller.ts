@@ -1,6 +1,6 @@
-import { advanceGame, buyBuildingOffer, buyWarehouseItem, cancelBuildingOrder, createInitialState, dismantleBuilding, enactLaw, expandParcel, placeCat, placeOwnedBuilding, queueBuildingOrder, reorderLaw, repealLaw, setPaused, unlockRecipe } from "./engine";
+import { advanceGame, buyBuildingOffer, buyLandmarkBlueprint, buyWarehouseItem, cancelBuildingOrder, createInitialState, dismantleBuilding, dismantleLandmark, enactLaw, expandParcel, placeCat, placeLandmark, placeOwnedBuilding, queueBuildingOrder, reorderLaw, repealLaw, setPaused, unlockRecipe } from "./engine";
 import { clearSave, loadGame, saveGame } from "./persistence";
-import type { GameState, LawDraft, Position } from "./types";
+import type { GameState, LandmarkId, LawDraft, Position } from "./types";
 import { randomWorldSeed } from "./world";
 import type { DifficultyLevel } from "./types";
 
@@ -145,6 +145,24 @@ export class GameController {
 
   dismantleBuilding(buildingId: string) {
     const result = dismantleBuilding(this.state, buildingId);
+    this.emit();
+    return result;
+  }
+
+  buyLandmarkBlueprint(landmarkId: LandmarkId) {
+    const result = buyLandmarkBlueprint(this.state, landmarkId);
+    this.emit();
+    return result;
+  }
+
+  placeLandmark(landmarkId: LandmarkId, position: Position) {
+    const result = placeLandmark(this.state, landmarkId, position);
+    this.emit();
+    return result;
+  }
+
+  dismantleLandmark(deployedId: string) {
+    const result = dismantleLandmark(this.state, deployedId);
     this.emit();
     return result;
   }

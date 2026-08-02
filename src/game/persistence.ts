@@ -92,7 +92,7 @@ export async function loadGame(fallbackSeed?: number): Promise<GameState> {
 }
 
 export function migrateSaveSnapshot(raw: any, fallbackSeed?: number): GameState {
-  if (!raw || ![1, 2, 3, 4, 5, 6].includes(raw.schemaVersion ?? 0) || !Array.isArray(raw.cats)) return createInitialState({ worldSeed: fallbackSeed });
+  if (!raw || ![1, 2, 3, 4, 5, 6, 7].includes(raw.schemaVersion ?? 0) || !Array.isArray(raw.cats)) return createInitialState({ worldSeed: fallbackSeed });
   const legacy = raw.schemaVersion === 1;
   const needsResourceRegionMigration = raw.schemaVersion < 3;
   const needsMarketMigration = raw.schemaVersion < 4;
@@ -101,7 +101,7 @@ export function migrateSaveSnapshot(raw: any, fallbackSeed?: number): GameState 
   const worldSeed = normalizeWorldSeed(raw.worldSeed ?? (legacy ? legacySeed(raw) : fallbackSeed ?? 0));
   const fallback = createInitialState({ worldSeed, difficulty: needsDifficultyMigration ? LEGACY_SAVE_DIFFICULTY : normalizeDifficulty(raw.difficulty) });
   const state = { ...fallback, ...structuredClone(raw) } as GameState;
-  state.schemaVersion = 6;
+  state.schemaVersion = 7;
   state.difficulty = needsDifficultyMigration
     ? LEGACY_SAVE_DIFFICULTY
     : normalizeDifficulty(raw.difficulty, fallback.difficulty);
@@ -188,6 +188,9 @@ export function migrateSaveSnapshot(raw: any, fallbackSeed?: number): GameState 
   state.nextContractIndex = Number.isInteger(state.nextContractIndex) ? state.nextContractIndex : state.shipmentContracts.length;
   state.nextMarketEventIndex = Number.isInteger(state.nextMarketEventIndex) ? state.nextMarketEventIndex : state.marketEvents.length;
   state.discoveredItems = (state.discoveredItems ?? []).filter((id) => ITEMS.some((entry) => entry.id === id));
+  state.landmarks = Array.isArray(state.landmarks) ? state.landmarks : [];
+  state.unlockedLandmarkIds = Array.isArray(state.unlockedLandmarkIds) ? state.unlockedLandmarkIds : [];
+  state.nextLandmarkIndex = Number.isInteger(state.nextLandmarkIndex) ? state.nextLandmarkIndex : state.landmarks.length;
   if (needsBuildingMarketMigration) migrateBuildingMarket(state);
   else {
     state.buildingOffers = Array.isArray(state.buildingOffers) ? state.buildingOffers : [];
