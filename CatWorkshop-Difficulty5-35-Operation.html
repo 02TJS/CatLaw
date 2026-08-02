@@ -7,6 +7,7 @@
   <style>
     :root{color-scheme:light;--ink:#17221d;--muted:#66736c;--line:#dfe6e1;--paper:#fff;--soft:#f4f7f5;--green:#2e7d50;--gold:#a66b00;--blue:#286ea8;--red:#b1443e;--orange:#c46c1b}
     *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:#f5f7f5;color:var(--ink);font:15px/1.65 system-ui,"Microsoft YaHei",sans-serif}main{width:min(1180px,calc(100% - 28px));margin:28px auto 80px}header,.section{background:var(--paper);border:1px solid var(--line);border-radius:18px;box-shadow:0 10px 28px rgba(22,36,29,.06)}header{padding:clamp(28px,5vw,58px)}.section{margin-top:18px;padding:clamp(22px,3vw,34px)}h1{max-width:900px;margin:8px 0 14px;font-size:clamp(34px,6vw,62px);line-height:1.08;letter-spacing:-.04em}h2{margin:0 0 18px;font-size:27px;line-height:1.2}h3{margin:25px 0 10px;font-size:19px}.lead{max-width:920px;color:var(--muted);font-size:18px}.badge,.chip,.stage{display:inline-flex;align-items:center;border-radius:999px;white-space:nowrap}.badge{padding:6px 11px;background:#eaf6ee;color:#22633e;font-size:12px;font-weight:800;letter-spacing:.06em}.chip{margin:2px 3px;padding:2px 8px;background:#eef3f0;border:1px solid #dfe7e2;font-size:12px}.toc{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px}.toc a{padding:7px 11px;border:1px solid var(--line);border-radius:8px;color:#305c46;text-decoration:none;background:#fff}.toc a:hover{background:#eff7f2}.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-top:24px}.metric{padding:16px;border:1px solid var(--line);border-radius:13px;background:var(--soft)}.metric strong{display:block;font-size:25px;line-height:1.2}.metric span{color:var(--muted);font-size:12px}.callout{padding:16px 18px;border-left:5px solid var(--gold);border-radius:9px;background:#fff8e6}.callout.red{border-left-color:var(--red);background:#fff1ef}.callout.green{border-left-color:var(--green);background:#edf8f1}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}.card{padding:17px;border:1px solid var(--line);border-radius:13px;background:var(--soft)}.card strong{display:block;margin-bottom:5px;color:var(--green)}.flow{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.phase-card{position:relative;padding:20px;border:1px solid var(--line);border-radius:14px;background:#fff}.phase-card::after{content:"→";position:absolute;right:-20px;top:45%;z-index:2;color:#98a59d;font-size:22px}.phase-card:last-child::after{display:none}.phase-card .number{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#2e7d50;color:white;font-weight:800}.phase-card h3{margin:10px 0 6px}.phase-card p{margin:5px 0;color:var(--muted)}.timeline{position:relative;margin:8px 0 0 10px;padding-left:28px;border-left:2px solid #cdd8d1}.timeline article{position:relative;padding:2px 0 20px}.timeline article::before{content:"";position:absolute;left:-36px;top:8px;width:14px;height:14px;border:3px solid white;border-radius:50%;background:var(--green);box-shadow:0 0 0 2px var(--green)}.timeline time{font:700 13px ui-monospace,Consolas,monospace;color:var(--green)}.timeline h3{margin:2px 0}.timeline p{margin:2px 0;color:var(--muted)}.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px}table{width:100%;border-collapse:collapse;background:white;font-size:13px}th,td{padding:9px 10px;border-bottom:1px solid #e7ece9;text-align:left;vertical-align:top}th{position:sticky;top:0;z-index:1;background:#f0f4f1;color:#315640;white-space:nowrap}tr:last-child td{border-bottom:0}tbody tr:hover{background:#f8fbf9}.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}.mono,code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.emoji{display:inline-block;min-width:28px;font-size:21px}td strong{display:block}small{display:block;color:var(--muted);font-size:11px}.stage{padding:2px 7px;font-size:11px;font-weight:700}.stage.setup{background:#f2efe8;color:#795b25}.stage.phase1{background:#eaf6ee;color:#236a41}.stage.phase2{background:#fff0e5;color:#9a4f14}.stage.phase3{background:#eaf2fb;color:#225f93}.controls{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}.controls button,.controls input{padding:8px 11px;border:1px solid #cad4ce;border-radius:8px;background:#fff;font:inherit}.controls button.active{color:#fff;background:#2e7d50;border-color:#2e7d50}.controls input{min-width:260px;flex:1}.code{padding:16px;border-radius:11px;background:#17241d;color:#edf6f0;overflow:auto}.world-map{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:13px;background:#fff}.parcel{stroke-width:2}.parcel-a{fill:#f1f3f2;stroke:#98a49d}.parcel-b{fill:#f4f8ef;stroke:#7d9d78}.grid-lines{stroke:#d9e0dc;stroke-width:1}.resource{fill:#fff;stroke:#8da69a;stroke-width:2}.resource-label,.building-label{text-anchor:middle;dominant-baseline:central;font-size:20px}.cat-dot{fill:#df8b39;stroke:#8c4e17;stroke-width:1.5}.cat-label{text-anchor:middle;dominant-baseline:central;fill:#fff;font:700 9px ui-monospace,Consolas,monospace}.building-dot{fill:#fff4d6;stroke:#b77800;stroke-width:3}.parcel-title{fill:#54635b;font:700 12px system-ui}.legend{display:flex;flex-wrap:wrap;gap:16px;margin-top:9px;color:var(--muted);font-size:12px}.dot{display:inline-block;width:12px;height:12px;margin-right:5px;border-radius:50%;vertical-align:-1px}.dot.cat{background:#df8b39}.dot.resource{background:#fff;border:2px solid #8da69a}.dot.building{background:#fff4d6;border:2px solid #b77800}.analysis-table td:first-child{font-weight:800;color:#315640}.checklist{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:9px;padding:0;list-style:none}.checklist li{padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:#f7faf8}.checklist li::before{content:"✓";margin-right:8px;color:var(--green);font-weight:900}details{margin-top:13px}summary{cursor:pointer;font-weight:800;color:#315640}footer{padding:24px 6px;color:var(--muted);text-align:center;font-size:12px}@media(max-width:760px){.flow{grid-template-columns:1fr}.phase-card::after{display:none}main{width:min(100% - 16px,1180px);margin-top:8px}.section,header{border-radius:12px;padding:20px}.controls input{min-width:100%}}@media print{body{background:#fff}main{width:100%;margin:0}.section,header{box-shadow:none;break-inside:avoid}.controls,.toc{display:none}details{display:block}details>summary{display:none}}
+    .code{white-space:pre-wrap;overflow-wrap:anywhere}
   </style>
 </head>
 <body>
@@ -14,15 +15,15 @@
   <header>
     <span class="badge">猫咪工坊 0.11.0 · 难度 5 · 极限物流 · 确定性操作档案</span>
     <h1>最高难度 5：35 商品具体怎么操作</h1>
-    <p class="lead">这份档案由 <code>scripts/qa-35.mts</code> 的真实种子 1、难度 5 · 极限物流运行生成。它逐条记录 293 条公开操作、费用、法规、坐标和模拟时间，并把最终订单、合同、运输与 35 项商品统计反向核对。结论不是“脚本直接造出车辆”，而是：先证明市场会在 16–20 自然卡死，再用法规、土地、猫链以及猫咪自产的工厂、天线和机床改变激励与空间条件。</p>
+    <p class="lead">这份档案由 <code>scripts/qa-35.mts</code> 的真实种子 1、难度 5 · 极限物流运行生成。它逐条记录 165 条公开操作、费用、法规、坐标和模拟时间，并把最终订单、合同、运输与 35 项商品统计反向核对。第 22–30 项不再逐项设 ×2：价格法只用全品类 ×1.01 打开悬赏准入，真正的生产顺序由订单物流法、土地、猫链和复合工区决定。</p>
     <div class="metrics">
-      <div class="metric"><strong>71:30</strong><span>最终检查时刻（模拟时间）</span></div>
+      <div class="metric"><strong>49:00</strong><span>最终检查时刻（模拟时间）</span></div>
       <div class="metric"><strong>难度 5 · 极限物流</strong><span>本次真实运行档位</span></div>
-      <div class="metric"><strong>293</strong><span>完整操作记录</span></div>
+      <div class="metric"><strong>165</strong><span>完整操作记录</span></div>
       <div class="metric"><strong>39</strong><span>最终猫咪工位（11 + 28）</span></div>
-      <div class="metric"><strong>1252</strong><span>生成的运输合同</span></div>
-      <div class="metric"><strong>4,214</strong><span>逐格实物传递次数</span></div>
-      <div class="metric"><strong>6,447.22 金币</strong><span>玩家操作毛支出</span></div>
+      <div class="metric"><strong>1130</strong><span>生成的运输合同</span></div>
+      <div class="metric"><strong>3,565</strong><span>逐格实物传递次数</span></div>
+      <div class="metric"><strong>2,416.78 金币</strong><span>玩家操作毛支出</span></div>
     </div>
     <nav class="toc"><a href="#boundary">验收边界</a><a href="#replay">照着界面操作</a><a href="#stages">三阶段</a><a href="#timeline">关键时间线</a><a href="#laws">法规</a><a href="#space">空间建设</a><a href="#economy">经济与物流</a><a href="#items">35 项结果</a><a href="#ledger">完整账本</a></nav>
   </header>
@@ -35,7 +36,7 @@
     <ul class="checklist"><li>购买已经满足前置条件的配方</li><li>颁布或废止经过安全校验的法规</li><li>购买相邻 9×9 地块</li><li>在合法空位放置新猫</li><li>按猫咪报价收购工厂、天线和机床</li><li>从玩家建筑库把三栋设施放进同一复合工区</li><li>推进确定性模拟时钟</li></ul>
     <h3>没有做的事</h3>
     <ul class="checklist"><li>没有直接增加猫咪库存</li><li>没有直接标记商品发现</li><li>没有直接注入建筑或修改建筑范围</li><li>没有绕过配方购买与产业认证</li><li>没有让远方猫读取全局库存</li><li>没有取消实物的相邻猫逐跳运输</li></ul>
-    <p class="callout"><strong>DeepSeek 说明：</strong>这次确定性回归没有访问真实 DeepSeek 网络接口，以免模型波动、超时或计费破坏可重复性。脚本把与模型合规输出相同的已验证 <code>LawDraft</code> 通过公开 <code>enactLaw()</code> 颁布。共享函数源码确实是 <code>function decide(ctx) { return choose(); }</code>；动态法规选择则读取当前开放订单，在 120 秒无新发现时临时提高最深缺口商品的价格。换言之，本局验证“法规能否改变游戏”，不验证某次上游模型回答是否稳定。</p>
+    <p class="callout"><strong>DeepSeek 说明：</strong>这次确定性回归没有访问真实 DeepSeek 网络接口，以免模型波动、超时或计费破坏可重复性。脚本把与模型合规输出相同的已验证 <code>LawDraft</code> 通过公开 <code>enactLaw()</code> 颁布。物流函数使用白名单中的 <code>orderCount()</code>、<code>bounty()</code>、<code>adjust()</code> 和 <code>choose()</code>；颁布后保持不变，长时间等待只检查合同、信用、路线和工区。换言之，本局验证“法规能否改变游戏”，不验证某次上游模型回答是否稳定。</p>
   </section>
 
   <section class="section" id="replay">
@@ -44,14 +45,14 @@
       <tr><td>1</td><td>顶栏难度</td><td>新档开始前选择“5 · 极限物流”并确认清档。</td><td>顶栏难度为 5；基础信用 50 金币。</td></tr>
       <tr><td>2</td><td>配方图</td><td>依次购买第 10–15 项：线、纸、工具、玻璃、金属、齿轮；资金不足就先让外售税积累国库。</td><td>03:30 前 15 项均有制作记录。</td></tr>
       <tr><td>3</td><td>配方图</td><td>购买第 16–20 项，保持法条不变观察 300 模拟秒。</td><td>五项 crafted=0 且悬赏仍开放，确认不是等待不足。</td></tr>
-      <tr><td>4</td><td>法典</td><td>颁布“每只猫按自己的库存、计划和全局广播选择当前最有利动作”；再为第 16–27 项逐项输入“把【商品名】实际售价提高 100%”。</td><td>价格卡显示 ×2；商品首次制造后用“废”撤销该阶段法。</td></tr>
+      <tr><td>4</td><td>法典</td><td>先输入“有开放订单时优先制作订单所需物品并留存关键中间品；磁铁到显示器按机械、电气、电子缺口补料”，颁布行为法；再输入“全部商品价格提高 1%”颁布价格法。</td><td>行为法源码含 <code>orderCount / bounty / adjust / choose</code>；价格卡仅显示 ×1.01。</td></tr>
       <tr><td>5</td><td>开拓</td><td>购买东侧地块 <code>(1,0)</code>，按“空间建设”表中的坐标补 28 只猫，保持上下左右连续。</td><td>广播虽全局可听，实物仍可沿相邻猫合同路线送达。</td></tr>
       <tr><td>6</td><td>仓库</td><td>等待并收购工厂、天线、机床报价；分别放到 🏭工厂 (4, -4)；📡天线 (5, -1)；🛠️机床 (4, 0)。</td><td>三栋设施共同覆盖至少一个高级制造工位。</td></tr>
-      <tr><td>7</td><td>配方图 / 法典</td><td>工厂落成后购买第 28–35 项，并为芯片到车辆逐项颁布 ×2 价格法。</td><td>第 35 项车辆进入悬赏计划。</td></tr>
-      <tr><td>8</td><td>猫咪 / 法典</td><td>若连续 120 模拟秒无新发现，在开放订单中找序号最深的商品，临时颁布 ×2；该商品新增产量后立即废止。</td><td>本次完整触发记录见“法规”和“完整账本”。</td></tr>
-      <tr><td>9</td><td>配方图 / 猫咪</td><td>检查车辆难度 5 配料为车轮×4、控制器×1、燃料×2，并确认制造猫同时在工厂和机床半径 2 内。</td><td>71:30 时 35/35，车辆制作数 1。</td></tr>
+      <tr><td>7</td><td>配方图 / 法典</td><td>工厂落成后购买第 28–35 项；不再给芯片、存储器、显示器逐项加价，让现行物流法按订单补给沙、化学品、线缆、芯片、玻璃和灯。</td><td>第 28–30 项靠工区条件与物流评分进入生产，不靠单品 ×2。</td></tr>
+      <tr><td>8</td><td>猫咪 / 市场</td><td>长时间无新发现时不要继续改价或覆盖物流法；检查开放订单是否已成交、运输合同是否在途、目标猫信用是否足够，以及工厂/天线/机床覆盖是否正确。</td><td>本次只颁布两条法且零废止；其余等待都由真实合同与大宗配料生产消化。</td></tr>
+      <tr><td>9</td><td>配方图 / 猫咪</td><td>检查车辆难度 5 配料为车轮×4、控制器×1、燃料×2，并确认制造猫同时在工厂和机床半径 2 内。</td><td>49:00 时 35/35，车辆制作数 1。</td></tr>
     </tbody></table></div>
-    <p class="callout green"><strong>怎样把测试操作换成正常存档：</strong>不要改物品、发现或建筑；只把“充足测试国库”替换成等待税收。每次以游戏按钮显示的当期费用为准，国库够了再执行下一条购买、颁布或废止。下方完整账本保留了本次 293 条操作及每笔费用。</p>
+    <p class="callout green"><strong>怎样把测试操作换成正常存档：</strong>不要改物品、发现或建筑；只把“充足测试国库”替换成等待税收。每次以游戏按钮显示的当期费用为准，国库够了再执行下一条购买、颁布或废止。下方完整账本保留了本次 165 条操作及每笔费用。</p>
   </section>
 
   <section class="section" id="stages">
@@ -59,7 +60,7 @@
     <div class="flow">
       <article class="phase-card"><span class="number">1</span><h3>白手起家到 15</h3><p>只买第 10–15 项配方，随后推进时间。</p><p><strong>03:30</strong> 前 15 项全部实际制造；没有改法、加猫、扩地或建筑。</p></article>
       <article class="phase-card"><span class="number">2</span><h3>证明 16–20 会卡住</h3><p>买第 16–20 项，再原样观察 300 秒。</p><p>线缆、电池、化学品、底盘、工厂产量均为 <strong>0</strong>，五张悬赏仍开放。</p></article>
-      <article class="phase-card"><span class="number">3</span><h3>法规 + 空间建设到 35</h3><p>颁布共享逻辑和阶段价格引导，购地，加 28 猫，收购并共同布置工厂、天线和机床。</p><p>车辆悬赏在 <strong>71:05</strong> 结案；全 35 项在 71:05 前结案。</p></article>
+      <article class="phase-card"><span class="number">3</span><h3>物流法规 + 空间建设到 35</h3><p>颁布一条 ×1.01 准入法和订单物流法，购地，加 28 猫，收购并共同布置工厂、天线和机床。</p><p>车辆悬赏在 <strong>48:50</strong> 结案；全 35 项在 48:50 前结案。</p></article>
     </div>
     <h3>配方购买批次</h3>
     <div class="table-wrap"><table><thead><tr><th>批次</th><th>时刻</th><th>商品</th><th>费用</th></tr></thead><tbody><tr>
@@ -86,182 +87,45 @@
     <div class="timeline">
       <article><time>00:00</time><h3>购买第 10–15 项</h3><p>11 只教学猫和六个资源区保持原样，只用悬赏、局部递归自供给与有偿订单完成基础产业。</p></article>
       <article><time>03:30</time><h3>前 15 项完成；立即购买第 16–20 项</h3><p>继续保持法规、猫数、土地和建筑不变，开始 300 秒反事实观察。</p></article>
-      <article><time>08:30</time><h3>确认设计卡点并第一次干预</h3><p>颁布共享 <code>choose()</code> 法；购买 21–27；给 16–27 各自 ×2 价格引导；购买东侧地块并一次性铺设 24 个相邻工位。</p></article>
-      <article><time>11:30</time><h3>第一次自动疏堵</h3><p>连续 120 秒没有新发现，开放订单指向底盘，临时底盘 ×2 法颁布；12:00 发现新增产量后废止。</p></article>
-      <article><time>15:35</time><h3>猫咪首次制造并挂牌工厂</h3><p>cat-15 报价 85.80 金币；建筑仍是猫的商品，玩家尚未凭空拥有设施。</p></article>
-      <article><time>16:00</time><h3>收购并放置工厂</h3><p>cat-15 的固定报价为 85.80 金币；部署坐标 (4, -4)。</p></article><article><time>16:30</time><h3>收购并放置天线</h3><p>cat-3 的固定报价为 77.01 金币；部署坐标 (5, -1)。</p></article><article><time>17:30</time><h3>收购并放置机床</h3><p>cat-2 的固定报价为 70.41 金币；部署坐标 (4, 0)。</p></article>
-      <article><time>71:05</time><h3>车辆出现</h3><p>cat-13 在工厂与机床共同覆盖的工位完成车辆悬赏。</p></article>
-      <article><time>71:05</time><h3>第 1–35 项悬赏全部结案</h3><p>脚本在下一次 30 秒检查点 71:30 确认 35/35。</p></article>
+      <article><time>08:30</time><h3>确认设计卡点并第一次干预</h3><p>颁布订单物流协调法与全品类 ×1.01 准入法；购买 21–27；购买东侧地块并一次性铺设 24 个相邻工位。</p></article>
+      <article><time>15:55</time><h3>猫咪首次制造并挂牌工厂</h3><p>cat-15 报价 43.33 金币；建筑仍是猫的商品，玩家尚未凭空拥有设施。</p></article>
+      <article><time>16:00</time><h3>收购并放置工厂</h3><p>cat-15 的固定报价为 43.33 金币；部署坐标 (4, -4)。</p></article><article><time>16:00</time><h3>收购并放置天线</h3><p>cat-3 的固定报价为 38.89 金币；部署坐标 (5, -1)。</p></article><article><time>22:30</time><h3>收购并放置机床</h3><p>cat-14 的固定报价为 35.56 金币；部署坐标 (4, 0)。</p></article>
+      <article><time>48:50</time><h3>车辆出现</h3><p>cat-13 在工厂与机床共同覆盖的工位完成车辆悬赏。</p></article>
+      <article><time>48:50</time><h3>第 1–35 项悬赏全部结案</h3><p>脚本在下一次 30 秒检查点 49:00 确认 35/35。</p></article>
     </div>
   </section>
 
   <section class="section" id="laws">
     <h2>我颁布了哪些法规</h2>
     <div class="grid">
-      <div class="card"><strong>1 条共享行为法</strong><code>function decide(ctx) { return choose(); }</code><br>所有猫使用同一函数，但每只猫只按自身库存、生产计划、两格工位观察和全局署名广播生成候选。</div>
-      <div class="card"><strong>20 条阶段价格法</strong>第 16–35 项首次制造前分别 ×2，完成后立刻废止。它们不是配方，也不直接下命令；它们打开悬赏计划，又不会长期抬高下游信用成本。</div>
-      <div class="card"><strong>22 条临时疏堵法</strong>120 秒没有新发现时，从开放订单中选配方序号最深的缺口临时 ×2；该商品新增产量后付费废止。</div>
-      <div class="card"><strong>43 次成功立法</strong>前 5 次免费，此后第 n 次为 <code>5×(n−5)</code> 金币；立法毛费用 3,705.00 金币，42 次废止另花 210.00 金币。</div>
+      <div class="card"><strong>1 条基础物流法</strong>读取开放订单和未结悬赏；有订单时提高制作、降低无关外售，并对第 22–30 项所需机械、电气和电子中间品定向加权。</div>
+      <div class="card"><strong>1 条最低准入价格法</strong>全品类仅 ×1.01，只满足第 16 项以后认领悬赏所需的“正向价格指引”。它不决定生产顺序，也不逐项改价。</div>
+      <div class="card"><strong>0 条 22–30 单品价格法</strong>磁铁到显示器没有逐项 ×2，也没有用后续临时价格法疏堵；这些商品全部由订单、留存和补料评分完成。</div>
+      <div class="card"><strong>2 次成功立法</strong>前 5 次免费，此后第 n 次为 <code>5×(n−5)</code> 金币；立法毛费用 0.00 金币，废止次数为 0，废止费用 0.00 金币。</div>
     </div>
-    <h3>阶段价格引导范围</h3>
-    <p><span class="chip">🔌 线缆 ×2</span> <span class="chip">🔋 电池 ×2</span> <span class="chip">🧪 化学品 ×2</span> <span class="chip">📦 底盘 ×2</span> <span class="chip">🏭 工厂 ×2</span> <span class="chip">💡 灯 ×2</span> <span class="chip">🧲 磁铁 ×2</span> <span class="chip">🛞 车轮 ×2</span> <span class="chip">🛢️ 燃料 ×2</span> <span class="chip">❄️ 冷却剂 ×2</span> <span class="chip">📡 天线 ×2</span> <span class="chip">🛠️ 机床 ×2</span> <span class="chip">🔲 芯片 ×2</span> <span class="chip">💾 存储器 ×2</span> <span class="chip">📺 显示器 ×2</span> <span class="chip">🎛️ 控制器 ×2</span> <span class="chip">📻 无线电 ×2</span> <span class="chip">🤖 机器人 ×2</span> <span class="chip">🖨️ 制造机 ×2</span> <span class="chip">🚗 车辆 ×2</span></p>
-    <h3>场景状态触发的临时法规</h3>
-    <div class="table-wrap"><table><thead><tr><th>缺口商品</th><th>颁布</th><th>废止</th><th>持续</th><th>立法+废止费</th><th>法规 ID</th></tr></thead><tbody><tr>
-  <td>🔲 芯片 #28 · chip</td>
-  <td class="mono">20:30</td>
-  <td class="mono">22:30</td>
-  <td>02:00</td>
-  <td class="num">90.00 金币</td>
-  <td><code>law-22-246</code></td>
-</tr><tr>
-  <td>🎛️ 控制器 #31 · controller</td>
-  <td class="mono">24:30</td>
-  <td class="mono">30:30</td>
-  <td>06:00</td>
-  <td class="num">95.00 金币</td>
-  <td><code>law-23-294</code></td>
-</tr><tr>
-  <td>🔲 芯片 #28 · chip</td>
-  <td class="mono">28:00</td>
-  <td class="mono">30:30</td>
-  <td>02:30</td>
-  <td class="num">100.00 金币</td>
-  <td><code>law-24-336</code></td>
-</tr><tr>
-  <td>🔌 线缆 #16 · cable</td>
-  <td class="mono">30:00</td>
-  <td class="mono">30:30</td>
-  <td>00:30</td>
-  <td class="num">105.00 金币</td>
-  <td><code>law-25-360</code></td>
-</tr><tr>
-  <td>🎛️ 控制器 #31 · controller</td>
-  <td class="mono">33:00</td>
-  <td class="mono">37:30</td>
-  <td>04:30</td>
-  <td class="num">110.00 金币</td>
-  <td><code>law-26-396</code></td>
-</tr><tr>
-  <td>🔲 芯片 #28 · chip</td>
-  <td class="mono">35:00</td>
-  <td class="mono">37:30</td>
-  <td>02:30</td>
-  <td class="num">115.00 金币</td>
-  <td><code>law-27-420</code></td>
-</tr><tr>
-  <td>🛠️ 机床 #27 · machine_tool</td>
-  <td class="mono">37:00</td>
-  <td class="mono">40:00</td>
-  <td>03:00</td>
-  <td class="num">120.00 金币</td>
-  <td><code>law-28-444</code></td>
-</tr><tr>
-  <td>⚙️ 齿轮 #15 · gear</td>
-  <td class="mono">39:00</td>
-  <td class="mono">39:30</td>
-  <td>00:30</td>
-  <td class="num">125.00 金币</td>
-  <td><code>law-29-468</code></td>
-</tr><tr>
-  <td>🎛️ 控制器 #31 · controller</td>
-  <td class="mono">42:30</td>
-  <td class="mono">51:30</td>
-  <td>09:00</td>
-  <td class="num">130.00 金币</td>
-  <td><code>law-30-510</code></td>
-</tr><tr>
-  <td>🔲 芯片 #28 · chip</td>
-  <td class="mono">44:30</td>
-  <td class="mono">51:00</td>
-  <td>06:30</td>
-  <td class="num">135.00 金币</td>
-  <td><code>law-31-534</code></td>
-</tr><tr>
-  <td>🏭 工厂 #20 · factory</td>
-  <td class="mono">46:30</td>
-  <td class="mono">50:30</td>
-  <td>04:00</td>
-  <td class="num">140.00 金币</td>
-  <td><code>law-32-558</code></td>
-</tr><tr>
-  <td>🔌 线缆 #16 · cable</td>
-  <td class="mono">48:30</td>
-  <td class="mono">51:00</td>
-  <td>02:30</td>
-  <td class="num">145.00 金币</td>
-  <td><code>law-33-582</code></td>
-</tr><tr>
-  <td>🏭 工厂 #20 · factory</td>
-  <td class="mono">50:30</td>
-  <td class="mono">51:30</td>
-  <td>01:00</td>
-  <td class="num">150.00 金币</td>
-  <td><code>law-34-606</code></td>
-</tr><tr>
-  <td>🎛️ 控制器 #31 · controller</td>
-  <td class="mono">54:00</td>
-  <td class="mono">58:30</td>
-  <td>04:30</td>
-  <td class="num">155.00 金币</td>
-  <td><code>law-35-648</code></td>
-</tr><tr>
-  <td>🔲 芯片 #28 · chip</td>
-  <td class="mono">56:00</td>
-  <td class="mono">58:30</td>
-  <td>02:30</td>
-  <td class="num">160.00 金币</td>
-  <td><code>law-36-672</code></td>
-</tr><tr>
-  <td>🛞 车轮 #23 · wheel</td>
-  <td class="mono">58:00</td>
-  <td class="mono">61:30</td>
-  <td>03:30</td>
-  <td class="num">165.00 金币</td>
-  <td><code>law-37-696</code></td>
-</tr><tr>
-  <td>📦 底盘 #19 · chassis</td>
-  <td class="mono">60:00</td>
-  <td class="mono">60:30</td>
-  <td>00:30</td>
-  <td class="num">170.00 金币</td>
-  <td><code>law-38-720</code></td>
-</tr><tr>
-  <td>🛞 车轮 #23 · wheel</td>
-  <td class="mono">62:00</td>
-  <td class="mono">65:00</td>
-  <td>03:00</td>
-  <td class="num">175.00 金币</td>
-  <td><code>law-39-744</code></td>
-</tr><tr>
-  <td>📦 底盘 #19 · chassis</td>
-  <td class="mono">64:00</td>
-  <td class="mono">64:30</td>
-  <td>00:30</td>
-  <td class="num">180.00 金币</td>
-  <td><code>law-40-768</code></td>
-</tr><tr>
-  <td>🛞 车轮 #23 · wheel</td>
-  <td class="mono">66:00</td>
-  <td class="mono">70:00</td>
-  <td>04:00</td>
-  <td class="num">185.00 金币</td>
-  <td><code>law-41-792</code></td>
-</tr><tr>
-  <td>📦 底盘 #19 · chassis</td>
-  <td class="mono">68:00</td>
-  <td class="mono">68:30</td>
-  <td>00:30</td>
-  <td class="num">190.00 金币</td>
-  <td><code>law-42-816</code></td>
-</tr><tr>
-  <td>🛞 车轮 #23 · wheel</td>
-  <td class="mono">70:00</td>
-  <td class="mono">70:30</td>
-  <td>00:30</td>
-  <td class="num">195.00 金币</td>
-  <td><code>law-43-840</code></td>
-</tr></tbody></table></div>
-    <p class="callout green"><strong>为什么它有效：</strong>第 16 项以后，单有配方和悬赏并不足以让猫认领计划；必须存在针对该商品或全品类、倍率大于 1 的玩家价格法。阶段法打开“愿意考虑”这道门，首次制造后撤销；临时法再对真实订单瓶颈做局部疏堵。经济门槛仍会拒绝亏损制作和无合同传递。</p>
+    <h3>基础物流法实际源码</h3>
+    <pre class="code">function decide(ctx) {
+  if (orderCount(&quot;*&quot;) &gt; 0) {
+    adjust(&quot;craft&quot;, &quot;*&quot;, 2.5, 60000);
+    adjust(&quot;sell&quot;, &quot;*&quot;, 0.2, -20000);
+  }
+  if (bounty(&quot;magnet&quot;) &gt; 0 || bounty(&quot;wheel&quot;) &gt; 0 || bounty(&quot;fuel&quot;) &gt; 0 || bounty(&quot;coolant&quot;) &gt; 0 || bounty(&quot;antenna&quot;) &gt; 0 || bounty(&quot;machine_tool&quot;) &gt; 0) {
+    adjust(&quot;craft&quot;, &quot;metal&quot;, 4, 80000);
+    adjust(&quot;craft&quot;, &quot;gear&quot;, 4, 80000);
+    adjust(&quot;craft&quot;, &quot;cable&quot;, 4, 80000);
+    adjust(&quot;craft&quot;, &quot;battery&quot;, 4, 80000);
+    adjust(&quot;craft&quot;, &quot;chemical&quot;, 4, 80000);
+    adjust(&quot;craft&quot;, &quot;chassis&quot;, 4, 80000);
+  }
+  if (bounty(&quot;chip&quot;) &gt; 0 || bounty(&quot;memory&quot;) &gt; 0 || bounty(&quot;display&quot;) &gt; 0) {
+    adjust(&quot;craft&quot;, &quot;chip&quot;, 5, 120000);
+    adjust(&quot;craft&quot;, &quot;glass&quot;, 4, 80000);
+    adjust(&quot;craft&quot;, &quot;lamp&quot;, 4, 80000);
+    adjust(&quot;craft&quot;, &quot;cable&quot;, 4, 80000);
+  }
+  return choose();
+}</pre>
+    <p class="callout green"><strong>为什么它有效：</strong>×1.01 只打开“愿意认领悬赏”这道硬门；真正的调度来自订单。供应猫只会为自己看到的盈利计划和订单生成制作候选，物流法再提高这些候选并留住关键中间品。传递动作仍必须匹配已成交的有偿合同，亏损制作、无合同传递和超额信用照样被引擎拒绝。</p>
   </section>
 
   <section class="section" id="space">
@@ -339,21 +203,22 @@
     <h2>经济与市场结果</h2>
     <div class="metrics">
       <div class="metric"><strong>2,224.00 金币</strong><span>第 10–35 项配方</span></div>
-      <div class="metric"><strong>3,705.00 金币</strong><span>43 次立法</span></div>
-      <div class="metric"><strong>210.00 金币</strong><span>42 次废止</span></div>
+      <div class="metric"><strong>0.00 金币</strong><span>2 次立法</span></div>
+      <div class="metric"><strong>0.00 金币</strong><span>0 次废止</span></div>
       <div class="metric"><strong>75.00 金币</strong><span>东侧土地</span></div>
-      <div class="metric"><strong>233.22 金币</strong><span>三项建筑收购</span></div>
-      <div class="metric"><strong>1,630.04 金币</strong><span>扣除回流后的国库净减少</span></div>
+      <div class="metric"><strong>117.78 金币</strong><span>三项建筑收购</span></div>
+      <div class="metric"><strong>+545.46 金币</strong><span>税收回流后的国库净变化</span></div>
     </div>
-    <p>玩家操作毛支出是 6,447.22 金币；运行期间约 4,817.18 金币 回流国库，主要来自现行 50% 外售税，所以最终国库只比测试起点少 1,630.04 金币。猫咪累计外售 9,634.00 金币，最终私人现金 8,435.11 金币、债务 2.51 金币。</p>
+    <p>玩家操作毛支出是 2,416.78 金币；运行期间约 2,962.24 金币 回流国库，主要来自现行 50% 外售税，所以最终国库相对测试起点变化 +545.46 金币。猫咪累计外售 5,896.58 金币，最终私人现金 6,437.13 金币、债务 1.10 金币。</p>
     <div class="table-wrap"><table class="analysis-table"><thead><tr><th>阻塞</th><th>我观察到的证据</th><th>操作</th><th>因果机制</th></tr></thead><tbody>
-      <tr><td>16–20 无人开工</td><td>300 秒内五项 crafted=0、bountyOpen=true</td><td>每项 ×2 价格法</td><td>满足第 16 项后悬赏认领所需的正向玩家价格引导</td></tr>
-      <tr><td>远方原料不能共享</td><td>最终 4,214 次传递，最长合同路线 13 只猫</td><td>加 28 只相邻猫</td><td>扩大 BFS 可达网络和中转承运容量，物品仍逐格移动</td></tr>
+      <tr><td>16–20 无人开工</td><td>300 秒内五项 crafted=0、bountyOpen=true</td><td>全品类只设 ×1.01 准入法</td><td>用最低幅度满足第 16 项后悬赏认领所需的正向玩家价格指引，不用价格决定生产顺序</td></tr>
+      <tr><td>远方原料不能共享</td><td>最终 3,565 次传递，最长合同路线 12 只猫</td><td>加 28 只相邻猫</td><td>扩大 BFS 可达网络和中转承运容量，物品仍逐格移动</td></tr>
       <tr><td>28–35 缺生产位置</td><td>只有工厂时停在芯片等基础电子商品</td><td>等待三项报价，收购并布置复合工区</td><td>让同一工位同时获得工厂、天线与机床的半径 2 条件</td></tr>
-      <tr><td>中后期局部供需死锁</td><td>120 秒发现数不增长且有开放订单</td><td>临时提高最深订单商品价格，新增产量后废止</td><td>改变本地贪心边际收益，同时避免永久价格污染</td></tr>
+      <tr><td>22–30 关键料被外售或分散</td><td>机械、电气与电子悬赏同时开放，订单需要多种中间品</td><td>按订单提高制作，降低关键料外售；磁铁到显示器分组补料</td><td>只给已经进入本地盈利候选的订单物资加权，不制造无合同传递，也不抬高信用成本</td></tr>
+      <tr><td>中后期长时间等待</td><td>开放订单、在途合同和大宗配料会跨越多个 30 秒检查点</td><td>检查信用、路线和工区后保持两条法规不变</td><td>让已经成交的逐格合同自然结算，避免反复立法打断稳定的物流优先级</td></tr>
     </tbody></table></div>
     <h3>市场规模</h3>
-    <div class="grid"><div class="card"><strong>2,692 个生产计划</strong>包括悬赏、订单和外售计划；每只猫同时最多保留一个活动计划。</div><div class="card"><strong>2,105 张单件订单</strong>信息全局即时广播，但成交仍需检查库存、保证金、路线和运力。</div><div class="card"><strong>1,250 / 1,252 已送达</strong>验收停止时仍可能有少量无关的在途合同；它们不影响 35/35 条件。</div></div>
+    <div class="grid"><div class="card"><strong>2,051 个生产计划</strong>包括悬赏、订单和外售计划；每只猫同时最多保留一个活动计划。</div><div class="card"><strong>1,690 张单件订单</strong>信息全局即时广播，但成交仍需检查库存、保证金、路线和运力。</div><div class="card"><strong>1,123 / 1,130 已送达</strong>验收停止时仍可能有少量无关的在途合同；它们不影响 35/35 条件。</div></div>
   </section>
 
   <section class="section" id="items">
@@ -365,100 +230,100 @@
     <td>资源区采集</td>
     <td class="mono">≤ 00:30</td>
     <td class="mono">00:05<small>cat-10</small></td>
-    <td class="num">940</td>
-    <td class="num">641</td>
-    <td class="num">17</td>
-    <td class="num">17.00 金币</td>
+    <td class="num">578</td>
+    <td class="num">406</td>
+    <td class="num">10</td>
+    <td class="num">10.02 金币</td>
   </tr><tr>
     <td class="num">2</td>
     <td><span class="emoji">🪨</span><strong>石料</strong><small>stone</small></td>
     <td>资源区采集</td>
     <td class="mono">≤ 00:30</td>
     <td class="mono">00:05<small>cat-1</small></td>
-    <td class="num">371</td>
-    <td class="num">97</td>
-    <td class="num">341</td>
-    <td class="num">341.00 金币</td>
+    <td class="num">239</td>
+    <td class="num">142</td>
+    <td class="num">199</td>
+    <td class="num">200.97 金币</td>
   </tr><tr>
     <td class="num">3</td>
     <td><span class="emoji">🏖️</span><strong>沙</strong><small>sand</small></td>
     <td>资源区采集</td>
     <td class="mono">≤ 00:30</td>
     <td class="mono">00:05<small>cat-7</small></td>
-    <td class="num">1,316</td>
-    <td class="num">290</td>
-    <td class="num">1,255</td>
-    <td class="num">1,255.00 金币</td>
+    <td class="num">850</td>
+    <td class="num">269</td>
+    <td class="num">765</td>
+    <td class="num">772.64 金币</td>
   </tr><tr>
     <td class="num">4</td>
     <td><span class="emoji">💧</span><strong>水</strong><small>water</small></td>
     <td>资源区采集</td>
     <td class="mono">≤ 00:30</td>
     <td class="mono">00:05<small>cat-6</small></td>
-    <td class="num">1,487</td>
-    <td class="num">220</td>
-    <td class="num">1,448</td>
-    <td class="num">1,448.00 金币</td>
+    <td class="num">1,058</td>
+    <td class="num">217</td>
+    <td class="num">1,003</td>
+    <td class="num">1,012.98 金币</td>
   </tr><tr>
     <td class="num">5</td>
     <td><span class="emoji">🌿</span><strong>纤维</strong><small>fiber</small></td>
     <td>资源区采集</td>
     <td class="mono">≤ 00:30</td>
     <td class="mono">00:05<small>cat-5</small></td>
-    <td class="num">797</td>
-    <td class="num">283</td>
-    <td class="num">63</td>
-    <td class="num">63.00 金币</td>
+    <td class="num">605</td>
+    <td class="num">260</td>
+    <td class="num">90</td>
+    <td class="num">90.85 金币</td>
   </tr><tr>
     <td class="num">6</td>
     <td><span class="emoji">⛏️</span><strong>矿石</strong><small>ore</small></td>
     <td>资源区采集</td>
     <td class="mono">≤ 00:30</td>
     <td class="mono">00:05<small>cat-2</small></td>
-    <td class="num">1,525</td>
-    <td class="num">874</td>
-    <td class="num">1,252</td>
-    <td class="num">1,252.00 金币</td>
+    <td class="num">843</td>
+    <td class="num">703</td>
+    <td class="num">591</td>
+    <td class="num">596.53 金币</td>
   </tr><tr>
     <td class="num">7</td>
     <td><span class="emoji">🔥</span><strong>炉火</strong><small>fire</small></td>
     <td>🪵木材</td>
     <td class="mono">≤ 00:30</td>
     <td class="mono">02:15<small>cat-0</small></td>
-    <td class="num">539</td>
-    <td class="num">808</td>
-    <td class="num">285</td>
-    <td class="num">855.00 金币</td>
+    <td class="num">346</td>
+    <td class="num">575</td>
+    <td class="num">158</td>
+    <td class="num">478.59 金币</td>
   </tr><tr>
     <td class="num">8</td>
     <td><span class="emoji">🪚</span><strong>木板</strong><small>plank</small></td>
     <td>🪵木材×2</td>
     <td class="mono">≤ 02:30</td>
     <td class="mono">03:05<small>cat-8</small></td>
-    <td class="num">191</td>
-    <td class="num">140</td>
-    <td class="num">172</td>
-    <td class="num">688.00 金币</td>
+    <td class="num">110</td>
+    <td class="num">88</td>
+    <td class="num">90</td>
+    <td class="num">363.56 金币</td>
   </tr><tr>
     <td class="num">9</td>
     <td><span class="emoji">🧱</span><strong>砖</strong><small>brick</small></td>
     <td>🪨石料×2 + 💧水</td>
     <td class="mono">≤ 01:00</td>
     <td class="mono">00:50<small>cat-9</small></td>
-    <td class="num">10</td>
-    <td class="num">36</td>
-    <td class="num">4</td>
-    <td class="num">20.00 金币</td>
+    <td class="num">15</td>
+    <td class="num">31</td>
+    <td class="num">9</td>
+    <td class="num">45.40 金币</td>
   </tr><tr>
     <td class="num">10</td>
     <td><span class="emoji">🧵</span><strong>线</strong><small>thread</small></td>
     <td>🌿纤维×2</td>
     <td class="mono">≤ 02:00</td>
     <td class="mono">01:55<small>cat-9</small></td>
-    <td class="num">360</td>
-    <td class="num">134</td>
-    <td class="num">339</td>
-    <td class="num">1,356.00 金币</td>
+    <td class="num">251</td>
+    <td class="num">139</td>
+    <td class="num">230</td>
+    <td class="num">929.16 金币</td>
   </tr><tr>
     <td class="num">11</td>
     <td><span class="emoji">📄</span><strong>纸</strong><small>paper</small></td>
@@ -476,85 +341,85 @@
     <td class="mono">≤ 03:00</td>
     <td class="mono">02:35<small>cat-9</small></td>
     <td class="num">10</td>
-    <td class="num">26</td>
+    <td class="num">29</td>
     <td class="num">5</td>
-    <td class="num">30.00 金币</td>
+    <td class="num">30.24 金币</td>
   </tr><tr>
     <td class="num">13</td>
     <td><span class="emoji">🪟</span><strong>玻璃</strong><small>glass</small></td>
     <td>🏖️沙×2 + 🔥炉火</td>
     <td class="mono">≤ 03:30</td>
     <td class="mono">03:20<small>cat-6</small></td>
-    <td class="num">27</td>
-    <td class="num">74</td>
-    <td class="num">7</td>
-    <td class="num">42.00 金币</td>
+    <td class="num">34</td>
+    <td class="num">87</td>
+    <td class="num">16</td>
+    <td class="num">96.90 金币</td>
   </tr><tr>
     <td class="num">14</td>
     <td><span class="emoji">🔩</span><strong>金属</strong><small>metal</small></td>
     <td>⛏️矿石×2 + 🔥炉火</td>
     <td class="mono">≤ 02:30</td>
     <td class="mono">02:50<small>cat-3</small></td>
-    <td class="num">131</td>
-    <td class="num">334</td>
-    <td class="num">36</td>
-    <td class="num">315.00 金币</td>
+    <td class="num">122</td>
+    <td class="num">324</td>
+    <td class="num">14</td>
+    <td class="num">100.66 金币</td>
   </tr><tr>
     <td class="num">15</td>
     <td><span class="emoji">⚙️</span><strong>齿轮</strong><small>gear</small></td>
     <td>🔩金属×2</td>
     <td class="mono">≤ 03:30</td>
     <td class="mono">03:10<small>cat-5</small></td>
-    <td class="num">23</td>
-    <td class="num">76</td>
-    <td class="num">8</td>
-    <td class="num">180.00 金币</td>
+    <td class="num">28</td>
+    <td class="num">56</td>
+    <td class="num">13</td>
+    <td class="num">211.65 金币</td>
   </tr><tr>
     <td class="num">16</td>
     <td><span class="emoji">🔌</span><strong>线缆</strong><small>cable</small></td>
     <td>🔩金属 + 🧵线</td>
-    <td class="mono">≤ 14:30</td>
-    <td class="mono">17:25<small>cat-0</small></td>
+    <td class="mono">≤ 14:00</td>
+    <td class="mono">18:45<small>cat-0</small></td>
     <td class="num">21</td>
-    <td class="num">44</td>
-    <td class="num">8</td>
-    <td class="num">120.00 金币</td>
+    <td class="num">73</td>
+    <td class="num">7</td>
+    <td class="num">84.84 金币</td>
   </tr><tr>
     <td class="num">17</td>
     <td><span class="emoji">🔋</span><strong>电池</strong><small>battery</small></td>
     <td>🔩金属 + 💧水</td>
-    <td class="mono">≤ 11:00</td>
-    <td class="mono">17:35<small>cat-6</small></td>
-    <td class="num">12</td>
-    <td class="num">34</td>
-    <td class="num">2</td>
-    <td class="num">20.00 金币</td>
+    <td class="mono">≤ 12:00</td>
+    <td class="mono">23:40<small>cat-6</small></td>
+    <td class="num">13</td>
+    <td class="num">40</td>
+    <td class="num">4</td>
+    <td class="num">40.40 金币</td>
   </tr><tr>
     <td class="num">18</td>
     <td><span class="emoji">🧪</span><strong>化学品</strong><small>chemical</small></td>
     <td>💧水 + 🌿纤维 + 🪟玻璃</td>
     <td class="mono">≤ 10:00</td>
-    <td class="mono">09:55<small>cat-9</small></td>
-    <td class="num">14</td>
-    <td class="num">39</td>
+    <td class="mono">10:00<small>cat-9</small></td>
+    <td class="num">12</td>
+    <td class="num">41</td>
     <td class="num">2</td>
-    <td class="num">22.00 金币</td>
+    <td class="num">22.22 金币</td>
   </tr><tr>
     <td class="num">19</td>
     <td><span class="emoji">📦</span><strong>底盘</strong><small>chassis</small></td>
     <td>🪚木板 + 🔩金属</td>
-    <td class="mono">≤ 12:00</td>
-    <td class="mono">22:15<small>cat-13</small></td>
-    <td class="num">9</td>
-    <td class="num">11</td>
+    <td class="mono">≤ 13:30</td>
+    <td class="mono">25:30<small>cat-13</small></td>
+    <td class="num">10</td>
+    <td class="num">20</td>
     <td class="num">4</td>
-    <td class="num">48.00 金币</td>
+    <td class="num">48.48 金币</td>
   </tr><tr>
     <td class="num">20</td>
     <td><span class="emoji">🏭</span><strong>工厂</strong><small>factory</small></td>
     <td>🧱砖×2 + ⚙️齿轮 + 🔨工具 + 🪟玻璃</td>
     <td class="mono">≤ 16:00</td>
-    <td class="mono">15:35<small>cat-15</small></td>
+    <td class="mono">15:55<small>cat-15</small></td>
     <td class="num">3</td>
     <td class="num">11</td>
     <td class="num">0</td>
@@ -563,68 +428,68 @@
     <td class="num">21</td>
     <td><span class="emoji">💡</span><strong>灯</strong><small>lamp</small></td>
     <td>🪟玻璃 + 🔌线缆 + 🔋电池</td>
-    <td class="mono">≤ 16:00</td>
-    <td class="mono">16:00<small>cat-22</small></td>
+    <td class="mono">≤ 21:30</td>
+    <td class="mono">21:55<small>cat-22</small></td>
     <td class="num">2</td>
     <td class="num">2</td>
     <td class="num">1</td>
-    <td class="num">64.00 金币</td>
+    <td class="num">32.32 金币</td>
   </tr><tr>
     <td class="num">22</td>
     <td><span class="emoji">🧲</span><strong>磁铁</strong><small>magnet</small></td>
     <td>🔩金属 + 🔋电池</td>
-    <td class="mono">≤ 11:30</td>
-    <td class="mono">11:05<small>cat-30</small></td>
+    <td class="mono">≤ 12:30</td>
+    <td class="mono">12:05<small>cat-30</small></td>
     <td class="num">1</td>
     <td class="num">0</td>
     <td class="num">1</td>
-    <td class="num">38.00 金币</td>
+    <td class="num">19.19 金币</td>
   </tr><tr>
     <td class="num">23</td>
     <td><span class="emoji">🛞</span><strong>车轮</strong><small>wheel</small></td>
     <td>📦底盘 + ⚙️齿轮</td>
-    <td class="mono">≤ 14:30</td>
-    <td class="mono">14:15<small>cat-4</small></td>
-    <td class="num">5</td>
+    <td class="mono">≤ 16:30</td>
+    <td class="mono">16:30<small>cat-4</small></td>
+    <td class="num">6</td>
     <td class="num">17</td>
-    <td class="num">1</td>
-    <td class="num">62.00 金币</td>
+    <td class="num">2</td>
+    <td class="num">62.62 金币</td>
   </tr><tr>
     <td class="num">24</td>
     <td><span class="emoji">🛢️</span><strong>燃料</strong><small>fuel</small></td>
     <td>🧪化学品 + 🔥炉火</td>
-    <td class="mono">≤ 10:30</td>
-    <td class="mono">10:20<small>cat-21</small></td>
-    <td class="num">4</td>
-    <td class="num">7</td>
-    <td class="num">2</td>
-    <td class="num">32.00 金币</td>
+    <td class="mono">≤ 11:00</td>
+    <td class="mono">10:45<small>cat-21</small></td>
+    <td class="num">3</td>
+    <td class="num">13</td>
+    <td class="num">1</td>
+    <td class="num">16.16 金币</td>
   </tr><tr>
     <td class="num">25</td>
     <td><span class="emoji">❄️</span><strong>冷却剂</strong><small>coolant</small></td>
     <td>💧水×2 + 🧪化学品 + 🔩金属</td>
     <td class="mono">≤ 13:30</td>
-    <td class="mono">13:10<small>cat-18</small></td>
+    <td class="mono">13:30<small>cat-18</small></td>
     <td class="num">1</td>
     <td class="num">0</td>
     <td class="num">1</td>
-    <td class="num">48.00 金币</td>
+    <td class="num">24.24 金币</td>
   </tr><tr>
     <td class="num">26</td>
     <td><span class="emoji">📡</span><strong>天线</strong><small>antenna</small></td>
     <td>🔌线缆×2 + 🔩金属</td>
-    <td class="mono">≤ 16:30</td>
-    <td class="mono">16:20<small>cat-3</small></td>
-    <td class="num">2</td>
-    <td class="num">1</td>
+    <td class="mono">≤ 16:00</td>
+    <td class="mono">15:45<small>cat-3</small></td>
+    <td class="num">3</td>
+    <td class="num">9</td>
     <td class="num">0</td>
     <td class="num">0.00 金币</td>
   </tr><tr>
     <td class="num">27</td>
     <td><span class="emoji">🛠️</span><strong>机床</strong><small>machine_tool</small></td>
     <td>⚙️齿轮 + 🔨工具 + 🔩金属</td>
-    <td class="mono">≤ 17:30</td>
-    <td class="mono">17:05<small>cat-2</small></td>
+    <td class="mono">≤ 22:30</td>
+    <td class="mono">22:15<small>cat-14</small></td>
     <td class="num">2</td>
     <td class="num">1</td>
     <td class="num">0</td>
@@ -633,58 +498,58 @@
     <td class="num">28</td>
     <td><span class="emoji">🔲</span><strong>芯片</strong><small>chip</small></td>
     <td>🏖️沙 + 🧪化学品 + 🔌线缆</td>
-    <td class="mono">≤ 18:30</td>
-    <td class="mono">18:15<small>cat-30</small></td>
-    <td class="num">7</td>
+    <td class="mono">≤ 19:00</td>
+    <td class="mono">19:00<small>cat-30</small></td>
     <td class="num">6</td>
+    <td class="num">5</td>
     <td class="num">0</td>
     <td class="num">0.00 金币</td>
   </tr><tr>
     <td class="num">29</td>
     <td><span class="emoji">💾</span><strong>存储器</strong><small>memory</small></td>
     <td>🔲芯片 + 🔩金属</td>
-    <td class="mono">≤ 26:00</td>
-    <td class="mono">25:35<small>cat-35</small></td>
+    <td class="mono">≤ 20:00</td>
+    <td class="mono">19:35<small>cat-34</small></td>
     <td class="num">1</td>
     <td class="num">0</td>
     <td class="num">1</td>
-    <td class="num">80.00 金币</td>
+    <td class="num">40.40 金币</td>
   </tr><tr>
     <td class="num">30</td>
     <td><span class="emoji">📺</span><strong>显示器</strong><small>display</small></td>
     <td>🪟玻璃 + 🔲芯片 + 💡灯</td>
-    <td class="mono">≤ 22:30</td>
-    <td class="mono">22:20<small>cat-32</small></td>
+    <td class="mono">≤ 21:30</td>
+    <td class="mono">21:20<small>cat-30</small></td>
     <td class="num">1</td>
     <td class="num">0</td>
     <td class="num">1</td>
-    <td class="num">152.00 金币</td>
+    <td class="num">76.76 金币</td>
   </tr><tr>
     <td class="num">31</td>
     <td><span class="emoji">🎛️</span><strong>控制器</strong><small>controller</small></td>
     <td>🔲芯片 + ⚙️齿轮 + 🔋电池</td>
-    <td class="mono">≤ 22:00</td>
-    <td class="mono">21:40<small>cat-30</small></td>
-    <td class="num">5</td>
-    <td class="num">8</td>
-    <td class="num">1</td>
-    <td class="num">122.00 金币</td>
+    <td class="mono">≤ 24:30</td>
+    <td class="mono">24:05<small>cat-32</small></td>
+    <td class="num">4</td>
+    <td class="num">7</td>
+    <td class="num">0</td>
+    <td class="num">0.00 金币</td>
   </tr><tr>
     <td class="num">32</td>
     <td><span class="emoji">📻</span><strong>无线电</strong><small>radio</small></td>
     <td>📡天线 + 🎛️控制器 + 🔋电池</td>
-    <td class="mono">≤ 31:00</td>
-    <td class="mono">31:00<small>cat-13</small></td>
+    <td class="mono">≤ 31:30</td>
+    <td class="mono">31:30<small>cat-34</small></td>
     <td class="num">1</td>
     <td class="num">0</td>
     <td class="num">1</td>
-    <td class="num">224.00 金币</td>
+    <td class="num">113.12 金币</td>
   </tr><tr>
     <td class="num">33</td>
     <td><span class="emoji">🤖</span><strong>机器人</strong><small>robot</small></td>
     <td>🎛️控制器 + 🛠️机床 + 🔋电池</td>
-    <td class="mono">≤ 40:30</td>
-    <td class="mono">40:10<small>cat-13</small></td>
+    <td class="mono">≤ 31:00</td>
+    <td class="mono">30:50<small>cat-13</small></td>
     <td class="num">1</td>
     <td class="num">0</td>
     <td class="num">0</td>
@@ -693,27 +558,27 @@
     <td class="num">34</td>
     <td><span class="emoji">🖨️</span><strong>制造机</strong><small>fabricator</small></td>
     <td>🤖机器人 + 🏭工厂×2 + 🎛️控制器</td>
-    <td class="mono">≤ 52:00</td>
-    <td class="mono">51:50<small>cat-13</small></td>
+    <td class="mono">≤ 38:30</td>
+    <td class="mono">38:30<small>cat-13</small></td>
     <td class="num">1</td>
     <td class="num">0</td>
     <td class="num">1</td>
-    <td class="num">440.00 金币</td>
+    <td class="num">222.20 金币</td>
   </tr><tr>
     <td class="num">35</td>
     <td><span class="emoji">🚗</span><strong>车辆</strong><small>vehicle</small></td>
     <td>🛞车轮×4 + 🎛️控制器 + 🛢️燃料×2</td>
-    <td class="mono">≤ 71:30</td>
-    <td class="mono">71:05<small>cat-13</small></td>
+    <td class="mono">≤ 49:00</td>
+    <td class="mono">48:50<small>cat-13</small></td>
     <td class="num">1</td>
     <td class="num">0</td>
     <td class="num">1</td>
-    <td class="num">296.00 金币</td>
+    <td class="num">149.48 金币</td>
   </tr></tbody></table></div>
   </section>
 
   <section class="section" id="ledger">
-    <h2>完整操作账本 · 293 条</h2>
+    <h2>完整操作账本 · 165 条</h2>
     <p>这里保留所有公开操作，包括每一次 30 秒确定性时钟推进。可以按阶段筛选或搜索商品、法规 ID、坐标与说明。</p>
     <div class="controls"><button class="active" data-filter="all">全部</button><button data-filter="setup">准备</button><button data-filter="phase1">阶段一</button><button data-filter="phase2">阶段二</button><button data-filter="phase3">阶段三</button><button data-kind="time-advance">只看时间推进</button><button data-kind="law-enact">只看立法</button><input id="ledger-search" type="search" placeholder="搜索商品、法规 ID、坐标或动作"></div>
     <div class="table-wrap"><table id="ledger-table"><thead><tr><th>序号</th><th>模拟时刻</th><th>阶段</th><th>操作</th><th>对象</th><th>细节</th><th>费用</th></tr></thead><tbody><tr data-stage="setup" data-kind="test-budget">
@@ -969,11 +834,19 @@
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>颁布法规</td>
-    <td>shared-behavior</td>
-    <td>全体猫共用 choose()：按自身库存、计划和全局署名广播执行局部贪心<small> · law-1-102</small></td>
+    <td>logistics-coordination</td>
+    <td>颁布 22—30 订单物流协调法：订单触发补料与留存，机械/电子缺口按未结悬赏动态加权<small> · law-1-102</small></td>
+    <td class="num">—</td>
+  </tr><tr data-stage="phase3" data-kind="law-enact">
+    <td class="num">33</td>
+    <td class="mono">08:30</td>
+    <td><span class="stage phase3">阶段三</span></td>
+    <td>颁布法规</td>
+    <td>all-items</td>
+    <td>悬赏准入：全品类仅 ×1.01，满足 16+ 正向价格指引硬门槛，不承担物流调度<small> · law-2-102</small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="recipe-unlock">
-    <td class="num">33</td>
+    <td class="num">34</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>购买配方</td>
@@ -981,7 +854,7 @@
     <td>购买第 21 项配方 make_lamp<small></small></td>
     <td class="num">64.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="recipe-unlock">
-    <td class="num">34</td>
+    <td class="num">35</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>购买配方</td>
@@ -989,7 +862,7 @@
     <td>购买第 22 项配方 make_magnet<small></small></td>
     <td class="num">38.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="recipe-unlock">
-    <td class="num">35</td>
+    <td class="num">36</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>购买配方</td>
@@ -997,7 +870,7 @@
     <td>购买第 23 项配方 make_wheel<small></small></td>
     <td class="num">62.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="recipe-unlock">
-    <td class="num">36</td>
+    <td class="num">37</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>购买配方</td>
@@ -1005,7 +878,7 @@
     <td>购买第 24 项配方 make_fuel<small></small></td>
     <td class="num">32.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="recipe-unlock">
-    <td class="num">37</td>
+    <td class="num">38</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>购买配方</td>
@@ -1013,7 +886,7 @@
     <td>购买第 25 项配方 make_coolant<small></small></td>
     <td class="num">48.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="recipe-unlock">
-    <td class="num">38</td>
+    <td class="num">39</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>购买配方</td>
@@ -1021,111 +894,15 @@
     <td>购买第 26 项配方 make_antenna<small></small></td>
     <td class="num">70.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="recipe-unlock">
-    <td class="num">39</td>
+    <td class="num">40</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>购买配方</td>
     <td>🛠️ 机床 #27 · machine_tool</td>
     <td>购买第 27 项配方 make_machine_tool<small></small></td>
     <td class="num">64.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">40</td>
-    <td class="mono">08:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🔌 线缆 #16 · cable</td>
-    <td>阶段价格引导：cable 实际售价 ×2；首次制造后废止<small> · law-2-102</small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">41</td>
-    <td class="mono">08:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🔋 电池 #17 · battery</td>
-    <td>阶段价格引导：battery 实际售价 ×2；首次制造后废止<small> · law-3-102</small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">42</td>
-    <td class="mono">08:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🧪 化学品 #18 · chemical</td>
-    <td>阶段价格引导：chemical 实际售价 ×2；首次制造后废止<small> · law-4-102</small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">43</td>
-    <td class="mono">08:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>📦 底盘 #19 · chassis</td>
-    <td>阶段价格引导：chassis 实际售价 ×2；首次制造后废止<small> · law-5-102</small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">44</td>
-    <td class="mono">08:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🏭 工厂 #20 · factory</td>
-    <td>阶段价格引导：factory 实际售价 ×2；首次制造后废止<small> · law-6-102</small></td>
-    <td class="num">5.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">45</td>
-    <td class="mono">08:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>💡 灯 #21 · lamp</td>
-    <td>阶段价格引导：lamp 实际售价 ×2；首次制造后废止<small> · law-7-102</small></td>
-    <td class="num">10.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">46</td>
-    <td class="mono">08:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🧲 磁铁 #22 · magnet</td>
-    <td>阶段价格引导：magnet 实际售价 ×2；首次制造后废止<small> · law-8-102</small></td>
-    <td class="num">15.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">47</td>
-    <td class="mono">08:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🛞 车轮 #23 · wheel</td>
-    <td>阶段价格引导：wheel 实际售价 ×2；首次制造后废止<small> · law-9-102</small></td>
-    <td class="num">20.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">48</td>
-    <td class="mono">08:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🛢️ 燃料 #24 · fuel</td>
-    <td>阶段价格引导：fuel 实际售价 ×2；首次制造后废止<small> · law-10-102</small></td>
-    <td class="num">25.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">49</td>
-    <td class="mono">08:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>❄️ 冷却剂 #25 · coolant</td>
-    <td>阶段价格引导：coolant 实际售价 ×2；首次制造后废止<small> · law-11-102</small></td>
-    <td class="num">30.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">50</td>
-    <td class="mono">08:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>📡 天线 #26 · antenna</td>
-    <td>阶段价格引导：antenna 实际售价 ×2；首次制造后废止<small> · law-12-102</small></td>
-    <td class="num">35.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">51</td>
-    <td class="mono">08:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🛠️ 机床 #27 · machine_tool</td>
-    <td>阶段价格引导：machine_tool 实际售价 ×2；首次制造后废止<small> · law-13-102</small></td>
-    <td class="num">40.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="parcel-expand">
-    <td class="num">52</td>
+    <td class="num">41</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>购买土地</td>
@@ -1133,7 +910,7 @@
     <td>购买中央地块东侧相邻的 9×9 地块<small> · 坐标 (1, 0)</small></td>
     <td class="num">75.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="cat-place">
-    <td class="num">53</td>
+    <td class="num">42</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>放置猫咪</td>
@@ -1141,7 +918,7 @@
     <td>铺设进入东侧地块的相邻运输链<small> · 坐标 (2, -2)</small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="cat-place">
-    <td class="num">54</td>
+    <td class="num">43</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>放置猫咪</td>
@@ -1149,7 +926,7 @@
     <td>铺设进入东侧地块的相邻运输链<small> · 坐标 (3, -2)</small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="cat-place">
-    <td class="num">55</td>
+    <td class="num">44</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>放置猫咪</td>
@@ -1157,7 +934,7 @@
     <td>铺设进入东侧地块的相邻运输链<small> · 坐标 (4, -2)</small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="cat-place">
-    <td class="num">56</td>
+    <td class="num">45</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>放置猫咪</td>
@@ -1165,7 +942,7 @@
     <td>铺设进入东侧地块的相邻运输链<small> · 坐标 (5, -2)</small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="cat-place">
-    <td class="num">57</td>
+    <td class="num">46</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>放置猫咪</td>
@@ -1173,7 +950,7 @@
     <td>补密本地生产与逐格运输网络<small> · 坐标 (0, -1)</small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="cat-place">
-    <td class="num">58</td>
+    <td class="num">47</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>放置猫咪</td>
@@ -1181,7 +958,7 @@
     <td>补密本地生产与逐格运输网络<small> · 坐标 (0, 1)</small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="cat-place">
-    <td class="num">59</td>
+    <td class="num">48</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>放置猫咪</td>
@@ -1189,7 +966,7 @@
     <td>补密本地生产与逐格运输网络<small> · 坐标 (-1, -3)</small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="cat-place">
-    <td class="num">60</td>
+    <td class="num">49</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>放置猫咪</td>
@@ -1197,7 +974,7 @@
     <td>补密本地生产与逐格运输网络<small> · 坐标 (0, -2)</small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="cat-place">
-    <td class="num">61</td>
+    <td class="num">50</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>放置猫咪</td>
@@ -1205,7 +982,7 @@
     <td>补密本地生产与逐格运输网络<small> · 坐标 (-2, -2)</small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="cat-place">
-    <td class="num">62</td>
+    <td class="num">51</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>放置猫咪</td>
@@ -1213,7 +990,7 @@
     <td>补密本地生产与逐格运输网络<small> · 坐标 (-2, -1)</small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="cat-place">
-    <td class="num">63</td>
+    <td class="num">52</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>放置猫咪</td>
@@ -1221,7 +998,7 @@
     <td>补密本地生产与逐格运输网络<small> · 坐标 (-2, 1)</small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="cat-place">
-    <td class="num">64</td>
+    <td class="num">53</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>放置猫咪</td>
@@ -1229,7 +1006,7 @@
     <td>补密本地生产与逐格运输网络<small> · 坐标 (0, 2)</small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="cat-place">
-    <td class="num">65</td>
+    <td class="num">54</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>放置猫咪</td>
@@ -1237,7 +1014,7 @@
     <td>补密本地生产与逐格运输网络<small> · 坐标 (-1, 3)</small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="cat-place">
-    <td class="num">66</td>
+    <td class="num">55</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>放置猫咪</td>
@@ -1245,7 +1022,7 @@
     <td>补密本地生产与逐格运输网络<small> · 坐标 (-2, 2)</small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="cat-place">
-    <td class="num">67</td>
+    <td class="num">56</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>放置猫咪</td>
@@ -1253,7 +1030,7 @@
     <td>补密本地生产与逐格运输网络<small> · 坐标 (1, -3)</small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="cat-place">
-    <td class="num">68</td>
+    <td class="num">57</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>放置猫咪</td>
@@ -1261,7 +1038,7 @@
     <td>补密本地生产与逐格运输网络<small> · 坐标 (2, -1)</small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="cat-place">
-    <td class="num">69</td>
+    <td class="num">58</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>放置猫咪</td>
@@ -1269,7 +1046,7 @@
     <td>补密本地生产与逐格运输网络<small> · 坐标 (2, 1)</small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="cat-place">
-    <td class="num">70</td>
+    <td class="num">59</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>放置猫咪</td>
@@ -1277,7 +1054,7 @@
     <td>补密本地生产与逐格运输网络<small> · 坐标 (2, 2)</small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="cat-place">
-    <td class="num">71</td>
+    <td class="num">60</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>放置猫咪</td>
@@ -1285,7 +1062,7 @@
     <td>补密本地生产与逐格运输网络<small> · 坐标 (1, 3)</small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="cat-place">
-    <td class="num">72</td>
+    <td class="num">61</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>放置猫咪</td>
@@ -1293,7 +1070,7 @@
     <td>补密本地生产与逐格运输网络<small> · 坐标 (3, -3)</small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="cat-place">
-    <td class="num">73</td>
+    <td class="num">62</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>放置猫咪</td>
@@ -1301,7 +1078,7 @@
     <td>补密本地生产与逐格运输网络<small> · 坐标 (3, -1)</small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="cat-place">
-    <td class="num">74</td>
+    <td class="num">63</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>放置猫咪</td>
@@ -1309,7 +1086,7 @@
     <td>补密本地生产与逐格运输网络<small> · 坐标 (4, -3)</small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="cat-place">
-    <td class="num">75</td>
+    <td class="num">64</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>放置猫咪</td>
@@ -1317,7 +1094,7 @@
     <td>补密本地生产与逐格运输网络<small> · 坐标 (4, -1)</small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="cat-place">
-    <td class="num">76</td>
+    <td class="num">65</td>
     <td class="mono">08:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>放置猫咪</td>
@@ -1325,7 +1102,7 @@
     <td>补密本地生产与逐格运输网络<small> · 坐标 (5, -3)</small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">77</td>
+    <td class="num">66</td>
     <td class="mono">09:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -1333,7 +1110,7 @@
     <td>市场运行：确定性时钟从 510000ms 推进到 540000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">78</td>
+    <td class="num">67</td>
     <td class="mono">09:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -1341,87 +1118,47 @@
     <td>市场运行：确定性时钟从 540000ms 推进到 570000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">79</td>
+    <td class="num">68</td>
     <td class="mono">10:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 570000ms 推进到 600000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">80</td>
-    <td class="mono">10:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🧪 化学品 #18 · chemical</td>
-    <td>首次制造已完成，废止阶段价格引导以降低后续订单和信用成本<small> · law-4-102</small></td>
-    <td class="num">5.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">81</td>
+    <td class="num">69</td>
     <td class="mono">10:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 600000ms 推进到 630000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">82</td>
-    <td class="mono">10:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🛢️ 燃料 #24 · fuel</td>
-    <td>首次制造已完成，废止阶段价格引导以降低后续订单和信用成本<small> · law-10-102</small></td>
-    <td class="num">5.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">83</td>
+    <td class="num">70</td>
     <td class="mono">11:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 630000ms 推进到 660000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">84</td>
-    <td class="mono">11:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🔋 电池 #17 · battery</td>
-    <td>首次制造已完成，废止阶段价格引导以降低后续订单和信用成本<small> · law-3-102</small></td>
-    <td class="num">5.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">85</td>
+    <td class="num">71</td>
     <td class="mono">11:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 660000ms 推进到 690000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">86</td>
-    <td class="mono">11:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🧲 磁铁 #22 · magnet</td>
-    <td>首次制造已完成，废止阶段价格引导以降低后续订单和信用成本<small> · law-8-102</small></td>
-    <td class="num">5.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">87</td>
+    <td class="num">72</td>
     <td class="mono">12:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 690000ms 推进到 720000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">88</td>
-    <td class="mono">12:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>📦 底盘 #19 · chassis</td>
-    <td>首次制造已完成，废止阶段价格引导以降低后续订单和信用成本<small> · law-5-102</small></td>
-    <td class="num">5.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">89</td>
+    <td class="num">73</td>
     <td class="mono">12:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -1429,7 +1166,7 @@
     <td>市场运行：确定性时钟从 720000ms 推进到 750000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">90</td>
+    <td class="num">74</td>
     <td class="mono">13:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -1437,23 +1174,15 @@
     <td>市场运行：确定性时钟从 750000ms 推进到 780000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">91</td>
+    <td class="num">75</td>
     <td class="mono">13:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 780000ms 推进到 810000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">92</td>
-    <td class="mono">13:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>❄️ 冷却剂 #25 · coolant</td>
-    <td>首次制造已完成，废止阶段价格引导以降低后续订单和信用成本<small> · law-11-102</small></td>
-    <td class="num">5.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">93</td>
+    <td class="num">76</td>
     <td class="mono">14:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -1461,31 +1190,15 @@
     <td>市场运行：确定性时钟从 810000ms 推进到 840000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">94</td>
+    <td class="num">77</td>
     <td class="mono">14:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 840000ms 推进到 870000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">95</td>
-    <td class="mono">14:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🔌 线缆 #16 · cable</td>
-    <td>首次制造已完成，废止阶段价格引导以降低后续订单和信用成本<small> · law-2-102</small></td>
-    <td class="num">5.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">96</td>
-    <td class="mono">14:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🛞 车轮 #23 · wheel</td>
-    <td>首次制造已完成，废止阶段价格引导以降低后续订单和信用成本<small> · law-9-102</small></td>
-    <td class="num">5.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">97</td>
+    <td class="num">78</td>
     <td class="mono">15:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -1493,7 +1206,7 @@
     <td>市场运行：确定性时钟从 870000ms 推进到 900000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">98</td>
+    <td class="num">79</td>
     <td class="mono">15:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -1501,47 +1214,47 @@
     <td>市场运行：确定性时钟从 900000ms 推进到 930000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">99</td>
+    <td class="num">80</td>
     <td class="mono">16:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 930000ms 推进到 960000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">100</td>
-    <td class="mono">16:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🏭 工厂 #20 · factory</td>
-    <td>首次制造已完成，废止阶段价格引导以降低后续订单和信用成本<small> · law-6-102</small></td>
-    <td class="num">5.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">101</td>
-    <td class="mono">16:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>💡 灯 #21 · lamp</td>
-    <td>首次制造已完成，废止阶段价格引导以降低后续订单和信用成本<small> · law-7-102</small></td>
-    <td class="num">5.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="building-buy">
-    <td class="num">102</td>
+    <td class="num">81</td>
     <td class="mono">16:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>收购建筑</td>
-    <td>building-offer-0</td>
+    <td>building-offer-1</td>
     <td>从 cat cat-15 的固定报价收购factory<small></small></td>
-    <td class="num">85.80 金币</td>
+    <td class="num">43.33 金币</td>
   </tr><tr data-stage="phase3" data-kind="building-place">
-    <td class="num">103</td>
+    <td class="num">82</td>
     <td class="mono">16:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>放置建筑</td>
     <td>🏭 工厂 #20 · factory</td>
     <td>将factory放到覆盖猫群最多的合法普通空地<small> · 坐标 (4, -4)</small></td>
     <td class="num">—</td>
+  </tr><tr data-stage="phase3" data-kind="building-buy">
+    <td class="num">83</td>
+    <td class="mono">16:00</td>
+    <td><span class="stage phase3">阶段三</span></td>
+    <td>收购建筑</td>
+    <td>building-offer-0</td>
+    <td>从 cat cat-3 的固定报价收购antenna<small></small></td>
+    <td class="num">38.89 金币</td>
+  </tr><tr data-stage="phase3" data-kind="building-place">
+    <td class="num">84</td>
+    <td class="mono">16:00</td>
+    <td><span class="stage phase3">阶段三</span></td>
+    <td>放置建筑</td>
+    <td>📡 天线 #26 · antenna</td>
+    <td>将antenna放到覆盖猫群最多的合法普通空地<small> · 坐标 (5, -1)</small></td>
+    <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="recipe-unlock">
-    <td class="num">104</td>
+    <td class="num">85</td>
     <td class="mono">16:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>购买配方</td>
@@ -1549,7 +1262,7 @@
     <td>购买第 28 项配方 make_chip<small></small></td>
     <td class="num">62.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="recipe-unlock">
-    <td class="num">105</td>
+    <td class="num">86</td>
     <td class="mono">16:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>购买配方</td>
@@ -1557,7 +1270,7 @@
     <td>购买第 29 项配方 make_memory<small></small></td>
     <td class="num">80.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="recipe-unlock">
-    <td class="num">106</td>
+    <td class="num">87</td>
     <td class="mono">16:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>购买配方</td>
@@ -1565,7 +1278,7 @@
     <td>购买第 30 项配方 make_display<small></small></td>
     <td class="num">152.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="recipe-unlock">
-    <td class="num">107</td>
+    <td class="num">88</td>
     <td class="mono">16:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>购买配方</td>
@@ -1573,7 +1286,7 @@
     <td>购买第 31 项配方 make_controller<small></small></td>
     <td class="num">122.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="recipe-unlock">
-    <td class="num">108</td>
+    <td class="num">89</td>
     <td class="mono">16:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>购买配方</td>
@@ -1581,7 +1294,7 @@
     <td>购买第 32 项配方 make_radio<small></small></td>
     <td class="num">224.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="recipe-unlock">
-    <td class="num">109</td>
+    <td class="num">90</td>
     <td class="mono">16:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>购买配方</td>
@@ -1589,7 +1302,7 @@
     <td>购买第 33 项配方 make_robot<small></small></td>
     <td class="num">218.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="recipe-unlock">
-    <td class="num">110</td>
+    <td class="num">91</td>
     <td class="mono">16:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>购买配方</td>
@@ -1597,111 +1310,23 @@
     <td>购买第 34 项配方 make_fabricator<small></small></td>
     <td class="num">440.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="recipe-unlock">
-    <td class="num">111</td>
+    <td class="num">92</td>
     <td class="mono">16:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>购买配方</td>
     <td>🚗 车辆 #35 · vehicle</td>
     <td>购买第 35 项配方 make_vehicle<small></small></td>
     <td class="num">296.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">112</td>
-    <td class="mono">16:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🔲 芯片 #28 · chip</td>
-    <td>阶段价格引导：chip 实际售价 ×2；首次制造后废止<small> · law-14-192</small></td>
-    <td class="num">45.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">113</td>
-    <td class="mono">16:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>💾 存储器 #29 · memory</td>
-    <td>阶段价格引导：memory 实际售价 ×2；首次制造后废止<small> · law-15-192</small></td>
-    <td class="num">50.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">114</td>
-    <td class="mono">16:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>📺 显示器 #30 · display</td>
-    <td>阶段价格引导：display 实际售价 ×2；首次制造后废止<small> · law-16-192</small></td>
-    <td class="num">55.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">115</td>
-    <td class="mono">16:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🎛️ 控制器 #31 · controller</td>
-    <td>阶段价格引导：controller 实际售价 ×2；首次制造后废止<small> · law-17-192</small></td>
-    <td class="num">60.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">116</td>
-    <td class="mono">16:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>📻 无线电 #32 · radio</td>
-    <td>阶段价格引导：radio 实际售价 ×2；首次制造后废止<small> · law-18-192</small></td>
-    <td class="num">65.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">117</td>
-    <td class="mono">16:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🤖 机器人 #33 · robot</td>
-    <td>阶段价格引导：robot 实际售价 ×2；首次制造后废止<small> · law-19-192</small></td>
-    <td class="num">70.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">118</td>
-    <td class="mono">16:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🖨️ 制造机 #34 · fabricator</td>
-    <td>阶段价格引导：fabricator 实际售价 ×2；首次制造后废止<small> · law-20-192</small></td>
-    <td class="num">75.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">119</td>
-    <td class="mono">16:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🚗 车辆 #35 · vehicle</td>
-    <td>阶段价格引导：vehicle 实际售价 ×2；首次制造后废止<small> · law-21-192</small></td>
-    <td class="num">80.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">120</td>
+    <td class="num">93</td>
     <td class="mono">16:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 960000ms 推进到 990000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">121</td>
-    <td class="mono">16:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>📡 天线 #26 · antenna</td>
-    <td>首次制造已完成，废止阶段价格引导以降低后续订单和信用成本<small> · law-12-102</small></td>
-    <td class="num">5.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="building-buy">
-    <td class="num">122</td>
-    <td class="mono">16:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>收购建筑</td>
-    <td>building-offer-1</td>
-    <td>从 cat cat-3 的固定报价收购antenna<small></small></td>
-    <td class="num">77.01 金币</td>
-  </tr><tr data-stage="phase3" data-kind="building-place">
-    <td class="num">123</td>
-    <td class="mono">16:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>放置建筑</td>
-    <td>📡 天线 #26 · antenna</td>
-    <td>将antenna放到覆盖猫群最多的合法普通空地<small> · 坐标 (5, -1)</small></td>
-    <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">124</td>
+    <td class="num">94</td>
     <td class="mono">17:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -1709,71 +1334,15 @@
     <td>市场运行：确定性时钟从 990000ms 推进到 1020000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">125</td>
+    <td class="num">95</td>
     <td class="mono">17:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 1020000ms 推进到 1050000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">126</td>
-    <td class="mono">17:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🛠️ 机床 #27 · machine_tool</td>
-    <td>首次制造已完成，废止阶段价格引导以降低后续订单和信用成本<small> · law-13-102</small></td>
-    <td class="num">5.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="building-buy">
-    <td class="num">127</td>
-    <td class="mono">17:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>收购建筑</td>
-    <td>building-offer-2</td>
-    <td>从 cat cat-2 的固定报价收购machine_tool<small></small></td>
-    <td class="num">70.41 金币</td>
-  </tr><tr data-stage="phase3" data-kind="building-place">
-    <td class="num">128</td>
-    <td class="mono">17:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>放置建筑</td>
-    <td>🛠️ 机床 #27 · machine_tool</td>
-    <td>将machine_tool放到覆盖猫群最多的合法普通空地<small> · 坐标 (4, 0)</small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="cat-place">
-    <td class="num">129</td>
-    <td class="mono">17:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>放置猫咪</td>
-    <td>cat-35</td>
-    <td>补充工厂半径2内的电子零件工位，优先避开三设施共同覆盖区<small> · 坐标 (2, -4)</small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="cat-place">
-    <td class="num">130</td>
-    <td class="mono">17:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>放置猫咪</td>
-    <td>cat-36</td>
-    <td>补充工厂半径2内的电子零件工位，优先避开三设施共同覆盖区<small> · 坐标 (3, -4)</small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="cat-place">
-    <td class="num">131</td>
-    <td class="mono">17:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>放置猫咪</td>
-    <td>cat-37</td>
-    <td>补充工厂半径2内的电子零件工位，优先避开三设施共同覆盖区<small> · 坐标 (5, -4)</small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="cat-place">
-    <td class="num">132</td>
-    <td class="mono">17:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>放置猫咪</td>
-    <td>cat-38</td>
-    <td>补充工厂半径2内的电子零件工位，优先避开三设施共同覆盖区<small> · 坐标 (6, -4)</small></td>
-    <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">133</td>
+    <td class="num">96</td>
     <td class="mono">18:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -1781,23 +1350,15 @@
     <td>市场运行：确定性时钟从 1050000ms 推进到 1080000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">134</td>
+    <td class="num">97</td>
     <td class="mono">18:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 1080000ms 推进到 1110000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">135</td>
-    <td class="mono">18:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🔲 芯片 #28 · chip</td>
-    <td>首次制造已完成，废止阶段价格引导以降低后续订单和信用成本<small> · law-14-192</small></td>
-    <td class="num">5.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">136</td>
+    <td class="num">98</td>
     <td class="mono">19:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -1805,7 +1366,7 @@
     <td>市场运行：确定性时钟从 1110000ms 推进到 1140000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">137</td>
+    <td class="num">99</td>
     <td class="mono">19:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -1813,7 +1374,7 @@
     <td>市场运行：确定性时钟从 1140000ms 推进到 1170000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">138</td>
+    <td class="num">100</td>
     <td class="mono">20:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -1821,23 +1382,15 @@
     <td>市场运行：确定性时钟从 1170000ms 推进到 1200000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">139</td>
+    <td class="num">101</td>
     <td class="mono">20:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 1200000ms 推进到 1230000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">140</td>
-    <td class="mono">20:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🔲 芯片 #28 · chip</td>
-    <td>120 秒无新发现：按最深未满足订单临时给予 ×2 价格引导<small> · law-22-246</small></td>
-    <td class="num">85.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">141</td>
+    <td class="num">102</td>
     <td class="mono">21:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -1845,7 +1398,7 @@
     <td>市场运行：确定性时钟从 1230000ms 推进到 1260000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">142</td>
+    <td class="num">103</td>
     <td class="mono">21:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -1853,47 +1406,71 @@
     <td>市场运行：确定性时钟从 1260000ms 推进到 1290000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">143</td>
+    <td class="num">104</td>
     <td class="mono">22:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 1290000ms 推进到 1320000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">144</td>
-    <td class="mono">22:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🎛️ 控制器 #31 · controller</td>
-    <td>首次制造已完成，废止阶段价格引导以降低后续订单和信用成本<small> · law-17-192</small></td>
-    <td class="num">5.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">145</td>
+    <td class="num">105</td>
     <td class="mono">22:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 1320000ms 推进到 1350000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">146</td>
+  </tr><tr data-stage="phase3" data-kind="building-buy">
+    <td class="num">106</td>
     <td class="mono">22:30</td>
     <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>📺 显示器 #30 · display</td>
-    <td>首次制造已完成，废止阶段价格引导以降低后续订单和信用成本<small> · law-16-192</small></td>
-    <td class="num">5.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">147</td>
+    <td>收购建筑</td>
+    <td>building-offer-2</td>
+    <td>从 cat cat-14 的固定报价收购machine_tool<small></small></td>
+    <td class="num">35.56 金币</td>
+  </tr><tr data-stage="phase3" data-kind="building-place">
+    <td class="num">107</td>
     <td class="mono">22:30</td>
     <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🔲 芯片 #28 · chip</td>
-    <td>临时疏堵法规已促成新增产量，立即废止以免长期扭曲价格<small> · law-22-246</small></td>
-    <td class="num">5.00 金币</td>
+    <td>放置建筑</td>
+    <td>🛠️ 机床 #27 · machine_tool</td>
+    <td>将machine_tool放到覆盖猫群最多的合法普通空地<small> · 坐标 (4, 0)</small></td>
+    <td class="num">—</td>
+  </tr><tr data-stage="phase3" data-kind="cat-place">
+    <td class="num">108</td>
+    <td class="mono">22:30</td>
+    <td><span class="stage phase3">阶段三</span></td>
+    <td>放置猫咪</td>
+    <td>cat-35</td>
+    <td>补充工厂半径2内的电子零件工位，优先避开三设施共同覆盖区<small> · 坐标 (2, -4)</small></td>
+    <td class="num">—</td>
+  </tr><tr data-stage="phase3" data-kind="cat-place">
+    <td class="num">109</td>
+    <td class="mono">22:30</td>
+    <td><span class="stage phase3">阶段三</span></td>
+    <td>放置猫咪</td>
+    <td>cat-36</td>
+    <td>补充工厂半径2内的电子零件工位，优先避开三设施共同覆盖区<small> · 坐标 (3, -4)</small></td>
+    <td class="num">—</td>
+  </tr><tr data-stage="phase3" data-kind="cat-place">
+    <td class="num">110</td>
+    <td class="mono">22:30</td>
+    <td><span class="stage phase3">阶段三</span></td>
+    <td>放置猫咪</td>
+    <td>cat-37</td>
+    <td>补充工厂半径2内的电子零件工位，优先避开三设施共同覆盖区<small> · 坐标 (5, -4)</small></td>
+    <td class="num">—</td>
+  </tr><tr data-stage="phase3" data-kind="cat-place">
+    <td class="num">111</td>
+    <td class="mono">22:30</td>
+    <td><span class="stage phase3">阶段三</span></td>
+    <td>放置猫咪</td>
+    <td>cat-38</td>
+    <td>补充工厂半径2内的电子零件工位，优先避开三设施共同覆盖区<small> · 坐标 (6, -4)</small></td>
+    <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">148</td>
+    <td class="num">112</td>
     <td class="mono">23:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -1901,7 +1478,7 @@
     <td>市场运行：确定性时钟从 1350000ms 推进到 1380000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">149</td>
+    <td class="num">113</td>
     <td class="mono">23:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -1909,7 +1486,7 @@
     <td>市场运行：确定性时钟从 1380000ms 推进到 1410000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">150</td>
+    <td class="num">114</td>
     <td class="mono">24:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -1917,23 +1494,15 @@
     <td>市场运行：确定性时钟从 1410000ms 推进到 1440000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">151</td>
+    <td class="num">115</td>
     <td class="mono">24:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 1440000ms 推进到 1470000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">152</td>
-    <td class="mono">24:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🎛️ 控制器 #31 · controller</td>
-    <td>120 秒无新发现：按最深未满足订单临时给予 ×2 价格引导<small> · law-23-294</small></td>
-    <td class="num">90.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">153</td>
+    <td class="num">116</td>
     <td class="mono">25:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -1941,7 +1510,7 @@
     <td>市场运行：确定性时钟从 1470000ms 推进到 1500000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">154</td>
+    <td class="num">117</td>
     <td class="mono">25:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -1949,23 +1518,15 @@
     <td>市场运行：确定性时钟从 1500000ms 推进到 1530000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">155</td>
+    <td class="num">118</td>
     <td class="mono">26:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 1530000ms 推进到 1560000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">156</td>
-    <td class="mono">26:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>💾 存储器 #29 · memory</td>
-    <td>首次制造已完成，废止阶段价格引导以降低后续订单和信用成本<small> · law-15-192</small></td>
-    <td class="num">5.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">157</td>
+    <td class="num">119</td>
     <td class="mono">26:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -1973,7 +1534,7 @@
     <td>市场运行：确定性时钟从 1560000ms 推进到 1590000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">158</td>
+    <td class="num">120</td>
     <td class="mono">27:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -1981,7 +1542,7 @@
     <td>市场运行：确定性时钟从 1590000ms 推进到 1620000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">159</td>
+    <td class="num">121</td>
     <td class="mono">27:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -1989,23 +1550,15 @@
     <td>市场运行：确定性时钟从 1620000ms 推进到 1650000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">160</td>
+    <td class="num">122</td>
     <td class="mono">28:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 1650000ms 推进到 1680000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">161</td>
-    <td class="mono">28:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🔲 芯片 #28 · chip</td>
-    <td>120 秒无新发现：按最深未满足订单临时给予 ×2 价格引导<small> · law-24-336</small></td>
-    <td class="num">95.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">162</td>
+    <td class="num">123</td>
     <td class="mono">28:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -2013,7 +1566,7 @@
     <td>市场运行：确定性时钟从 1680000ms 推进到 1710000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">163</td>
+    <td class="num">124</td>
     <td class="mono">29:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -2021,7 +1574,7 @@
     <td>市场运行：确定性时钟从 1710000ms 推进到 1740000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">164</td>
+    <td class="num">125</td>
     <td class="mono">29:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -2029,71 +1582,31 @@
     <td>市场运行：确定性时钟从 1740000ms 推进到 1770000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">165</td>
+    <td class="num">126</td>
     <td class="mono">30:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 1770000ms 推进到 1800000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">166</td>
-    <td class="mono">30:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🔌 线缆 #16 · cable</td>
-    <td>120 秒无新发现：按最深未满足订单临时给予 ×2 价格引导<small> · law-25-360</small></td>
-    <td class="num">100.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">167</td>
+    <td class="num">127</td>
     <td class="mono">30:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 1800000ms 推进到 1830000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">168</td>
-    <td class="mono">30:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🎛️ 控制器 #31 · controller</td>
-    <td>临时疏堵法规已促成新增产量，立即废止以免长期扭曲价格<small> · law-23-294</small></td>
-    <td class="num">5.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">169</td>
-    <td class="mono">30:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🔲 芯片 #28 · chip</td>
-    <td>临时疏堵法规已促成新增产量，立即废止以免长期扭曲价格<small> · law-24-336</small></td>
-    <td class="num">5.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">170</td>
-    <td class="mono">30:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🔌 线缆 #16 · cable</td>
-    <td>临时疏堵法规已促成新增产量，立即废止以免长期扭曲价格<small> · law-25-360</small></td>
-    <td class="num">5.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">171</td>
+    <td class="num">128</td>
     <td class="mono">31:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 1830000ms 推进到 1860000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">172</td>
-    <td class="mono">31:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>📻 无线电 #32 · radio</td>
-    <td>首次制造已完成，废止阶段价格引导以降低后续订单和信用成本<small> · law-18-192</small></td>
-    <td class="num">5.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">173</td>
+    <td class="num">129</td>
     <td class="mono">31:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -2101,7 +1614,7 @@
     <td>市场运行：确定性时钟从 1860000ms 推进到 1890000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">174</td>
+    <td class="num">130</td>
     <td class="mono">32:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -2109,7 +1622,7 @@
     <td>市场运行：确定性时钟从 1890000ms 推进到 1920000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">175</td>
+    <td class="num">131</td>
     <td class="mono">32:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -2117,23 +1630,15 @@
     <td>市场运行：确定性时钟从 1920000ms 推进到 1950000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">176</td>
+    <td class="num">132</td>
     <td class="mono">33:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 1950000ms 推进到 1980000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">177</td>
-    <td class="mono">33:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🎛️ 控制器 #31 · controller</td>
-    <td>120 秒无新发现：按最深未满足订单临时给予 ×2 价格引导<small> · law-26-396</small></td>
-    <td class="num">105.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">178</td>
+    <td class="num">133</td>
     <td class="mono">33:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -2141,7 +1646,7 @@
     <td>市场运行：确定性时钟从 1980000ms 推进到 2010000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">179</td>
+    <td class="num">134</td>
     <td class="mono">34:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -2149,7 +1654,7 @@
     <td>市场运行：确定性时钟从 2010000ms 推进到 2040000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">180</td>
+    <td class="num">135</td>
     <td class="mono">34:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -2157,23 +1662,15 @@
     <td>市场运行：确定性时钟从 2040000ms 推进到 2070000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">181</td>
+    <td class="num">136</td>
     <td class="mono">35:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 2070000ms 推进到 2100000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">182</td>
-    <td class="mono">35:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🔲 芯片 #28 · chip</td>
-    <td>120 秒无新发现：按最深未满足订单临时给予 ×2 价格引导<small> · law-27-420</small></td>
-    <td class="num">110.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">183</td>
+    <td class="num">137</td>
     <td class="mono">35:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -2181,7 +1678,7 @@
     <td>市场运行：确定性时钟从 2100000ms 推进到 2130000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">184</td>
+    <td class="num">138</td>
     <td class="mono">36:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -2189,7 +1686,7 @@
     <td>市场运行：确定性时钟从 2130000ms 推进到 2160000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">185</td>
+    <td class="num">139</td>
     <td class="mono">36:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -2197,47 +1694,23 @@
     <td>市场运行：确定性时钟从 2160000ms 推进到 2190000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">186</td>
+    <td class="num">140</td>
     <td class="mono">37:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 2190000ms 推进到 2220000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">187</td>
-    <td class="mono">37:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🛠️ 机床 #27 · machine_tool</td>
-    <td>120 秒无新发现：按最深未满足订单临时给予 ×2 价格引导<small> · law-28-444</small></td>
-    <td class="num">115.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">188</td>
+    <td class="num">141</td>
     <td class="mono">37:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 2220000ms 推进到 2250000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">189</td>
-    <td class="mono">37:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🎛️ 控制器 #31 · controller</td>
-    <td>临时疏堵法规已促成新增产量，立即废止以免长期扭曲价格<small> · law-26-396</small></td>
-    <td class="num">5.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">190</td>
-    <td class="mono">37:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🔲 芯片 #28 · chip</td>
-    <td>临时疏堵法规已促成新增产量，立即废止以免长期扭曲价格<small> · law-27-420</small></td>
-    <td class="num">5.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">191</td>
+    <td class="num">142</td>
     <td class="mono">38:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -2245,7 +1718,7 @@
     <td>市场运行：确定性时钟从 2250000ms 推进到 2280000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">192</td>
+    <td class="num">143</td>
     <td class="mono">38:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -2253,71 +1726,39 @@
     <td>市场运行：确定性时钟从 2280000ms 推进到 2310000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">193</td>
+    <td class="num">144</td>
     <td class="mono">39:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 2310000ms 推进到 2340000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">194</td>
-    <td class="mono">39:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>⚙️ 齿轮 #15 · gear</td>
-    <td>120 秒无新发现：按最深未满足订单临时给予 ×2 价格引导<small> · law-29-468</small></td>
-    <td class="num">120.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">195</td>
+    <td class="num">145</td>
     <td class="mono">39:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 2340000ms 推进到 2370000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">196</td>
-    <td class="mono">39:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>⚙️ 齿轮 #15 · gear</td>
-    <td>临时疏堵法规已促成新增产量，立即废止以免长期扭曲价格<small> · law-29-468</small></td>
-    <td class="num">5.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">197</td>
+    <td class="num">146</td>
     <td class="mono">40:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 2370000ms 推进到 2400000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">198</td>
-    <td class="mono">40:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🛠️ 机床 #27 · machine_tool</td>
-    <td>临时疏堵法规已促成新增产量，立即废止以免长期扭曲价格<small> · law-28-444</small></td>
-    <td class="num">5.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">199</td>
+    <td class="num">147</td>
     <td class="mono">40:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 2400000ms 推进到 2430000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">200</td>
-    <td class="mono">40:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🤖 机器人 #33 · robot</td>
-    <td>首次制造已完成，废止阶段价格引导以降低后续订单和信用成本<small> · law-19-192</small></td>
-    <td class="num">5.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">201</td>
+    <td class="num">148</td>
     <td class="mono">41:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -2325,7 +1766,7 @@
     <td>市场运行：确定性时钟从 2430000ms 推进到 2460000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">202</td>
+    <td class="num">149</td>
     <td class="mono">41:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -2333,7 +1774,7 @@
     <td>市场运行：确定性时钟从 2460000ms 推进到 2490000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">203</td>
+    <td class="num">150</td>
     <td class="mono">42:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -2341,23 +1782,15 @@
     <td>市场运行：确定性时钟从 2490000ms 推进到 2520000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">204</td>
+    <td class="num">151</td>
     <td class="mono">42:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 2520000ms 推进到 2550000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">205</td>
-    <td class="mono">42:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🎛️ 控制器 #31 · controller</td>
-    <td>120 秒无新发现：按最深未满足订单临时给予 ×2 价格引导<small> · law-30-510</small></td>
-    <td class="num">125.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">206</td>
+    <td class="num">152</td>
     <td class="mono">43:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -2365,7 +1798,7 @@
     <td>市场运行：确定性时钟从 2550000ms 推进到 2580000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">207</td>
+    <td class="num">153</td>
     <td class="mono">43:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -2373,7 +1806,7 @@
     <td>市场运行：确定性时钟从 2580000ms 推进到 2610000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">208</td>
+    <td class="num">154</td>
     <td class="mono">44:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -2381,23 +1814,15 @@
     <td>市场运行：确定性时钟从 2610000ms 推进到 2640000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">209</td>
+    <td class="num">155</td>
     <td class="mono">44:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 2640000ms 推进到 2670000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">210</td>
-    <td class="mono">44:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🔲 芯片 #28 · chip</td>
-    <td>120 秒无新发现：按最深未满足订单临时给予 ×2 价格引导<small> · law-31-534</small></td>
-    <td class="num">130.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">211</td>
+    <td class="num">156</td>
     <td class="mono">45:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -2405,7 +1830,7 @@
     <td>市场运行：确定性时钟从 2670000ms 推进到 2700000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">212</td>
+    <td class="num">157</td>
     <td class="mono">45:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -2413,7 +1838,7 @@
     <td>市场运行：确定性时钟从 2700000ms 推进到 2730000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">213</td>
+    <td class="num">158</td>
     <td class="mono">46:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -2421,23 +1846,15 @@
     <td>市场运行：确定性时钟从 2730000ms 推进到 2760000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">214</td>
+    <td class="num">159</td>
     <td class="mono">46:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 2760000ms 推进到 2790000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">215</td>
-    <td class="mono">46:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🏭 工厂 #20 · factory</td>
-    <td>120 秒无新发现：按最深未满足订单临时给予 ×2 价格引导<small> · law-32-558</small></td>
-    <td class="num">135.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">216</td>
+    <td class="num">160</td>
     <td class="mono">47:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -2445,7 +1862,7 @@
     <td>市场运行：确定性时钟从 2790000ms 推进到 2820000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">217</td>
+    <td class="num">161</td>
     <td class="mono">47:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -2453,7 +1870,7 @@
     <td>市场运行：确定性时钟从 2820000ms 推进到 2850000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">218</td>
+    <td class="num">162</td>
     <td class="mono">48:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
@@ -2461,600 +1878,24 @@
     <td>市场运行：确定性时钟从 2850000ms 推进到 2880000ms<small></small></td>
     <td class="num">—</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">219</td>
+    <td class="num">163</td>
     <td class="mono">48:30</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 2880000ms 推进到 2910000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">220</td>
-    <td class="mono">48:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🔌 线缆 #16 · cable</td>
-    <td>120 秒无新发现：按最深未满足订单临时给予 ×2 价格引导<small> · law-33-582</small></td>
-    <td class="num">140.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">221</td>
+    <td class="num">164</td>
     <td class="mono">49:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>推进时间</td>
     <td>clock</td>
     <td>市场运行：确定性时钟从 2910000ms 推进到 2940000ms<small></small></td>
     <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">222</td>
-    <td class="mono">49:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 2940000ms 推进到 2970000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">223</td>
-    <td class="mono">50:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 2970000ms 推进到 3000000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">224</td>
-    <td class="mono">50:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3000000ms 推进到 3030000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">225</td>
-    <td class="mono">50:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🏭 工厂 #20 · factory</td>
-    <td>临时疏堵法规已促成新增产量，立即废止以免长期扭曲价格<small> · law-32-558</small></td>
-    <td class="num">5.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">226</td>
-    <td class="mono">50:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🏭 工厂 #20 · factory</td>
-    <td>120 秒无新发现：按最深未满足订单临时给予 ×2 价格引导<small> · law-34-606</small></td>
-    <td class="num">145.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">227</td>
-    <td class="mono">51:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3030000ms 推进到 3060000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">228</td>
-    <td class="mono">51:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🔲 芯片 #28 · chip</td>
-    <td>临时疏堵法规已促成新增产量，立即废止以免长期扭曲价格<small> · law-31-534</small></td>
-    <td class="num">5.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">229</td>
-    <td class="mono">51:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🔌 线缆 #16 · cable</td>
-    <td>临时疏堵法规已促成新增产量，立即废止以免长期扭曲价格<small> · law-33-582</small></td>
-    <td class="num">5.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">230</td>
-    <td class="mono">51:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3060000ms 推进到 3090000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">231</td>
-    <td class="mono">51:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🎛️ 控制器 #31 · controller</td>
-    <td>临时疏堵法规已促成新增产量，立即废止以免长期扭曲价格<small> · law-30-510</small></td>
-    <td class="num">5.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">232</td>
-    <td class="mono">51:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🏭 工厂 #20 · factory</td>
-    <td>临时疏堵法规已促成新增产量，立即废止以免长期扭曲价格<small> · law-34-606</small></td>
-    <td class="num">5.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">233</td>
-    <td class="mono">52:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3090000ms 推进到 3120000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">234</td>
-    <td class="mono">52:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🖨️ 制造机 #34 · fabricator</td>
-    <td>首次制造已完成，废止阶段价格引导以降低后续订单和信用成本<small> · law-20-192</small></td>
-    <td class="num">5.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">235</td>
-    <td class="mono">52:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3120000ms 推进到 3150000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">236</td>
-    <td class="mono">53:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3150000ms 推进到 3180000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">237</td>
-    <td class="mono">53:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3180000ms 推进到 3210000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">238</td>
-    <td class="mono">54:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3210000ms 推进到 3240000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">239</td>
-    <td class="mono">54:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🎛️ 控制器 #31 · controller</td>
-    <td>120 秒无新发现：按最深未满足订单临时给予 ×2 价格引导<small> · law-35-648</small></td>
-    <td class="num">150.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">240</td>
-    <td class="mono">54:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3240000ms 推进到 3270000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">241</td>
-    <td class="mono">55:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3270000ms 推进到 3300000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">242</td>
-    <td class="mono">55:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3300000ms 推进到 3330000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">243</td>
-    <td class="mono">56:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3330000ms 推进到 3360000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">244</td>
-    <td class="mono">56:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🔲 芯片 #28 · chip</td>
-    <td>120 秒无新发现：按最深未满足订单临时给予 ×2 价格引导<small> · law-36-672</small></td>
-    <td class="num">155.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">245</td>
-    <td class="mono">56:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3360000ms 推进到 3390000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">246</td>
-    <td class="mono">57:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3390000ms 推进到 3420000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">247</td>
-    <td class="mono">57:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3420000ms 推进到 3450000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">248</td>
-    <td class="mono">58:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3450000ms 推进到 3480000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">249</td>
-    <td class="mono">58:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🛞 车轮 #23 · wheel</td>
-    <td>120 秒无新发现：按最深未满足订单临时给予 ×2 价格引导<small> · law-37-696</small></td>
-    <td class="num">160.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">250</td>
-    <td class="mono">58:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3480000ms 推进到 3510000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">251</td>
-    <td class="mono">58:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🎛️ 控制器 #31 · controller</td>
-    <td>临时疏堵法规已促成新增产量，立即废止以免长期扭曲价格<small> · law-35-648</small></td>
-    <td class="num">5.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">252</td>
-    <td class="mono">58:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🔲 芯片 #28 · chip</td>
-    <td>临时疏堵法规已促成新增产量，立即废止以免长期扭曲价格<small> · law-36-672</small></td>
-    <td class="num">5.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">253</td>
-    <td class="mono">59:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3510000ms 推进到 3540000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">254</td>
-    <td class="mono">59:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3540000ms 推进到 3570000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">255</td>
-    <td class="mono">60:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3570000ms 推进到 3600000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">256</td>
-    <td class="mono">60:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>📦 底盘 #19 · chassis</td>
-    <td>120 秒无新发现：按最深未满足订单临时给予 ×2 价格引导<small> · law-38-720</small></td>
-    <td class="num">165.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">257</td>
-    <td class="mono">60:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3600000ms 推进到 3630000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">258</td>
-    <td class="mono">60:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>📦 底盘 #19 · chassis</td>
-    <td>临时疏堵法规已促成新增产量，立即废止以免长期扭曲价格<small> · law-38-720</small></td>
-    <td class="num">5.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">259</td>
-    <td class="mono">61:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3630000ms 推进到 3660000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">260</td>
-    <td class="mono">61:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3660000ms 推进到 3690000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">261</td>
-    <td class="mono">61:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🛞 车轮 #23 · wheel</td>
-    <td>临时疏堵法规已促成新增产量，立即废止以免长期扭曲价格<small> · law-37-696</small></td>
-    <td class="num">5.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">262</td>
-    <td class="mono">62:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3690000ms 推进到 3720000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">263</td>
-    <td class="mono">62:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🛞 车轮 #23 · wheel</td>
-    <td>120 秒无新发现：按最深未满足订单临时给予 ×2 价格引导<small> · law-39-744</small></td>
-    <td class="num">170.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">264</td>
-    <td class="mono">62:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3720000ms 推进到 3750000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">265</td>
-    <td class="mono">63:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3750000ms 推进到 3780000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">266</td>
-    <td class="mono">63:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3780000ms 推进到 3810000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">267</td>
-    <td class="mono">64:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3810000ms 推进到 3840000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">268</td>
-    <td class="mono">64:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>📦 底盘 #19 · chassis</td>
-    <td>120 秒无新发现：按最深未满足订单临时给予 ×2 价格引导<small> · law-40-768</small></td>
-    <td class="num">175.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">269</td>
-    <td class="mono">64:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3840000ms 推进到 3870000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">270</td>
-    <td class="mono">64:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>📦 底盘 #19 · chassis</td>
-    <td>临时疏堵法规已促成新增产量，立即废止以免长期扭曲价格<small> · law-40-768</small></td>
-    <td class="num">5.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">271</td>
-    <td class="mono">65:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3870000ms 推进到 3900000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">272</td>
-    <td class="mono">65:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🛞 车轮 #23 · wheel</td>
-    <td>临时疏堵法规已促成新增产量，立即废止以免长期扭曲价格<small> · law-39-744</small></td>
-    <td class="num">5.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">273</td>
-    <td class="mono">65:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3900000ms 推进到 3930000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">274</td>
-    <td class="mono">66:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3930000ms 推进到 3960000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">275</td>
-    <td class="mono">66:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🛞 车轮 #23 · wheel</td>
-    <td>120 秒无新发现：按最深未满足订单临时给予 ×2 价格引导<small> · law-41-792</small></td>
-    <td class="num">180.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">276</td>
-    <td class="mono">66:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3960000ms 推进到 3990000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">277</td>
-    <td class="mono">67:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 3990000ms 推进到 4020000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">278</td>
-    <td class="mono">67:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 4020000ms 推进到 4050000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">279</td>
-    <td class="mono">68:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 4050000ms 推进到 4080000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">280</td>
-    <td class="mono">68:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>📦 底盘 #19 · chassis</td>
-    <td>120 秒无新发现：按最深未满足订单临时给予 ×2 价格引导<small> · law-42-816</small></td>
-    <td class="num">185.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">281</td>
-    <td class="mono">68:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 4080000ms 推进到 4110000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">282</td>
-    <td class="mono">68:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>📦 底盘 #19 · chassis</td>
-    <td>临时疏堵法规已促成新增产量，立即废止以免长期扭曲价格<small> · law-42-816</small></td>
-    <td class="num">5.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">283</td>
-    <td class="mono">69:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 4110000ms 推进到 4140000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">284</td>
-    <td class="mono">69:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 4140000ms 推进到 4170000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">285</td>
-    <td class="mono">70:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 4170000ms 推进到 4200000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">286</td>
-    <td class="mono">70:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🛞 车轮 #23 · wheel</td>
-    <td>临时疏堵法规已促成新增产量，立即废止以免长期扭曲价格<small> · law-41-792</small></td>
-    <td class="num">5.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="law-enact">
-    <td class="num">287</td>
-    <td class="mono">70:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>颁布法规</td>
-    <td>🛞 车轮 #23 · wheel</td>
-    <td>120 秒无新发现：按最深未满足订单临时给予 ×2 价格引导<small> · law-43-840</small></td>
-    <td class="num">190.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">288</td>
-    <td class="mono">70:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 4200000ms 推进到 4230000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">289</td>
-    <td class="mono">70:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🛞 车轮 #23 · wheel</td>
-    <td>临时疏堵法规已促成新增产量，立即废止以免长期扭曲价格<small> · law-43-840</small></td>
-    <td class="num">5.00 金币</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">290</td>
-    <td class="mono">71:00</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 4230000ms 推进到 4260000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="time-advance">
-    <td class="num">291</td>
-    <td class="mono">71:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>推进时间</td>
-    <td>clock</td>
-    <td>市场运行：确定性时钟从 4260000ms 推进到 4290000ms<small></small></td>
-    <td class="num">—</td>
-  </tr><tr data-stage="phase3" data-kind="law-repeal">
-    <td class="num">292</td>
-    <td class="mono">71:30</td>
-    <td><span class="stage phase3">阶段三</span></td>
-    <td>废止法规</td>
-    <td>🚗 车辆 #35 · vehicle</td>
-    <td>首次制造已完成，废止阶段价格引导以降低后续订单和信用成本<small> · law-21-192</small></td>
-    <td class="num">5.00 金币</td>
   </tr><tr data-stage="phase3" data-kind="phase-check">
-    <td class="num">293</td>
-    <td class="mono">71:30</td>
+    <td class="num">165</td>
+    <td class="mono">49:00</td>
     <td><span class="stage phase3">阶段三</span></td>
     <td>阶段检查</td>
     <td>items:1-35</td>
@@ -3065,7 +1906,7 @@
 
   <section class="section">
     <h2>结论与限制</h2>
-    <div class="grid"><div class="card"><strong>通关不是靠全局调度器</strong>猫只读取自身和曼哈顿 2 内工位；全局广播只传需求信息。最终 4,214 次逐格传递和最长 13 猫路线证明实物没有瞬移。</div><div class="card"><strong>真正的三个钥匙</strong>价格法打开 16+ 悬赏认领；猫链提供有偿物理物流；共同覆盖的工厂、天线与机床打开 28–35 的空间制造条件。</div><div class="card"><strong>车辆是复合工区产物</strong>车辆在 71:05 出现；制造工位必须同时处于工厂和机床的曼哈顿半径 2 内。</div><div class="card"><strong>跨种子稳定性</strong>批量回归使用同一公开操作与虚拟时间；本页详细记录种子 1，最终检查点为 71:30。</div></div>
+    <div class="grid"><div class="card"><strong>通关不是靠全局调度器</strong>猫只读取自身和曼哈顿 2 内工位；全局广播只传需求信息。最终 3,565 次逐格传递和最长 12 猫路线证明实物没有瞬移。</div><div class="card"><strong>真正的三个钥匙</strong>×1.01 只打开 16+ 悬赏认领；物流法和猫链组织有偿物理物流；共同覆盖的工厂、天线与机床打开 28–35 的空间制造条件。</div><div class="card"><strong>22–30 不靠单品加价</strong>磁铁、车轮、燃料、冷却剂、天线、机床、芯片、存储器和显示器均没有逐项 ×2 法；它们由订单、留存和定向补料完成。</div><div class="card"><strong>车辆是复合工区产物</strong>车辆在 48:50 出现；制造工位必须同时处于工厂和机床的曼哈顿半径 2 内。</div></div>
     <p class="callout"><strong>仍需区分：</strong>本页使用充足测试国库与确定性法条夹具。若要评价生产版经济平衡，还应另做“150 金币正常开局、只靠税收积累”的长时测试；若要评价 DeepSeek 可靠性，还应单独统计真实模型生成成功率、语义正确率和重试率。</p>
   </section>
 

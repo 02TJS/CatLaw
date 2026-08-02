@@ -25,6 +25,7 @@ const h = (value: unknown) => String(value ?? "")
   .replaceAll('"', "&quot;")
   .replaceAll("'", "&#39;");
 const money = (cents: number) => `${(cents / 100).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} 金币`;
+const signedMoney = (cents: number) => `${cents >= 0 ? "+" : "−"}${money(Math.abs(cents))}`;
 const time = (milliseconds: number | undefined | null) => {
   if (milliseconds === undefined || milliseconds === null) return "—";
   const seconds = Math.round(milliseconds / 1000);
@@ -84,12 +85,9 @@ const recipeGroups = [
   { label: "第 28–35 项", at: operations.find((op) => op.kind === "building-place")?.atMs ?? 0, operations: operations.filter((op) => op.kind === "recipe-unlock" && (itemIndex.get(op.target) ?? 0) >= 28 && (itemIndex.get(op.target) ?? 0) <= 35) },
 ];
 
-const permanentPriceLaws = operations.filter((operation) => operation.kind === "law-enact" && operation.detail.startsWith("阶段价格引导"));
-const dynamicEnactments = operations.filter((operation) => operation.kind === "law-enact" && operation.detail.startsWith("120 秒"));
-const dynamicRows = dynamicEnactments.map((enacted) => ({
-  enacted,
-  repealed: operations.find((operation) => operation.kind === "law-repeal" && operation.lawId === enacted.lawId),
-}));
+const qualificationPriceLaws = operations.filter((operation) => operation.kind === "law-enact" && operation.detail.startsWith("悬赏准入"));
+const baseLogisticsLaws = operations.filter((operation) => operation.kind === "law-enact" && operation.detail.startsWith("颁布 22—30"));
+const logisticsLaw = state.lawHistory.find((law) => law.id === result.phase3.sharedLawId);
 const buildingOffer = state.buildingOffers.find((offer) => offer.status === "purchased" && offer.itemId === "factory");
 const industrialBuildingIds = ["factory", "antenna", "machine_tool"];
 const industrialBuildings = state.buildings.filter((entry) => industrialBuildingIds.includes(entry.itemId));
@@ -147,15 +145,6 @@ const operationRows = operations.map((operation) => {
 
 const catPlacementRows = operations.filter((operation) => operation.kind === "cat-place").map((operation) => `<tr>
   <td>${h(operation.target)}</td><td class="mono">(${operation.position?.x}, ${operation.position?.y})</td><td>${h(operation.detail)}</td>
-</tr>`).join("");
-
-const dynamicLawRows = dynamicRows.map(({ enacted, repealed }) => `<tr>
-  <td>${h(itemLabel(enacted.target))}</td>
-  <td class="mono">${h(time(enacted.atMs))}</td>
-  <td class="mono">${h(time(repealed?.atMs))}</td>
-  <td>${repealed ? h(time(repealed.atMs - enacted.atMs)) : "运行至验收结束"}</td>
-  <td class="num">${h(money(enacted.costCents + (repealed?.costCents ?? 0)))}</td>
-  <td><code>${h(enacted.lawId)}</code></td>
 </tr>`).join("");
 
 const recipeGroupRows = recipeGroups.map((group) => `<tr>
@@ -235,6 +224,7 @@ const html = `<!doctype html>
   <style>
     :root{color-scheme:light;--ink:#17221d;--muted:#66736c;--line:#dfe6e1;--paper:#fff;--soft:#f4f7f5;--green:#2e7d50;--gold:#a66b00;--blue:#286ea8;--red:#b1443e;--orange:#c46c1b}
     *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:#f5f7f5;color:var(--ink);font:15px/1.65 system-ui,"Microsoft YaHei",sans-serif}main{width:min(1180px,calc(100% - 28px));margin:28px auto 80px}header,.section{background:var(--paper);border:1px solid var(--line);border-radius:18px;box-shadow:0 10px 28px rgba(22,36,29,.06)}header{padding:clamp(28px,5vw,58px)}.section{margin-top:18px;padding:clamp(22px,3vw,34px)}h1{max-width:900px;margin:8px 0 14px;font-size:clamp(34px,6vw,62px);line-height:1.08;letter-spacing:-.04em}h2{margin:0 0 18px;font-size:27px;line-height:1.2}h3{margin:25px 0 10px;font-size:19px}.lead{max-width:920px;color:var(--muted);font-size:18px}.badge,.chip,.stage{display:inline-flex;align-items:center;border-radius:999px;white-space:nowrap}.badge{padding:6px 11px;background:#eaf6ee;color:#22633e;font-size:12px;font-weight:800;letter-spacing:.06em}.chip{margin:2px 3px;padding:2px 8px;background:#eef3f0;border:1px solid #dfe7e2;font-size:12px}.toc{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px}.toc a{padding:7px 11px;border:1px solid var(--line);border-radius:8px;color:#305c46;text-decoration:none;background:#fff}.toc a:hover{background:#eff7f2}.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-top:24px}.metric{padding:16px;border:1px solid var(--line);border-radius:13px;background:var(--soft)}.metric strong{display:block;font-size:25px;line-height:1.2}.metric span{color:var(--muted);font-size:12px}.callout{padding:16px 18px;border-left:5px solid var(--gold);border-radius:9px;background:#fff8e6}.callout.red{border-left-color:var(--red);background:#fff1ef}.callout.green{border-left-color:var(--green);background:#edf8f1}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}.card{padding:17px;border:1px solid var(--line);border-radius:13px;background:var(--soft)}.card strong{display:block;margin-bottom:5px;color:var(--green)}.flow{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.phase-card{position:relative;padding:20px;border:1px solid var(--line);border-radius:14px;background:#fff}.phase-card::after{content:"→";position:absolute;right:-20px;top:45%;z-index:2;color:#98a59d;font-size:22px}.phase-card:last-child::after{display:none}.phase-card .number{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#2e7d50;color:white;font-weight:800}.phase-card h3{margin:10px 0 6px}.phase-card p{margin:5px 0;color:var(--muted)}.timeline{position:relative;margin:8px 0 0 10px;padding-left:28px;border-left:2px solid #cdd8d1}.timeline article{position:relative;padding:2px 0 20px}.timeline article::before{content:"";position:absolute;left:-36px;top:8px;width:14px;height:14px;border:3px solid white;border-radius:50%;background:var(--green);box-shadow:0 0 0 2px var(--green)}.timeline time{font:700 13px ui-monospace,Consolas,monospace;color:var(--green)}.timeline h3{margin:2px 0}.timeline p{margin:2px 0;color:var(--muted)}.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px}table{width:100%;border-collapse:collapse;background:white;font-size:13px}th,td{padding:9px 10px;border-bottom:1px solid #e7ece9;text-align:left;vertical-align:top}th{position:sticky;top:0;z-index:1;background:#f0f4f1;color:#315640;white-space:nowrap}tr:last-child td{border-bottom:0}tbody tr:hover{background:#f8fbf9}.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}.mono,code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.emoji{display:inline-block;min-width:28px;font-size:21px}td strong{display:block}small{display:block;color:var(--muted);font-size:11px}.stage{padding:2px 7px;font-size:11px;font-weight:700}.stage.setup{background:#f2efe8;color:#795b25}.stage.phase1{background:#eaf6ee;color:#236a41}.stage.phase2{background:#fff0e5;color:#9a4f14}.stage.phase3{background:#eaf2fb;color:#225f93}.controls{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}.controls button,.controls input{padding:8px 11px;border:1px solid #cad4ce;border-radius:8px;background:#fff;font:inherit}.controls button.active{color:#fff;background:#2e7d50;border-color:#2e7d50}.controls input{min-width:260px;flex:1}.code{padding:16px;border-radius:11px;background:#17241d;color:#edf6f0;overflow:auto}.world-map{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:13px;background:#fff}.parcel{stroke-width:2}.parcel-a{fill:#f1f3f2;stroke:#98a49d}.parcel-b{fill:#f4f8ef;stroke:#7d9d78}.grid-lines{stroke:#d9e0dc;stroke-width:1}.resource{fill:#fff;stroke:#8da69a;stroke-width:2}.resource-label,.building-label{text-anchor:middle;dominant-baseline:central;font-size:20px}.cat-dot{fill:#df8b39;stroke:#8c4e17;stroke-width:1.5}.cat-label{text-anchor:middle;dominant-baseline:central;fill:#fff;font:700 9px ui-monospace,Consolas,monospace}.building-dot{fill:#fff4d6;stroke:#b77800;stroke-width:3}.parcel-title{fill:#54635b;font:700 12px system-ui}.legend{display:flex;flex-wrap:wrap;gap:16px;margin-top:9px;color:var(--muted);font-size:12px}.dot{display:inline-block;width:12px;height:12px;margin-right:5px;border-radius:50%;vertical-align:-1px}.dot.cat{background:#df8b39}.dot.resource{background:#fff;border:2px solid #8da69a}.dot.building{background:#fff4d6;border:2px solid #b77800}.analysis-table td:first-child{font-weight:800;color:#315640}.checklist{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:9px;padding:0;list-style:none}.checklist li{padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:#f7faf8}.checklist li::before{content:"✓";margin-right:8px;color:var(--green);font-weight:900}details{margin-top:13px}summary{cursor:pointer;font-weight:800;color:#315640}footer{padding:24px 6px;color:var(--muted);text-align:center;font-size:12px}@media(max-width:760px){.flow{grid-template-columns:1fr}.phase-card::after{display:none}main{width:min(100% - 16px,1180px);margin-top:8px}.section,header{border-radius:12px;padding:20px}.controls input{min-width:100%}}@media print{body{background:#fff}main{width:100%;margin:0}.section,header{box-shadow:none;break-inside:avoid}.controls,.toc{display:none}details{display:block}details>summary{display:none}}
+    .code{white-space:pre-wrap;overflow-wrap:anywhere}
   </style>
 </head>
 <body>
@@ -242,7 +232,7 @@ const html = `<!doctype html>
   <header>
     <span class="badge">猫咪工坊 0.11.0 · ${h(difficultyLabel)} · 确定性操作档案</span>
     <h1>${difficulty === 5 ? "最高难度 5" : h(difficultyLabel)}：35 商品具体怎么操作</h1>
-    <p class="lead">这份档案由 <code>scripts/qa-35.mts</code> 的真实种子 ${seed}、${h(difficultyLabel)}运行生成。它逐条记录 ${operations.length} 条公开操作、费用、法规、坐标和模拟时间，并把最终订单、合同、运输与 35 项商品统计反向核对。结论不是“脚本直接造出车辆”，而是：先证明市场会在 16–20 自然卡死，再用法规、土地、猫链以及猫咪自产的工厂、天线和机床改变激励与空间条件。</p>
+    <p class="lead">这份档案由 <code>scripts/qa-35.mts</code> 的真实种子 ${seed}、${h(difficultyLabel)}运行生成。它逐条记录 ${operations.length} 条公开操作、费用、法规、坐标和模拟时间，并把最终订单、合同、运输与 35 项商品统计反向核对。第 22–30 项不再逐项设 ×2：价格法只用全品类 ×1.01 打开悬赏准入，真正的生产顺序由订单物流法、土地、猫链和复合工区决定。</p>
     <div class="metrics">
       <div class="metric"><strong>${h(time(result.simTime))}</strong><span>最终检查时刻（模拟时间）</span></div>
       <div class="metric"><strong>${h(difficultyLabel)}</strong><span>本次真实运行档位</span></div>
@@ -263,7 +253,7 @@ const html = `<!doctype html>
     <ul class="checklist"><li>购买已经满足前置条件的配方</li><li>颁布或废止经过安全校验的法规</li><li>购买相邻 9×9 地块</li><li>在合法空位放置新猫</li><li>按猫咪报价收购工厂、天线和机床</li><li>从玩家建筑库把三栋设施放进同一复合工区</li><li>推进确定性模拟时钟</li></ul>
     <h3>没有做的事</h3>
     <ul class="checklist"><li>没有直接增加猫咪库存</li><li>没有直接标记商品发现</li><li>没有直接注入建筑或修改建筑范围</li><li>没有绕过配方购买与产业认证</li><li>没有让远方猫读取全局库存</li><li>没有取消实物的相邻猫逐跳运输</li></ul>
-    <p class="callout"><strong>DeepSeek 说明：</strong>这次确定性回归没有访问真实 DeepSeek 网络接口，以免模型波动、超时或计费破坏可重复性。脚本把与模型合规输出相同的已验证 <code>LawDraft</code> 通过公开 <code>enactLaw()</code> 颁布。共享函数源码确实是 <code>function decide(ctx) { return choose(); }</code>；动态法规选择则读取当前开放订单，在 120 秒无新发现时临时提高最深缺口商品的价格。换言之，本局验证“法规能否改变游戏”，不验证某次上游模型回答是否稳定。</p>
+    <p class="callout"><strong>DeepSeek 说明：</strong>这次确定性回归没有访问真实 DeepSeek 网络接口，以免模型波动、超时或计费破坏可重复性。脚本把与模型合规输出相同的已验证 <code>LawDraft</code> 通过公开 <code>enactLaw()</code> 颁布。物流函数使用白名单中的 <code>orderCount()</code>、<code>bounty()</code>、<code>adjust()</code> 和 <code>choose()</code>；颁布后保持不变，长时间等待只检查合同、信用、路线和工区。换言之，本局验证“法规能否改变游戏”，不验证某次上游模型回答是否稳定。</p>
   </section>
 
   <section class="section" id="replay">
@@ -272,11 +262,11 @@ const html = `<!doctype html>
       <tr><td>1</td><td>顶栏难度</td><td>新档开始前选择“5 · 极限物流”并确认清档。</td><td>顶栏难度为 5；基础信用 50 金币。</td></tr>
       <tr><td>2</td><td>配方图</td><td>依次购买第 10–15 项：线、纸、工具、玻璃、金属、齿轮；资金不足就先让外售税积累国库。</td><td>${h(time(result.phase1.completeAtMs))} 前 15 项均有制作记录。</td></tr>
       <tr><td>3</td><td>配方图</td><td>购买第 16–20 项，保持法条不变观察 300 模拟秒。</td><td>五项 crafted=0 且悬赏仍开放，确认不是等待不足。</td></tr>
-      <tr><td>4</td><td>法典</td><td>颁布“每只猫按自己的库存、计划和全局广播选择当前最有利动作”；再为第 16–27 项逐项输入“把【商品名】实际售价提高 100%”。</td><td>价格卡显示 ×2；商品首次制造后用“废”撤销该阶段法。</td></tr>
+      <tr><td>4</td><td>法典</td><td>先输入“有开放订单时优先制作订单所需物品并留存关键中间品；磁铁到显示器按机械、电气、电子缺口补料”，颁布行为法；再输入“全部商品价格提高 1%”颁布价格法。</td><td>行为法源码含 <code>orderCount / bounty / adjust / choose</code>；价格卡仅显示 ×1.01。</td></tr>
       <tr><td>5</td><td>开拓</td><td>购买东侧地块 <code>(1,0)</code>，按“空间建设”表中的坐标补 ${placedCatCount} 只猫，保持上下左右连续。</td><td>广播虽全局可听，实物仍可沿相邻猫合同路线送达。</td></tr>
       <tr><td>6</td><td>仓库</td><td>等待并收购工厂、天线、机床报价；分别放到 ${h(buildingPositionSummary)}。</td><td>三栋设施共同覆盖至少一个高级制造工位。</td></tr>
-      <tr><td>7</td><td>配方图 / 法典</td><td>工厂落成后购买第 28–35 项，并为芯片到车辆逐项颁布 ×2 价格法。</td><td>第 35 项车辆进入悬赏计划。</td></tr>
-      <tr><td>8</td><td>猫咪 / 法典</td><td>若连续 120 模拟秒无新发现，在开放订单中找序号最深的商品，临时颁布 ×2；该商品新增产量后立即废止。</td><td>本次完整触发记录见“法规”和“完整账本”。</td></tr>
+      <tr><td>7</td><td>配方图 / 法典</td><td>工厂落成后购买第 28–35 项；不再给芯片、存储器、显示器逐项加价，让现行物流法按订单补给沙、化学品、线缆、芯片、玻璃和灯。</td><td>第 28–30 项靠工区条件与物流评分进入生产，不靠单品 ×2。</td></tr>
+      <tr><td>8</td><td>猫咪 / 市场</td><td>长时间无新发现时不要继续改价或覆盖物流法；检查开放订单是否已成交、运输合同是否在途、目标猫信用是否足够，以及工厂/天线/机床覆盖是否正确。</td><td>本次只颁布两条法且零废止；其余等待都由真实合同与大宗配料生产消化。</td></tr>
       <tr><td>9</td><td>配方图 / 猫咪</td><td>检查车辆难度 5 配料为车轮×4、控制器×1、燃料×2，并确认制造猫同时在工厂和机床半径 2 内。</td><td>${h(time(result.simTime))} 时 35/35，车辆制作数 ${result.vehicle}。</td></tr>
     </tbody></table></div>
     <p class="callout green"><strong>怎样把测试操作换成正常存档：</strong>不要改物品、发现或建筑；只把“充足测试国库”替换成等待税收。每次以游戏按钮显示的当期费用为准，国库够了再执行下一条购买、颁布或废止。下方完整账本保留了本次 ${operations.length} 条操作及每笔费用。</p>
@@ -287,7 +277,7 @@ const html = `<!doctype html>
     <div class="flow">
       <article class="phase-card"><span class="number">1</span><h3>白手起家到 15</h3><p>只买第 10–15 项配方，随后推进时间。</p><p><strong>${h(time(result.phase1.completeAtMs))}</strong> 前 15 项全部实际制造；没有改法、加猫、扩地或建筑。</p></article>
       <article class="phase-card"><span class="number">2</span><h3>证明 16–20 会卡住</h3><p>买第 16–20 项，再原样观察 300 秒。</p><p>线缆、电池、化学品、底盘、工厂产量均为 <strong>0</strong>，五张悬赏仍开放。</p></article>
-      <article class="phase-card"><span class="number">3</span><h3>法规 + 空间建设到 35</h3><p>颁布共享逻辑和阶段价格引导，购地，加 ${placedCatCount} 猫，收购并共同布置工厂、天线和机床。</p><p>车辆悬赏在 <strong>${h(time(vehicleClosure ? vehicleClosure.publishedAt * state.simulationSpeed : null))}</strong> 结案；全 35 项在 ${h(time(lastFirst35ClosureMs))} 前结案。</p></article>
+      <article class="phase-card"><span class="number">3</span><h3>物流法规 + 空间建设到 35</h3><p>颁布一条 ×1.01 准入法和订单物流法，购地，加 ${placedCatCount} 猫，收购并共同布置工厂、天线和机床。</p><p>车辆悬赏在 <strong>${h(time(vehicleClosure ? vehicleClosure.publishedAt * state.simulationSpeed : null))}</strong> 结案；全 35 项在 ${h(time(lastFirst35ClosureMs))} 前结案。</p></article>
     </div>
     <h3>配方购买批次</h3>
     <div class="table-wrap"><table><thead><tr><th>批次</th><th>时刻</th><th>商品</th><th>费用</th></tr></thead><tbody>${recipeGroupRows}</tbody></table></div>
@@ -298,8 +288,7 @@ const html = `<!doctype html>
     <div class="timeline">
       <article><time>00:00</time><h3>购买第 10–15 项</h3><p>11 只教学猫和六个资源区保持原样，只用悬赏、局部递归自供给与有偿订单完成基础产业。</p></article>
       <article><time>${h(time(result.phase1.completeAtMs))}</time><h3>前 15 项完成；立即购买第 16–20 项</h3><p>继续保持法规、猫数、土地和建筑不变，开始 300 秒反事实观察。</p></article>
-      <article><time>${h(time(result.phase1.completeAtMs + result.phase2.observedForMs))}</time><h3>确认设计卡点并第一次干预</h3><p>颁布共享 <code>choose()</code> 法；购买 21–27；给 16–27 各自 ×2 价格引导；购买东侧地块并一次性铺设 24 个相邻工位。</p></article>
-      <article><time>11:30</time><h3>第一次自动疏堵</h3><p>连续 120 秒没有新发现，开放订单指向底盘，临时底盘 ×2 法颁布；12:00 发现新增产量后废止。</p></article>
+      <article><time>${h(time(result.phase1.completeAtMs + result.phase2.observedForMs))}</time><h3>确认设计卡点并第一次干预</h3><p>颁布订单物流协调法与全品类 ×1.01 准入法；购买 21–27；购买东侧地块并一次性铺设 24 个相邻工位。</p></article>
       <article><time>${h(time(buildingOffer ? buildingOffer.createdAt * state.simulationSpeed : null))}</time><h3>猫咪首次制造并挂牌工厂</h3><p>${h(buildingOffer?.sellerCatId ?? "—")} 报价 ${h(money(buildingOffer?.askCents ?? 0))}；建筑仍是猫的商品，玩家尚未凭空拥有设施。</p></article>
       ${buildingTimeline}
       <article><time>${h(time(vehicleClosure ? vehicleClosure.publishedAt * state.simulationSpeed : null))}</time><h3>车辆出现</h3><p>${h(vehicleClosure?.sourceCatId ?? "—")} 在工厂与机床共同覆盖的工位完成车辆悬赏。</p></article>
@@ -310,16 +299,14 @@ const html = `<!doctype html>
   <section class="section" id="laws">
     <h2>我颁布了哪些法规</h2>
     <div class="grid">
-      <div class="card"><strong>1 条共享行为法</strong><code>function decide(ctx) { return choose(); }</code><br>所有猫使用同一函数，但每只猫只按自身库存、生产计划、两格工位观察和全局署名广播生成候选。</div>
-      <div class="card"><strong>${permanentPriceLaws.length} 条阶段价格法</strong>第 16–35 项首次制造前分别 ×2，完成后立刻废止。它们不是配方，也不直接下命令；它们打开悬赏计划，又不会长期抬高下游信用成本。</div>
-      <div class="card"><strong>${dynamicEnactments.length} 条临时疏堵法</strong>120 秒没有新发现时，从开放订单中选配方序号最深的缺口临时 ×2；该商品新增产量后付费废止。</div>
-      <div class="card"><strong>${enactmentCount} 次成功立法</strong>前 5 次免费，此后第 n 次为 <code>5×(n−5)</code> 金币；立法毛费用 ${h(money(costs.enact))}，${repealCount} 次废止另花 ${h(money(costs.repeal))}。</div>
+      <div class="card"><strong>${baseLogisticsLaws.length} 条基础物流法</strong>读取开放订单和未结悬赏；有订单时提高制作、降低无关外售，并对第 22–30 项所需机械、电气和电子中间品定向加权。</div>
+      <div class="card"><strong>${qualificationPriceLaws.length} 条最低准入价格法</strong>全品类仅 ×1.01，只满足第 16 项以后认领悬赏所需的“正向价格指引”。它不决定生产顺序，也不逐项改价。</div>
+      <div class="card"><strong>0 条 22–30 单品价格法</strong>磁铁到显示器没有逐项 ×2，也没有用后续临时价格法疏堵；这些商品全部由订单、留存和补料评分完成。</div>
+      <div class="card"><strong>${enactmentCount} 次成功立法</strong>前 5 次免费，此后第 n 次为 <code>5×(n−5)</code> 金币；立法毛费用 ${h(money(costs.enact))}，废止次数为 ${repealCount}，废止费用 ${h(money(costs.repeal))}。</div>
     </div>
-    <h3>阶段价格引导范围</h3>
-    <p>${permanentPriceLaws.map((operation) => `<span class="chip">${h(item(operation.target).emoji)} ${h(item(operation.target).name)} ×2</span>`).join(" ")}</p>
-    <h3>场景状态触发的临时法规</h3>
-    <div class="table-wrap"><table><thead><tr><th>缺口商品</th><th>颁布</th><th>废止</th><th>持续</th><th>立法+废止费</th><th>法规 ID</th></tr></thead><tbody>${dynamicLawRows}</tbody></table></div>
-    <p class="callout green"><strong>为什么它有效：</strong>第 16 项以后，单有配方和悬赏并不足以让猫认领计划；必须存在针对该商品或全品类、倍率大于 1 的玩家价格法。阶段法打开“愿意考虑”这道门，首次制造后撤销；临时法再对真实订单瓶颈做局部疏堵。经济门槛仍会拒绝亏损制作和无合同传递。</p>
+    <h3>基础物流法实际源码</h3>
+    <pre class="code">${h(logisticsLaw?.sourceCode ?? "未找到基础物流法源码")}</pre>
+    <p class="callout green"><strong>为什么它有效：</strong>×1.01 只打开“愿意认领悬赏”这道硬门；真正的调度来自订单。供应猫只会为自己看到的盈利计划和订单生成制作候选，物流法再提高这些候选并留住关键中间品。传递动作仍必须匹配已成交的有偿合同，亏损制作、无合同传递和超额信用照样被引擎拒绝。</p>
   </section>
 
   <section class="section" id="space">
@@ -339,14 +326,15 @@ const html = `<!doctype html>
       <div class="metric"><strong>${h(money(costs.repeal))}</strong><span>${repealCount} 次废止</span></div>
       <div class="metric"><strong>${h(money(costs.parcel))}</strong><span>东侧土地</span></div>
       <div class="metric"><strong>${h(money(costs.building))}</strong><span>三项建筑收购</span></div>
-      <div class="metric"><strong>${h(money(netTreasurySpendCents))}</strong><span>扣除回流后的国库净减少</span></div>
+      <div class="metric"><strong>${h(signedMoney(-netTreasurySpendCents))}</strong><span>税收回流后的国库净变化</span></div>
     </div>
-    <p>玩家操作毛支出是 ${h(money(grossCostCents))}；运行期间约 ${h(money(operationInflowsCents))} 回流国库，主要来自现行 50% 外售税，所以最终国库只比测试起点少 ${h(money(netTreasurySpendCents))}。猫咪累计外售 ${h(money(state.totalSales))}，最终私人现金 ${h(money(totalCatCash))}、债务 ${h(money(totalDebt))}。</p>
+    <p>玩家操作毛支出是 ${h(money(grossCostCents))}；运行期间约 ${h(money(operationInflowsCents))} 回流国库，主要来自现行 50% 外售税，所以最终国库相对测试起点变化 ${h(signedMoney(-netTreasurySpendCents))}。猫咪累计外售 ${h(money(state.totalSales))}，最终私人现金 ${h(money(totalCatCash))}、债务 ${h(money(totalDebt))}。</p>
     <div class="table-wrap"><table class="analysis-table"><thead><tr><th>阻塞</th><th>我观察到的证据</th><th>操作</th><th>因果机制</th></tr></thead><tbody>
-      <tr><td>16–20 无人开工</td><td>300 秒内五项 crafted=0、bountyOpen=true</td><td>每项 ×2 价格法</td><td>满足第 16 项后悬赏认领所需的正向玩家价格引导</td></tr>
+      <tr><td>16–20 无人开工</td><td>300 秒内五项 crafted=0、bountyOpen=true</td><td>全品类只设 ×1.01 准入法</td><td>用最低幅度满足第 16 项后悬赏认领所需的正向玩家价格指引，不用价格决定生产顺序</td></tr>
       <tr><td>远方原料不能共享</td><td>最终 ${totalPasses.toLocaleString("zh-CN")} 次传递，最长合同路线 ${maxRoute} 只猫</td><td>加 ${placedCatCount} 只相邻猫</td><td>扩大 BFS 可达网络和中转承运容量，物品仍逐格移动</td></tr>
       <tr><td>28–35 缺生产位置</td><td>只有工厂时停在芯片等基础电子商品</td><td>等待三项报价，收购并布置复合工区</td><td>让同一工位同时获得工厂、天线与机床的半径 2 条件</td></tr>
-      <tr><td>中后期局部供需死锁</td><td>120 秒发现数不增长且有开放订单</td><td>临时提高最深订单商品价格，新增产量后废止</td><td>改变本地贪心边际收益，同时避免永久价格污染</td></tr>
+      <tr><td>22–30 关键料被外售或分散</td><td>机械、电气与电子悬赏同时开放，订单需要多种中间品</td><td>按订单提高制作，降低关键料外售；磁铁到显示器分组补料</td><td>只给已经进入本地盈利候选的订单物资加权，不制造无合同传递，也不抬高信用成本</td></tr>
+      <tr><td>中后期长时间等待</td><td>开放订单、在途合同和大宗配料会跨越多个 30 秒检查点</td><td>检查信用、路线和工区后保持两条法规不变</td><td>让已经成交的逐格合同自然结算，避免反复立法打断稳定的物流优先级</td></tr>
     </tbody></table></div>
     <h3>市场规模</h3>
     <div class="grid"><div class="card"><strong>${state.procurementPlans.length.toLocaleString("zh-CN")} 个生产计划</strong>包括悬赏、订单和外售计划；每只猫同时最多保留一个活动计划。</div><div class="card"><strong>${state.demandOrders.length.toLocaleString("zh-CN")} 张单件订单</strong>信息全局即时广播，但成交仍需检查库存、保证金、路线和运力。</div><div class="card"><strong>${state.shipmentContracts.filter((contract) => contract.status === "delivered").length.toLocaleString("zh-CN")} / ${state.shipmentContracts.length.toLocaleString("zh-CN")} 已送达</strong>验收停止时仍可能有少量无关的在途合同；它们不影响 35/35 条件。</div></div>
@@ -367,7 +355,7 @@ const html = `<!doctype html>
 
   <section class="section">
     <h2>结论与限制</h2>
-    <div class="grid"><div class="card"><strong>通关不是靠全局调度器</strong>猫只读取自身和曼哈顿 2 内工位；全局广播只传需求信息。最终 ${totalPasses.toLocaleString("zh-CN")} 次逐格传递和最长 ${maxRoute} 猫路线证明实物没有瞬移。</div><div class="card"><strong>真正的三个钥匙</strong>价格法打开 16+ 悬赏认领；猫链提供有偿物理物流；共同覆盖的工厂、天线与机床打开 28–35 的空间制造条件。</div><div class="card"><strong>车辆是复合工区产物</strong>车辆在 ${h(time(vehicleClosure ? vehicleClosure.publishedAt * state.simulationSpeed : null))} 出现；制造工位必须同时处于工厂和机床的曼哈顿半径 2 内。</div><div class="card"><strong>跨种子稳定性</strong>批量回归使用同一公开操作与虚拟时间；本页详细记录种子 ${seed}，最终检查点为 ${h(time(result.simTime))}。</div></div>
+    <div class="grid"><div class="card"><strong>通关不是靠全局调度器</strong>猫只读取自身和曼哈顿 2 内工位；全局广播只传需求信息。最终 ${totalPasses.toLocaleString("zh-CN")} 次逐格传递和最长 ${maxRoute} 猫路线证明实物没有瞬移。</div><div class="card"><strong>真正的三个钥匙</strong>×1.01 只打开 16+ 悬赏认领；物流法和猫链组织有偿物理物流；共同覆盖的工厂、天线与机床打开 28–35 的空间制造条件。</div><div class="card"><strong>22–30 不靠单品加价</strong>磁铁、车轮、燃料、冷却剂、天线、机床、芯片、存储器和显示器均没有逐项 ×2 法；它们由订单、留存和定向补料完成。</div><div class="card"><strong>车辆是复合工区产物</strong>车辆在 ${h(time(vehicleClosure ? vehicleClosure.publishedAt * state.simulationSpeed : null))} 出现；制造工位必须同时处于工厂和机床的曼哈顿半径 2 内。</div></div>
     <p class="callout"><strong>仍需区分：</strong>本页使用充足测试国库与确定性法条夹具。若要评价生产版经济平衡，还应另做“150 金币正常开局、只靠税收积累”的长时测试；若要评价 DeepSeek 可靠性，还应单独统计真实模型生成成功率、语义正确率和重试率。</p>
   </section>
 

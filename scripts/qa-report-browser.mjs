@@ -26,7 +26,7 @@ const summary = await page.evaluate(() => ({
 }));
 
 await page.screenshot({ path: path.join(outputDir, "full.png"), fullPage: true });
-for (const id of ["boundary", "laws", "space", "items"]) {
+for (const id of ["boundary", "replay", "laws", "space", "economy", "items"]) {
   await page.locator(`#${id}`).screenshot({ path: path.join(outputDir, `${id}.png`) });
 }
 await page.locator("button[data-filter=phase2]").click();
@@ -35,4 +35,3 @@ const visiblePhase2 = await page.locator("#ledger-table tbody tr:visible").count
 
 process.stdout.write(`${JSON.stringify({ ...summary, visiblePhase2, errors }, null, 2)}\n`);
 await browser.close();
-

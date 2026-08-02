@@ -8,11 +8,10 @@ import {
   expandParcel,
   placeCat,
   placeOwnedBuilding,
-  repealLaw,
   resourceAt,
   unlockRecipe,
 } from "../src/game/engine";
-import { hashSource } from "../src/game/lawInterpreter";
+import { hashSource, validateLawSource } from "../src/game/lawInterpreter";
 import type { DifficultyLevel, GameState, LawDraft, Position } from "../src/game/types";
 import { isPositionUnlocked } from "../src/game/world";
 
@@ -31,32 +30,52 @@ export interface Qa35Operation {
 
 type RecordOperation = (operation: Omit<Qa35Operation, "sequence" | "atMs">) => void;
 
-function priceLaw(itemId: string, multiplier: number): LawDraft {
-  const sourceCode = "function decide(ctx) { return choose(); }";
+export function qualificationPriceLaw(): LawDraft {
+  const sourceCode = "function decide(ctx) { return null; }";
+  const checked = validateLawSource(sourceCode);
   return {
-    title: `${itemId}悬赏加权法`,
-    playerText: `提高${itemId}价格权重`,
-    summary: `${itemId}实际售价乘以${multiplier}`,
+    title: "悬赏计划准入条例",
+    playerText: "全部商品价格仅上调 1%，作为第 16 项以后认领悬赏的最低正向价格指引。",
+    summary: "全品类实际售价为基础价格的 101%；物流优先级由行为法决定。",
     sourceCode,
     astHash: hashSource(sourceCode),
     examples: [],
     warnings: [],
     category: "price",
     taxRate: null,
-    priceItemId: itemId,
-    priceMultiplier: multiplier,
-    validation: { syntax: true, safety: true, examplesPassed: 0, examplesTotal: 0, messages: [] },
+    priceItemId: "*",
+    priceMultiplier: 1.01,
+    validation: { syntax: checked.ok, safety: checked.ok, examplesPassed: 0, examplesTotal: 0, messages: checked.messages },
   };
 }
 
-function sharedProductionLaw(): LawDraft {
+export function logisticsCoordinationLaw(): LawDraft {
   const sourceCode = `function decide(ctx) {
+  if (orderCount("*") > 0) {
+    adjust("craft", "*", 2.5, 60000);
+    adjust("sell", "*", 0.2, -20000);
+  }
+  if (bounty("magnet") > 0 || bounty("wheel") > 0 || bounty("fuel") > 0 || bounty("coolant") > 0 || bounty("antenna") > 0 || bounty("machine_tool") > 0) {
+    adjust("craft", "metal", 4, 80000);
+    adjust("craft", "gear", 4, 80000);
+    adjust("craft", "cable", 4, 80000);
+    adjust("craft", "battery", 4, 80000);
+    adjust("craft", "chemical", 4, 80000);
+    adjust("craft", "chassis", 4, 80000);
+  }
+  if (bounty("chip") > 0 || bounty("memory") > 0 || bounty("display") > 0) {
+    adjust("craft", "chip", 5, 120000);
+    adjust("craft", "glass", 4, 80000);
+    adjust("craft", "lamp", 4, 80000);
+    adjust("craft", "cable", 4, 80000);
+  }
   return choose();
 }`;
+  const checked = validateLawSource(sourceCode);
   return {
-    title: "广播订单逐猫贪心法",
-    playerText: "每只猫按自己的库存、计划和全局广播选择当前最有利动作。",
-    summary: "全体猫共用同一逻辑，但不统一抬高所有制作动作；商品方向由价格法规引导。",
+    title: "22—30 订单物流协调法",
+    playerText: "第 22—30 项按开放订单、悬赏阶段和缺料链提高制作优先级，减少关键中间品被提前外售。",
+    summary: "订单存在时优先制作和留存物资；机械工业与电子工业的关键原料按未结悬赏动态加权。",
     sourceCode,
     astHash: hashSource(sourceCode),
     examples: [],
@@ -65,7 +84,7 @@ function sharedProductionLaw(): LawDraft {
     taxRate: null,
     priceItemId: null,
     priceMultiplier: null,
-    validation: { syntax: true, safety: true, examplesPassed: 0, examplesTotal: 0, messages: [] },
+    validation: { syntax: checked.ok, safety: checked.ok, examplesPassed: 0, examplesTotal: 0, messages: checked.messages },
   };
 }
 
@@ -87,31 +106,6 @@ function buyRecipeRange(
       target: recipe.output,
       detail: `购买第 ${RECIPES.indexOf(recipe) + 1} 项配方 ${recipe.id}`,
       costCents: result.cost ?? 0,
-    });
-  }
-}
-
-function enactPriceRange(
-  state: GameState,
-  from: number,
-  to: number,
-  activeGuidanceLaws: Map<string, string>,
-  record?: RecordOperation,
-): void {
-  for (const recipe of RECIPES.slice(from - 1, to)) {
-    if (state.laws.some((law) => law.status === "active" && law.category === "price"
-      && law.priceItemId === recipe.output && law.priceMultiplier === 2)) continue;
-    const treasuryBefore = state.treasuryCoins;
-    const enacted = enactLaw(state, priceLaw(recipe.output, 2));
-    if (!enacted.ok) throw new Error(`enact ${recipe.output}: ${enacted.error}`);
-    if (enacted.law) activeGuidanceLaws.set(recipe.output, enacted.law.id);
-    record?.({
-      stage: "phase3",
-      kind: "law-enact",
-      target: recipe.output,
-      detail: `阶段价格引导：${recipe.output} 实际售价 ×2；首次制造后废止`,
-      costCents: treasuryBefore - state.treasuryCoins,
-      lawId: enacted.law?.id,
     });
   }
 }
@@ -390,27 +384,33 @@ export function playSeed(
   });
 
   const sharedLawTreasuryBefore = state.treasuryCoins;
-  const sharedLaw = enactLaw(state, sharedProductionLaw());
-  if (!sharedLaw.ok || !sharedLaw.law) throw new Error(`enact shared production law: ${sharedLaw.error}`);
+  const sharedLaw = enactLaw(state, logisticsCoordinationLaw());
+  if (!sharedLaw.ok || !sharedLaw.law) throw new Error(`enact logistics coordination law: ${sharedLaw.error}`);
   record({
     stage: "phase3",
     kind: "law-enact",
-    target: "shared-behavior",
-    detail: "全体猫共用 choose()：按自身库存、计划和全局署名广播执行局部贪心",
+    target: "logistics-coordination",
+    detail: "颁布 22—30 订单物流协调法：订单触发补料与留存，机械/电子缺口按未结悬赏动态加权",
     costCents: sharedLawTreasuryBefore - state.treasuryCoins,
     lawId: sharedLaw.law.id,
   });
-  const activeGuidanceLaws = new Map<string, string>();
+  const qualificationTreasuryBefore = state.treasuryCoins;
+  const qualificationLaw = enactLaw(state, qualificationPriceLaw());
+  if (!qualificationLaw.ok || !qualificationLaw.law) throw new Error(`enact qualification price law: ${qualificationLaw.error}`);
+  record({
+    stage: "phase3",
+    kind: "law-enact",
+    target: "all-items",
+    detail: "悬赏准入：全品类仅 ×1.01，满足 16+ 正向价格指引硬门槛，不承担物流调度",
+    costCents: qualificationTreasuryBefore - state.treasuryCoins,
+    lawId: qualificationLaw.law.id,
+  });
   buyRecipeRange(state, 21, 27, record);
-  enactPriceRange(state, 16, 27, activeGuidanceLaws, record);
   const addedCats = addExpansionChain(state, record);
   const industrialSite = planIndustrialSite(state);
   const placedBuildings = new Set<string>();
   let industrialWorkersAdded = false;
   let advancedRecipesPurchased = false;
-  let lastDiscoveryCount = state.discoveredItems.length;
-  let lastDiscoveryAt = state.simTime;
-  const temporaryLaws = new Map<string, { lawId: string; craftedAt: number; enactedAt: number }>();
   let iteration = 0;
   while (state.simTime < scaled(maxMs)) {
     const fromMs = state.simTime * state.simulationSpeed;
@@ -424,65 +424,6 @@ export function playSeed(
       detail: `市场运行：确定性时钟从 ${fromMs}ms 推进到 ${state.simTime * state.simulationSpeed}ms`,
       costCents: 0,
     });
-    for (const [itemId, lawId] of activeGuidanceLaws) {
-      if (state.itemStats[itemId].crafted <= 0) continue;
-      const treasuryBefore = state.treasuryCoins;
-      const repealed = repealLaw(state, lawId);
-      if (!repealed.ok) throw new Error(`repeal guidance ${lawId}: ${repealed.error}`);
-      record({
-        stage: "phase3",
-        kind: "law-repeal",
-        target: itemId,
-        detail: "首次制造已完成，废止阶段价格引导以降低后续订单和信用成本",
-        costCents: treasuryBefore - state.treasuryCoins,
-        lawId,
-      });
-      activeGuidanceLaws.delete(itemId);
-    }
-    for (const [itemId, temporary] of temporaryLaws) {
-      if (state.itemStats[itemId].crafted <= temporary.craftedAt) continue;
-      const treasuryBefore = state.treasuryCoins;
-      const repealed = repealLaw(state, temporary.lawId);
-      if (!repealed.ok) throw new Error(`repeal ${temporary.lawId}: ${repealed.error}`);
-      record({
-        stage: "phase3",
-        kind: "law-repeal",
-        target: itemId,
-        detail: "临时疏堵法规已促成新增产量，立即废止以免长期扭曲价格",
-        costCents: treasuryBefore - state.treasuryCoins,
-        lawId: temporary.lawId,
-      });
-      temporaryLaws.delete(itemId);
-    }
-    if (state.discoveredItems.length > lastDiscoveryCount) {
-      lastDiscoveryCount = state.discoveredItems.length;
-      lastDiscoveryAt = state.simTime;
-    } else if (state.simTime - lastDiscoveryAt >= scaled(120_000)) {
-      const recipeOrder = new Map(RECIPES.map((recipe, index) => [recipe.output, index]));
-      const stalledItems = [...new Set(state.demandOrders.filter((order) => order.status === "open").map((order) => order.itemId))]
-        .sort((left, right) => (recipeOrder.get(right) ?? -1) - (recipeOrder.get(left) ?? -1));
-      const itemId = stalledItems.find((entry) => !temporaryLaws.has(entry));
-      if (itemId) {
-        const treasuryBefore = state.treasuryCoins;
-        const enacted = enactLaw(state, priceLaw(itemId, 2));
-        if (enacted.ok && enacted.law) {
-          temporaryLaws.set(itemId, {
-            lawId: enacted.law.id,
-            craftedAt: state.itemStats[itemId].crafted,
-            enactedAt: state.simTime,
-          });
-          record({
-            stage: "phase3",
-            kind: "law-enact",
-            target: itemId,
-            detail: "120 秒无新发现：按最深未满足订单临时给予 ×2 价格引导",
-            costCents: treasuryBefore - state.treasuryCoins,
-            lawId: enacted.law.id,
-          });
-        }
-      }
-      lastDiscoveryAt = state.simTime;
-    }
     for (const buildingId of ["factory", "machine_tool", "antenna"] as const) {
       if (placedBuildings.has(buildingId)) continue;
       if (buyAndPlaceBuilding(state, buildingId, industrialSite[buildingId], record)) {
@@ -495,7 +436,6 @@ export function playSeed(
     }
     if (!advancedRecipesPurchased && placedBuildings.has("factory")) {
       buyRecipeRange(state, 28, 35, record);
-      enactPriceRange(state, 28, 35, activeGuidanceLaws, record);
       advancedRecipesPurchased = true;
     }
     if (verbose && iteration % 10 === 0) report(state, "tick");
@@ -509,10 +449,13 @@ export function playSeed(
     detail: "前 35 项均有实际制造记录；车辆已出现，工厂范围链路成立",
     costCents: 0,
   });
+  const logisticsItemIds = new Set(RECIPES.slice(21, 30).map((recipe) => recipe.output));
+  const noPerItemPriceLaws22To30 = !state.lawHistory.some((law) => law.category === "price"
+    && law.priceItemId !== "*" && law.priceItemId !== null && logisticsItemIds.has(law.priceItemId));
   return {
     seed,
     difficulty,
-    passed: allCrafted(state, 35) && phase2Stalled && placedBuildings.has("factory") && addedCats > 0,
+    passed: allCrafted(state, 35) && phase2Stalled && placedBuildings.has("factory") && addedCats > 0 && noPerItemPriceLaws22To30,
     phase1: { passed: true, completeAtMs: phase1CompleteAt },
     phase2: { passed: phase2Stalled, observedForMs: 300_000, items: phase2Items },
     phase3: {
@@ -521,6 +464,8 @@ export function playSeed(
       addedCats,
       expandedParcel: state.unlockedParcels.some((parcel) => parcel.x === 1 && parcel.y === 0),
       buildingsPlaced: [...placedBuildings],
+      qualificationLawId: qualificationLaw.law.id,
+      noPerItemPriceLaws22To30,
     },
     vehicle: state.itemStats.vehicle.crafted,
     discovered: state.discoveredItems.length,
