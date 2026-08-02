@@ -44,6 +44,7 @@ import {
   creditAvailableCents,
   expectedActionGainCents,
   externalNetCents,
+  externalNetCentsAt,
   ensureBountyBroadcasts,
   ensureMarketBroadcasts,
   MARKET_SIGNAL_INTERVAL_MS,
@@ -252,6 +253,110 @@ export function placeCat(state: GameState, position: Position): CatState | null 
   state.cats.push(cat);
   state.dirtyDecisions = true;
   return cat;
+}
+
+export interface CatRemovalResult {
+  ok: boolean;
+  error?: string;
+  settledCents?: number;
+  debtRepaidCents?: number;
+  treasuryDeltaCents?: number;
+}
+
+/**
+ * Atomically liquidate a cat. Realized cash and stock are valued at the
+ * current external net price, debt is paid first, and the net settlement is
+ * transferred to the player treasury. Open orders and in-flight contracts
+ * are cancelled so no remaining state can reference the removed cat.
+ */
+export function removeCat(state: GameState, catId: string): CatRemovalResult {
+  const cat = state.cats.find((entry) => entry.id === catId);
+  if (!cat) return { ok: false, error: "cat-not-found" };
+  if (state.cats.length <= 1) return { ok: false, error: "keep-one-cat" };
+
+  // Return ingredients/items locked by an unfinished action before valuing stock.
+  if (cat.action) {
+    if (!cat.action.contractId) {
+      for (const [itemId, quantity] of Object.entries(cat.action.reserved ?? {})) give(cat.inventory, itemId, quantity);
+    }
+    cat.action = null;
+  }
+
+  const affectedContractIds = new Set(state.shipmentContracts
+    .filter((contract) => (
+      contract.routeCatIds.includes(catId)
+      || contract.sellerCatId === catId
+      || contract.buyerCatId === catId
+      || contract.destinationCatId === catId
+      || contract.custodianCatId === catId
+    ))
+    .map((contract) => contract.id));
+  const affectedOrderIds = new Set<string>();
+  const catPlanIds = new Set(state.procurementPlans.filter((plan) => plan.catId === catId).map((plan) => plan.id));
+
+  // Cancel every open demand involving this cat. cancelDemandOrder releases
+  // the buyer's escrow or the treasury reservation before the cat is removed.
+  for (const order of [...state.demandOrders]) {
+    if (order.buyerCatId === catId || order.destinationCatId === catId || (order.planId !== null && catPlanIds.has(order.planId))) {
+      affectedOrderIds.add(order.id);
+      if (order.status === "open") cancelDemandOrder(state, order.id, "鐚挭宸插垹闄わ紝璁㈠崟鍙栨秷");
+    }
+  }
+
+  // Unwind in-flight escrow. A refund to a surviving buyer is ordinary
+  // private income (and therefore repays that buyer's loan first). If the
+  // deleted cat was the buyer, the refund becomes part of its liquidation.
+  for (const contract of state.shipmentContracts.filter((entry) => affectedContractIds.has(entry.id))) {
+    affectedOrderIds.add(contract.orderId);
+    const refund = Math.max(0, Math.floor(contract.escrowCents));
+    if (refund > 0) {
+      if (contract.buyerKind === "cat") {
+        const buyer = state.cats.find((entry) => entry.id === contract.buyerCatId);
+        if (buyer && buyer.id !== catId) applyPrivateIncome(buyer, refund);
+        else if (buyer?.id === catId) cat.coins += refund;
+      } else {
+        state.treasuryCoins += refund;
+      }
+    }
+    // Contract cargo is held by the contract, not regular cat inventory.
+    for (const holder of state.cats) {
+      if (holder.action?.contractId === contract.id) holder.action = null;
+    }
+  }
+
+  const liquidatedCents = cat.coins + Object.entries(cat.inventory).reduce((sum, [itemId, quantity]) => (
+    sum + Math.max(0, quantity) * externalNetCentsAt(state, itemId, (id) => itemPrice(state, id), cat)
+  ), 0);
+  const debtRepaidCents = Math.max(0, cat.debtCents);
+  const treasuryDeltaCents = liquidatedCents - debtRepaidCents;
+  state.treasuryCoins += treasuryDeltaCents;
+
+  // Remove all secondary records that could retain the cat or its orders.
+  state.procurementPlans = state.procurementPlans.filter((plan) => plan.catId !== catId && !affectedOrderIds.has(plan.terminalOrderId ?? ""));
+  state.demandOrders = state.demandOrders.filter((order) => (
+    order.buyerCatId !== catId && order.destinationCatId !== catId && !affectedOrderIds.has(order.id)
+  ));
+  state.orderSignals = state.orderSignals.filter((signal) => (
+    signal.catId !== catId && !signal.routeCatIds.includes(catId) && !affectedOrderIds.has(signal.orderId)
+  ));
+  state.shipmentContracts = state.shipmentContracts.filter((contract) => !affectedContractIds.has(contract.id));
+  const affectedOfferIds = new Set(state.buildingOffers.filter((offer) => offer.sellerCatId === catId).map((offer) => offer.id));
+  state.buildingOffers = state.buildingOffers.filter((offer) => !affectedOfferIds.has(offer.id));
+  state.buildingOrders = state.buildingOrders.filter((order) => (
+    order.targetCatId !== catId && !affectedContractIds.has(order.contractId ?? "")
+  ));
+  state.marketBroadcasts = state.marketBroadcasts.filter((broadcast) => (
+    broadcast.sourceCatId !== catId && !affectedOrderIds.has(broadcast.subjectId) && !affectedOfferIds.has(broadcast.subjectId)
+  ));
+  state.discoveryBounties.forEach((bounty) => {
+    if (bounty.claimedByCatId === catId) bounty.claimedByCatId = null;
+  });
+  state.logisticsStatus = state.logisticsStatus.filter((entry) => !entry.catIds.includes(catId));
+  state.cats = state.cats.filter((entry) => entry.id !== catId);
+  state.dirtyDecisions = true;
+  const survivor = state.cats[0];
+  if (survivor) addFloating(state, survivor.id, `鐚挭娓呯畻 ${treasuryDeltaCents >= 0 ? "+" : "-"}${formatMoney(Math.abs(treasuryDeltaCents))}`, "sale");
+  return { ok: true, settledCents: liquidatedCents, debtRepaidCents, treasuryDeltaCents };
 }
 
 export function buildObservation(

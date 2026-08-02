@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>猫咪工坊 0.11.1 · 具体操作指南</title>
+  <title>猫咪工坊 0.11.2 · 具体操作指南</title>
   <style>
     :root { color-scheme:light; --ink:#182230; --muted:#667085; --paper:#fff; --soft:#f7faf8; --line:#dde5e0; --green:#347853; --green2:#eaf6ef; --gold:#a36b08; --gold2:#fff7df; --blue:#2468a8; --danger:#a83b32; }
     * { box-sizing:border-box; }
@@ -72,7 +72,7 @@
   </nav>
 
   <main>
-    <span class="badge">0.11.1 · 离线可读 · 中文逐步说明</span>
+    <span class="badge">0.11.2 · 离线可读 · 中文逐步说明</span>
     <h1>🐾 猫咪工坊<br>具体操作指南</h1>
     <p class="lead">这份页面只讲“点哪里、看什么、下一步做什么”。游戏没有强制终局；造出星门后仍可继续经营。</p>
 
@@ -100,7 +100,7 @@
       <table>
         <thead><tr><th>区域</th><th>你会看到</th><th>主要用途</th></tr></thead>
         <tbody>
-          <tr><td>顶栏</td><td>国库、猫咪现金、产值、工作中数量、暂停、开拓、难度</td><td>看总体经济，暂停模拟，购买相邻地块。</td></tr>
+          <tr><td>顶栏</td><td>国库、猫咪现金、产值、工作中数量、暂停、1x–8x、开拓、难度</td><td>看总体经济，暂停模拟，调整运行速度，购买相邻地块。</td></tr>
           <tr><td>中央画布</td><td>等距地块、猫、资源中心、建筑、地标、动作进度环</td><td>平移缩放、放猫、选猫、选址建设。</td></tr>
           <tr><td>法典</td><td>新法条、生成预览、现行法典</td><td>制定行为法、价格法、税法并调整优先级。</td></tr>
           <tr><td>配方图</td><td>65 项商品、配方、解锁条件和价格</td><td>了解科技链并花国库购买配方。</td></tr>
@@ -220,6 +220,7 @@
         <div class="card"><strong>资产</strong>现金和库存属于这只猫；债务会从后续收入优先偿还；可用信用受难度与商贸中心影响。</div>
         <div class="card"><strong>市场</strong>查看自己的订单、听到的全局广播、运输合同与正在携带的托运物。</div>
         <div class="card"><strong>行动</strong>查看当前制作/传递/出售、剩余毫秒、最后一次法条决策和候选评分线索。</div>
+        <div class="card"><strong>删除并结算</strong>先看可清算资产、全部贷款和国库净变化；确认后撤销未完成事务、先还债，再把剩余收益交给玩家国库。</div>
       </div>
       <div class="note">若猫长期待机，依次检查：配方是否解锁、原料是否在它的局部视野/自身库存、目标是否有正收益、场地建筑是否满足、相邻猫链和信用是否足够。</div>
     </section>
@@ -230,6 +231,8 @@
         <thead><tr><th>操作</th><th>效果</th></tr></thead>
         <tbody>
           <tr><td>顶栏“Ⅱ 暂停 / ▶ 继续”</td><td>暂停或恢复模拟。</td></tr>
+          <tr><td><kbd>P</kbd></td><td>暂停或继续；在输入框、文本框和下拉框中不会误触。</td></tr>
+          <tr><td><kbd>1</kbd> / <kbd>2</kbd> / <kbd>3</kbd> / <kbd>4</kbd></td><td>切换 1x / 2x / 4x / 8x 运行速度。倍率只影响本次运行，不写入存档。</td></tr>
           <tr><td><kbd>F</kbd></td><td>切换全屏；输入法条时不会误触。</td></tr>
           <tr><td><kbd>Esc</kbd></td><td>退出全屏，或取消开拓、建筑放置、地标选址。</td></tr>
           <tr><td>自动存档</td><td>保存在本机 IndexedDB；切到后台时暂停，不结算离线产量。</td></tr>
@@ -256,7 +259,7 @@
       <p>完整机制与开发说明见 <a href="README.html">README.html</a>；最高难度 5 的前 35 项真实操作、法规、费用与坐标见 <a href="CatWorkshop-Difficulty5-35-Operation.html">35 商品具体操作档案</a>；全部配方依赖见 <a href="CatWorkshop-RecipeFlow.html">65 项配方一图流</a>。</p>
     </section>
 
-    <footer>猫咪工坊 0.11.1 · 玩家地标工程操作指南 · 可直接保存、离线打开或打印</footer>
+    <footer>猫咪工坊 0.11.2 · 加速与猫咪清算操作指南 · 可直接保存、离线打开或打印</footer>
   </main>
 </div>
 </body>

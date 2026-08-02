@@ -1,4 +1,4 @@
-import { advanceGame, buyBuildingOffer, buyLandmarkBlueprint, buyWarehouseItem, cancelBuildingOrder, createInitialState, dismantleBuilding, dismantleLandmark, enactLaw, expandParcel, placeCat, placeLandmark, placeOwnedBuilding, queueBuildingOrder, reorderLaw, repealLaw, setPaused, unlockRecipe } from "./engine";
+import { advanceGame, buyBuildingOffer, buyLandmarkBlueprint, buyWarehouseItem, cancelBuildingOrder, createInitialState, dismantleBuilding, dismantleLandmark, enactLaw, expandParcel, placeCat, placeLandmark, placeOwnedBuilding, queueBuildingOrder, removeCat, reorderLaw, repealLaw, setPaused, unlockRecipe } from "./engine";
 import { clearSave, loadGame, saveGame } from "./persistence";
 import type { GameState, LandmarkId, LawDraft, Position } from "./types";
 import { randomWorldSeed } from "./world";
@@ -15,6 +15,9 @@ export class GameController {
   private lastSave = 0;
   private loaded = false;
   private revision = 0;
+  private runtimeSpeedMultiplier = 1;
+
+  static readonly SPEED_PRESETS = [1, 2, 4, 8] as const;
 
   async initialize(): Promise<void> {
     this.state = await loadGame(randomWorldSeed());
@@ -47,7 +50,7 @@ export class GameController {
   private loop = (now: number): void => {
     const delta = Math.max(0, Math.min(100, now - this.lastFrame));
     this.lastFrame = now;
-    if (!document.hidden) advanceGame(this.state, delta);
+    if (!document.hidden) advanceGame(this.state, delta * this.runtimeSpeedMultiplier);
     if (now - this.lastNotify >= 100) {
       this.lastNotify = now;
       this.emit();
@@ -69,7 +72,20 @@ export class GameController {
   };
 
   advance(ms: number): void {
-    advanceGame(this.state, ms);
+    advanceGame(this.state, ms * this.runtimeSpeedMultiplier);
+    this.emit();
+  }
+
+  getSpeedMultiplier(): number {
+    return this.runtimeSpeedMultiplier;
+  }
+
+  setSpeed(multiplier: number): void {
+    const next = GameController.SPEED_PRESETS.reduce((best, candidate) => (
+      Math.abs(candidate - multiplier) < Math.abs(best - multiplier) ? candidate : best
+    ), 1);
+    if (next === this.runtimeSpeedMultiplier) return;
+    this.runtimeSpeedMultiplier = next;
     this.emit();
   }
 
@@ -81,6 +97,12 @@ export class GameController {
   addCat(position: Position): boolean {
     const result = Boolean(placeCat(this.state, position));
     if (result) this.emit();
+    return result;
+  }
+
+  removeCat(catId: string) {
+    const result = removeCat(this.state, catId);
+    this.emit();
     return result;
   }
 
@@ -170,6 +192,7 @@ export class GameController {
   async reset(difficulty?: DifficultyLevel): Promise<void> {
     await clearSave();
     this.state = createInitialState({ worldSeed: randomWorldSeed(), difficulty });
+    this.runtimeSpeedMultiplier = 1;
     this.emit();
   }
 }

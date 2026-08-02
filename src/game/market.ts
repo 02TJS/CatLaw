@@ -177,6 +177,7 @@ export function externalNetCents(state: GameState, itemId: ItemId, priceOf: (ite
   return Math.max(0, gross - tax);
 }
 
+/** Net liquidation value at a cat's current site, including landmark sale bonus and tax. */
 export function externalNetCentsAt(state: GameState, itemId: ItemId, priceOf: (itemId: ItemId) => number, cat: CatState): number {
   const gross = Math.ceil(priceOf(itemId) * (1 + landmarkEffectsAt(state, cat.position).saleValueBonus));
   const rate = activeTaxRate(state);

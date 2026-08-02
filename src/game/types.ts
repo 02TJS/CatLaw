@@ -429,6 +429,8 @@ declare global {
     __CAT_WORKSHOP__?: {
       reset: (difficulty?: DifficultyLevel) => Promise<void>;
       state: () => GameState;
+      setSpeed: (multiplier: number) => void;
+      removeCat: (catId: string) => { ok: boolean; error?: string; settledCents?: number; debtRepaidCents?: number; treasuryDeltaCents?: number };
     };
   }
 }

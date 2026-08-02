@@ -15,11 +15,13 @@ import {
   itemPrice,
   nextEnactmentCost,
   placeCat,
+  removeCat,
   repealLaw,
   unlockRecipe,
 } from "./engine";
 import { hashSource } from "./lawInterpreter";
 import { openDemandOrder } from "./market";
+import { GameController } from "./controller";
 import type { LawDraft } from "./types";
 
 const PASSIVE_SOURCE = "function decide(ctx) { return null; }";
@@ -261,5 +263,115 @@ describe("deterministic engine", () => {
     expect(state.treasuryCoins).toBe(500);
     expect(repealLaw(state, state.laws[0].id).ok).toBe(true);
     expect(state.treasuryCoins).toBe(0);
+  });
+
+  it("liquidates a deleted cat into the treasury after repaying debt", () => {
+    const state = createInitialState({ withStarter: false });
+    placeCat(state, { x: 1, y: 0 });
+    const cat = state.cats[0];
+    cat.coins = 500;
+    cat.debtCents = 200;
+    cat.inventory.wood = 2;
+    state.treasuryCoins = 1_000;
+    const woodValue = itemPrice(state, "wood");
+    const result = removeCat(state, cat.id);
+    expect(result).toMatchObject({
+      ok: true,
+      settledCents: 500 + woodValue * 2,
+      debtRepaidCents: 200,
+      treasuryDeltaCents: 500 + woodValue * 2 - 200,
+    });
+    expect(state.treasuryCoins).toBe(1_000 + 500 + woodValue * 2 - 200);
+    expect(state.cats.map((entry) => entry.id)).toEqual(["cat-1"]);
+    expect(state.cats[0].inventory.wood).toBeUndefined();
+  });
+
+  it("cancels a deleted cat's open orders and rejects deleting the last cat", () => {
+    const state = createInitialState({ withStarter: false });
+    placeCat(state, { x: 1, y: 0 });
+    state.cats[0].coins = 5_000;
+    const order = openDemandOrder(state, {
+      buyerKind: "cat",
+      buyerCatId: state.cats[0].id,
+      destinationCatId: state.cats[0].id,
+      itemId: "wood",
+      maxDeliveredCents: 100,
+      reservedCents: 100,
+      planId: null,
+    }, (itemId) => itemPrice(state, itemId));
+    expect(order).not.toBeNull();
+    expect(removeCat(state, state.cats[0].id).ok).toBe(true);
+    expect(state.demandOrders).toHaveLength(0);
+    expect(state.orderSignals).toHaveLength(0);
+    expect(removeCat(state, "cat-0")).toMatchObject({ ok: false, error: "cat-not-found" });
+    expect(removeCat(state, state.cats[0].id)).toMatchObject({ ok: false, error: "keep-one-cat" });
+  });
+
+  it("refunds in-flight escrow without counting contract cargo as deleted-cat stock", () => {
+    const state = createInitialState({ withStarter: false });
+    placeCat(state, { x: 1, y: 0 });
+    const seller = state.cats[0];
+    const buyer = state.cats[1];
+    buyer.debtCents = 110;
+    state.demandOrders.push({
+      id: "order-contract",
+      buyerKind: "cat",
+      buyerCatId: buyer.id,
+      destinationCatId: buyer.id,
+      itemId: "wood",
+      maxDeliveredCents: 110,
+      reservedCents: 110,
+      planId: null,
+      createdAt: 0,
+      status: "contracted",
+      closedAt: 0,
+      closeReason: "test",
+    });
+    state.shipmentContracts.push({
+      id: "contract-test",
+      orderId: "order-contract",
+      itemId: "wood",
+      sellerCatId: seller.id,
+      buyerKind: "cat",
+      buyerCatId: buyer.id,
+      destinationCatId: buyer.id,
+      routeCatIds: [seller.id, buyer.id],
+      currentLeg: 0,
+      custodianCatId: seller.id,
+      sellerPriceCents: 110,
+      feesByCatId: {},
+      escrowCents: 110,
+      acceptedAt: 0,
+      deliveredAt: null,
+      status: "awaiting-pickup",
+    });
+    seller.action = {
+      type: "pass",
+      itemId: "wood",
+      direction: "east",
+      startedAt: 0,
+      endsAt: 5_000,
+      reserved: { wood: 1 },
+      lawId: "binding-contract",
+      contractId: "contract-test",
+    };
+    const result = removeCat(state, seller.id);
+    expect(result).toMatchObject({ ok: true, settledCents: 0, treasuryDeltaCents: 0 });
+    expect(state.shipmentContracts).toHaveLength(0);
+    expect(state.demandOrders).toHaveLength(0);
+    expect(state.cats[0]).toMatchObject({ id: buyer.id, debtCents: 0, coins: 0 });
+    expect(state.cats[0].inventory.wood).toBeUndefined();
+  });
+
+  it("uses keyboard-speed runtime multipliers without changing saved simulation speed", () => {
+    const controller = new GameController();
+    controller.state = createInitialState({ withStarter: false });
+    controller.setSpeed(4);
+    expect(controller.getSpeedMultiplier()).toBe(4);
+    expect(controller.state.simulationSpeed).toBe(1);
+    controller.advance(1_250);
+    expect(controller.state.simTime).toBe(5_000);
+    controller.setSpeed(1);
+    expect(controller.getSpeedMultiplier()).toBe(1);
   });
 });

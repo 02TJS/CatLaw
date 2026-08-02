@@ -185,6 +185,8 @@ pre { max-height: 180px; overflow: auto; padding: 8px; color: #e7ece7; backgroun
 .building-actions { display: grid; gap: 4px; margin-top: 7px; }
 .small-action { width: 100%; padding: 6px 7px; color: #486555; border: 1px solid #cedbd2; border-radius: 6px; background: #f2f8f4; font-size: 8px; font-weight: 800; }
 .small-action:hover:not(:disabled) { background: #e5f2e9; }
+.small-action.danger { color: #a34c47; border-color: #e8c2be; background: #fff4f2; }
+.small-action.danger:hover:not(:disabled) { background: #ffe9e6; }
 .site-card small { display: block; color: #8a929b; font-size: 7px; }
 .inline-message { margin-top: 6px; padding: 6px 8px; color: #526b5b; border-radius: 6px; background: #eef6f0; font-size: 8px; }
 .inventory-list { display: flex; flex-direction: column; gap: 4px; }
@@ -200,6 +202,13 @@ pre { max-height: 180px; overflow: auto; padding: 8px; color: #e7ece7; backgroun
 .detail-block strong { overflow-wrap: anywhere; color: #48515b; font-weight: 700; }
 .asset-block { display: grid; grid-template-columns: 1fr 1fr; column-gap: 12px; }
 .asset-block > div:nth-last-child(-n+2) { border-bottom: 0; }
+.cat-removal-card { display: grid; gap: 5px; margin-top: 9px; padding: 9px; border: 1px solid #ead1cf; border-radius: 9px; background: #fff8f7; color: #76524f; font-size: 8px; }
+.cat-removal-card strong { color: #8f413b; font-size: 10px; }
+.cat-removal-card > span { line-height: 1.45; }
+.cat-removal-card > div { display: flex; justify-content: space-between; gap: 8px; }
+.cat-removal-card b { color: #55403d; }
+.cat-removal-card b.positive { color: #2e7b49; }
+.cat-removal-card b.negative { color: #a54640; }
 .compact-inventory { margin-top: 6px; max-height: 150px; overflow: auto; }
 .placement-mode-card { padding: 9px; border: 1px solid #9fc6aa; border-radius: 9px; background: #f0f8f2; }
 .placement-mode-card strong, .placement-mode-card span { display: block; }
@@ -250,6 +259,10 @@ pre { max-height: 180px; overflow: auto; padding: 8px; color: #e7ece7; backgroun
 .landmark-placement-card { border-color: #aeb9e6; background: #f3f5ff; }
 .landmark-placement-card strong { color: #435597; }
 .landmark-list { margin-top: 6px; }
+.speed-controls { display: flex; gap: 2px; padding: 2px; border: 1px solid #d9dde2; border-radius: 8px; background: #f5f6f7; }
+.speed-controls button { min-width: 28px; padding: 6px 4px; color: #68717b; border: 0; border-radius: 5px; background: transparent; font-size: 9px; font-weight: 800; }
+.speed-controls button:hover { background: #e9edf0; }
+.speed-controls button.active { color: #fff; background: #4e9465; }
 
 @media (max-width: 1100px) {
   .workspace { grid-template-columns: minmax(470px, 1fr) 330px; }

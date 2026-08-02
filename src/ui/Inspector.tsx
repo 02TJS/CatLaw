@@ -9,6 +9,7 @@ import {
   buildingOfferBroadcastsForCat,
   creditAvailableCents,
   creditLimitCents,
+  externalNetCentsAt,
   netWorthCents,
   planForCatPublic,
   productionOrderBudgetCents,
@@ -18,7 +19,7 @@ import {
 import catSpriteUrl from "../assets/cat-workshop-sprite.png?url";
 import { LANDMARK_BY_ID, landmarkEffectsAt } from "../game/landmarks";
 
-export function Inspector({ cat, controller, totalItems }: { cat?: CatState; controller: GameController; totalItems: number }) {
+export function Inspector({ cat, controller, totalItems, onRemoved }: { cat?: CatState; controller: GameController; totalItems: number; onRemoved: () => void }) {
   const state = controller.state;
   if (!cat) return <div className="empty-state">点击画布中的猫咪查看详情。</div>;
 
@@ -41,6 +42,13 @@ export function Inspector({ cat, controller, totalItems }: { cat?: CatState; con
   const creditAvailable = creditAvailableCents(state, cat, (itemId) => itemPrice(state, itemId));
   const landmarkEffects = landmarkEffectsAt(state, cat.position);
   const coveredLandmarks = Object.entries(landmarkEffects.stacks).filter(([, count]) => count > 0);
+  const liquidationInventory = { ...cat.inventory };
+  for (const [itemId, quantity] of Object.entries(cat.action?.reserved ?? {})) liquidationInventory[itemId] = (liquidationInventory[itemId] ?? 0) + quantity;
+  const liquidationStockCents = Object.entries(liquidationInventory).reduce((sum, [itemId, quantity]) => (
+    sum + Math.max(0, quantity) * externalNetCentsAt(state, itemId, (id) => itemPrice(state, id), cat)
+  ), 0);
+  const liquidationAssetsCents = cat.coins + liquidationStockCents;
+  const liquidationDeltaCents = liquidationAssetsCents - cat.debtCents;
 
   return <div className="inspector">
     <section className="cat-profile">
@@ -68,6 +76,19 @@ export function Inspector({ cat, controller, totalItems }: { cat?: CatState; con
       <Detail label="信用额度" value={formatMoney(creditLimit)} />
       <Detail label="可用信用" value={formatMoney(creditAvailable)} />
       <Detail label="冻结保证金" value={formatMoney(cat.escrowReservedCents)} />
+    </section>
+    <section className="cat-removal-card" data-testid="cat-removal">
+      <strong>删除猫咪并结算</strong>
+      <span>先偿还贷款，再把现金和库存净值转入国库；未完成订单与运输合同会取消。</span>
+      <div><span>可清算资产</span><b>{formatMoney(liquidationAssetsCents)}</b></div>
+      <div><span>偿还贷款</span><b>{formatMoney(cat.debtCents)}</b></div>
+      <div><span>国库变化</span><b className={liquidationDeltaCents >= 0 ? "positive" : "negative"}>{formatSignedMoney(liquidationDeltaCents)}</b></div>
+      <button className="small-action danger" disabled={state.cats.length <= 1} onClick={() => {
+        const confirmed = window.confirm(`确定删除猫咪 #${cat.createdIndex} 吗？将偿还 ${formatMoney(cat.debtCents)} 贷款，国库变化 ${formatSignedMoney(liquidationDeltaCents)}。未完成市场事务会取消。`);
+        if (!confirmed) return;
+        const result = controller.removeCat(cat.id);
+        if (result.ok) onRemoved();
+      }}>{state.cats.length <= 1 ? "至少保留一只猫咪" : "删除并结算"}</button>
     </section>
     {inventory.length === 0 ? <div className="empty-state small">库存为空</div> : <div className="inventory-list compact-inventory">{inventory.map(([id, quantity]) => {
       const item = ITEM_BY_ID.get(id);
@@ -109,6 +130,11 @@ export function Inspector({ cat, controller, totalItems }: { cat?: CatState; con
 
 function Detail({ label, value }: { label: string; value: string }) {
   return <div><span>{label}</span><strong>{value}</strong></div>;
+}
+
+function formatSignedMoney(cents: number): string {
+  const sign = cents > 0 ? "+" : cents < 0 ? "−" : "";
+  return `${sign}${(Math.abs(cents) / 100).toFixed(2)} 🪙`;
 }
 
 function actionName(type: "craft" | "pass" | "sell") {

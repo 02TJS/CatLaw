@@ -18,6 +18,7 @@ import {
   broadcastsForCat,
   buildingOfferBroadcastsForCat,
   creditAvailableCents,
+  externalNetCentsAt,
   hasPriceSensitiveJobDemand,
   netWorthCents,
   planForCatPublic,
@@ -71,14 +72,35 @@ export function App() {
     window.advanceTime = (ms) => controller.advance(ms);
     window.render_game_to_text = () => renderGameToText(
       controller.state,
+      controller.getSpeedMultiplier(),
       selectedCatRef.current,
       placingBuildingRef.current,
       placementFeedbackRef.current,
       placingLandmarkRef.current,
       landmarkFeedbackRef.current,
     );
-    window.__CAT_WORKSHOP__ = { reset: (difficulty) => controller.reset(difficulty), state: () => controller.state };
+    window.__CAT_WORKSHOP__ = {
+      reset: (difficulty) => controller.reset(difficulty),
+      state: () => controller.state,
+      setSpeed: (multiplier) => controller.setSpeed(multiplier),
+      removeCat: (catId) => controller.removeCat(catId),
+    };
     const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const typing = Boolean(target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
+      if (!typing && event.key.toLowerCase() === "p") {
+        event.preventDefault();
+        controller.togglePause();
+        return;
+      }
+      if (!typing) {
+        const speedByKey: Record<string, number> = { "1": 1, "2": 2, "3": 4, "4": 8 };
+        const nextSpeed = speedByKey[event.key];
+        if (nextSpeed) {
+          controller.setSpeed(nextSpeed);
+          return;
+        }
+      }
       if (event.key === "Escape") {
         setExpansionMode(false);
         setPlacingBuildingItemId(null);
@@ -115,9 +137,18 @@ export function App() {
           <Metric label="产值" value={`${formatMoney(perMinute)}/分`} />
           <Metric label="工作中" value={`${working}/${state.cats.length}`} />
         </div>
-        <button className={`pause-button ${state.paused ? "paused" : ""}`} onClick={() => controller.togglePause()} data-testid="pause-button">
+        <button className={`pause-button ${state.paused ? "paused" : ""}`} onClick={() => controller.togglePause()} data-testid="pause-button" title="快捷键 P">
           {state.paused ? "▶ 继续" : "Ⅱ 暂停"}
         </button>
+        <div className="speed-controls" role="group" aria-label="运行速度">
+          {GameController.SPEED_PRESETS.map((speed, index) => <button
+            key={speed}
+            className={controller.getSpeedMultiplier() === speed ? "active" : ""}
+            onClick={() => controller.setSpeed(speed)}
+            data-testid={`speed-${speed}x`}
+            title={`快捷键 ${index + 1}`}
+          >{speed}x</button>)}
+        </div>
         <button className={`expand-button ${expansionMode ? "active" : ""}`} onClick={() => {
           setPlacingBuildingItemId(null);
           setPlacingLandmarkId(null);
@@ -194,7 +225,12 @@ export function App() {
               }}
               onCancelLandmarkPlacement={() => { setPlacingLandmarkId(null); setLandmarkFeedback(null); }}
             />}
-            {panel === "cat" && <Inspector cat={selectedCat} controller={controller} totalItems={selectedInventoryCount} />}
+            {panel === "cat" && <Inspector
+              cat={selectedCat}
+              controller={controller}
+              totalItems={selectedInventoryCount}
+              onRemoved={() => setSelectedCatId(controller.state.cats[0]?.id ?? "")}
+            />}
           </div>
           <footer className="side-footer">
             <button onClick={async () => {
@@ -221,6 +257,7 @@ function Metric({ label, value, accent = false }: { label: string; value: string
 
 function renderGameToText(
   state: GameController["state"],
+  speedMultiplier: number,
   selectedCatId: string,
   placingBuildingItemId: string | null,
   placementFeedback: PlacementFeedback | null,
@@ -237,6 +274,8 @@ function renderGameToText(
     simTimeMs: Math.round(state.simTime),
     difficulty: DIFFICULTY_PROFILES[state.difficulty],
     paused: state.paused,
+    runtimeSpeedMultiplier: speedMultiplier,
+    speedShortcuts: { "1": "1x", "2": "2x", "3": "4x", "4": "8x", p: "pause" },
     treasuryCents: state.treasuryCoins,
     personalCashCents: state.cats.reduce((sum, cat) => sum + cat.coins, 0),
     totalDebtCents: state.cats.reduce((sum, cat) => sum + cat.debtCents, 0),
@@ -353,6 +392,7 @@ function renderGameToText(
       position: cat.position,
       cashCents: cat.coins,
       debtCents: cat.debtCents,
+      liquidation: catLiquidationPreview(state, cat),
       escrowReservedCents: cat.escrowReservedCents,
       netWorthCents: netWorthCents(state, cat, (itemId) => itemPrice(state, itemId)),
       creditAvailableCents: creditAvailableCents(state, cat, (itemId) => itemPrice(state, itemId)),
@@ -392,4 +432,14 @@ function renderGameToText(
     catalogInventory: Object.fromEntries(state.discoveredItems.map((id) => [id, inventoryTotal(state, id)])),
     itemStats: Object.fromEntries(state.discoveredItems.map((id) => [id, state.itemStats[id]])),
   });
+}
+
+function catLiquidationPreview(state: GameController["state"], cat: GameController["state"]["cats"][number]) {
+  const inventory = { ...cat.inventory };
+  for (const [itemId, quantity] of Object.entries(cat.action?.reserved ?? {})) inventory[itemId] = (inventory[itemId] ?? 0) + quantity;
+  const stockCents = Object.entries(inventory).reduce((sum, [itemId, quantity]) => (
+    sum + Math.max(0, quantity) * externalNetCentsAt(state, itemId, (id) => itemPrice(state, id), cat)
+  ), 0);
+  const assetsCents = cat.coins + stockCents;
+  return { assetsCents, debtRepaidCents: cat.debtCents, treasuryDeltaCents: assetsCents - cat.debtCents };
 }
