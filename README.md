@@ -4,6 +4,12 @@
 
 当前版本：`0.10.0`
 
+## Windows 下载即玩
+
+### [⬇️ 下载 CatWorkshop.exe](https://github.com/TingJShen/CatLaw2/releases/latest/download/CatWorkshop.exe)
+
+下载后双击即可运行，不需要安装 Node.js、npm 或浏览器。完整发布页与 SHA-256 校验文件见 [Releases](https://github.com/TingJShen/CatLaw2/releases/latest)。
+
 - 65 种商品通用玩家仓库
 - 五档累计难度与空间工业建筑
 - React + TypeScript + Vite + Canvas 2D
