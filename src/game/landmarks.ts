@@ -45,6 +45,12 @@ export const LANDMARK_DEFINITIONS: readonly LandmarkDefinition[] = [
 export const LANDMARK_BY_ID = new Map(LANDMARK_DEFINITIONS.map((definition) => [definition.id, definition]));
 export const MAX_LANDMARK_RADIUS = 5;
 export type LandmarkSpatialIndex = ReadonlyMap<string, readonly DeployedLandmark[]>;
+const spatialIndexCache = new WeakMap<GameState, {
+  source: DeployedLandmark[];
+  length: number;
+  nextLandmarkIndex: number;
+  index: LandmarkSpatialIndex;
+}>();
 
 const emptyStacks = (): Record<LandmarkId, number> => Object.fromEntries(
   LANDMARK_DEFINITIONS.map((definition) => [definition.id, 0]),
@@ -61,6 +67,22 @@ export function createLandmarkSpatialIndex(state: GameState): LandmarkSpatialInd
   return mutable;
 }
 
+function cachedLandmarkSpatialIndex(state: GameState): LandmarkSpatialIndex {
+  const cached = spatialIndexCache.get(state);
+  if (cached
+    && cached.source === state.landmarks
+    && cached.length === state.landmarks.length
+    && cached.nextLandmarkIndex === state.nextLandmarkIndex) return cached.index;
+  const index = createLandmarkSpatialIndex(state);
+  spatialIndexCache.set(state, {
+    source: state.landmarks,
+    length: state.landmarks.length,
+    nextLandmarkIndex: state.nextLandmarkIndex,
+    index,
+  });
+  return index;
+}
+
 export function landmarkEffectsAt(
   state: GameState,
   position: Position,
@@ -73,15 +95,12 @@ export function landmarkEffectsAt(
     const distance = Math.abs(position.x - landmark.position.x) + Math.abs(position.y - landmark.position.y);
     if (distance <= definition.radius) stacks[definition.id] = Math.min(3, stacks[definition.id] + 1);
   };
-  if (index) {
-    for (let dy = -MAX_LANDMARK_RADIUS; dy <= MAX_LANDMARK_RADIUS; dy += 1) {
-      const width = MAX_LANDMARK_RADIUS - Math.abs(dy);
-      for (let dx = -width; dx <= width; dx += 1) {
-        for (const landmark of index.get(`${position.x + dx},${position.y + dy}`) ?? []) consider(landmark);
-      }
+  const spatialIndex = index ?? cachedLandmarkSpatialIndex(state);
+  for (let dy = -MAX_LANDMARK_RADIUS; dy <= MAX_LANDMARK_RADIUS; dy += 1) {
+    const width = MAX_LANDMARK_RADIUS - Math.abs(dy);
+    for (let dx = -width; dx <= width; dx += 1) {
+      for (const landmark of spatialIndex.get(`${position.x + dx},${position.y + dy}`) ?? []) consider(landmark);
     }
-  } else {
-    for (const landmark of state.landmarks) consider(landmark);
   }
   const totals = {
     actionSpeedReduction: 0,
