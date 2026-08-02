@@ -17,7 +17,7 @@
 - Electron Windows 桌面版
 - Express DeepSeek 法条编译代理
 
-完整中文说明请打开 [README.html](README.html)。
+完整中文说明请打开 [README.html](README.html)，逐步点击操作见 [CatWorkshop-Operation-Guide.html](CatWorkshop-Operation-Guide.html)。
 
 ```powershell
 npm install

@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>猫咪工坊 0.11.0 · 具体操作指南</title>
+  <style>
+    :root { color-scheme:light; --ink:#182230; --muted:#667085; --paper:#fff; --soft:#f7faf8; --line:#dde5e0; --green:#347853; --green2:#eaf6ef; --gold:#a36b08; --gold2:#fff7df; --blue:#2468a8; --danger:#a83b32; }
+    * { box-sizing:border-box; }
+    html { scroll-behavior:smooth; }
+    body { margin:0; color:var(--ink); background:#eef3f0; font:15px/1.7 system-ui,"Microsoft YaHei",sans-serif; }
+    a { color:var(--blue); }
+    code,kbd { font-family:ui-monospace,SFMono-Regular,Consolas,monospace; }
+    kbd { padding:2px 7px; background:#fff; border:1px solid #c9d2cc; border-bottom-width:2px; border-radius:5px; }
+    .layout { display:grid; grid-template-columns:260px minmax(0,920px); gap:24px; width:min(1220px,calc(100% - 32px)); margin:24px auto; align-items:start; }
+    nav { position:sticky; top:20px; padding:20px; background:var(--paper); border:1px solid var(--line); border-radius:16px; box-shadow:0 8px 24px rgba(20,40,30,.06); }
+    nav strong { display:block; margin-bottom:10px; color:var(--green); font-size:17px; }
+    nav a { display:block; padding:6px 8px; color:#475467; text-decoration:none; border-radius:7px; }
+    nav a:hover { color:var(--green); background:var(--green2); }
+    main { padding:clamp(24px,5vw,54px); background:var(--paper); border:1px solid var(--line); border-radius:18px; box-shadow:0 12px 34px rgba(20,40,30,.07); }
+    h1,h2,h3 { line-height:1.25; scroll-margin-top:24px; }
+    h1 { margin:0; font-size:clamp(34px,6vw,58px); }
+    h2 { margin:48px 0 16px; padding-bottom:9px; border-bottom:1px solid var(--line); font-size:25px; }
+    h3 { margin:26px 0 8px; font-size:18px; }
+    .badge { display:inline-block; margin-bottom:12px; padding:5px 11px; color:var(--green); background:var(--green2); border:1px solid #b9dcc5; border-radius:7px; font-size:13px; font-weight:700; }
+    .lead { max-width:760px; color:var(--muted); font-size:18px; }
+    .quick { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin:24px 0; }
+    .quick div { position:relative; min-height:116px; padding:15px; background:var(--soft); border:1px solid var(--line); border-radius:12px; }
+    .quick b { display:block; margin-bottom:5px; color:var(--green); }
+    .quick span { color:var(--muted); font-size:13px; }
+    .steps { counter-reset:step; display:grid; gap:12px; padding:0; list-style:none; }
+    .steps li { position:relative; padding:15px 18px 15px 58px; background:var(--soft); border:1px solid var(--line); border-radius:12px; }
+    .steps li::before { counter-increment:step; content:counter(step); position:absolute; left:17px; top:15px; width:27px; height:27px; display:grid; place-items:center; color:#fff; background:var(--green); border-radius:50%; font-weight:800; }
+    .steps strong { color:var(--green); }
+    .note,.warn,.ok { margin:15px 0; padding:14px 16px; border-radius:9px; }
+    .note { background:#f0f6fb; border-left:5px solid var(--blue); }
+    .warn { background:var(--gold2); border-left:5px solid var(--gold); }
+    .ok { background:var(--green2); border-left:5px solid var(--green); }
+    table { width:100%; border-collapse:collapse; margin:12px 0; font-size:14px; }
+    th,td { padding:10px 11px; text-align:left; vertical-align:top; border-bottom:1px solid var(--line); }
+    th { color:var(--green); background:var(--soft); }
+    .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:12px; }
+    .card { padding:16px; background:var(--soft); border:1px solid var(--line); border-radius:12px; }
+    .card strong { display:block; margin-bottom:4px; color:var(--green); }
+    .path { display:flex; flex-wrap:wrap; gap:7px; align-items:center; margin:12px 0; }
+    .path span { padding:4px 9px; background:var(--green2); border:1px solid #c5dfcf; border-radius:999px; font-weight:700; }
+    .path i { color:#98a2b3; font-style:normal; }
+    .check { padding-left:0; list-style:none; }
+    .check li { margin:7px 0; }
+    .check li::before { content:"✓"; margin-right:8px; color:var(--green); font-weight:900; }
+    footer { margin-top:48px; padding-top:18px; color:var(--muted); border-top:1px solid var(--line); }
+    @media (max-width:900px) { .layout { display:block; } nav { position:static; margin-bottom:16px; columns:2; } nav strong { column-span:all; } .quick { grid-template-columns:1fr 1fr; } }
+    @media (max-width:560px) { .layout { width:min(100% - 16px,920px); margin:8px auto; } main,nav { border-radius:12px; } nav { columns:1; } .quick { grid-template-columns:1fr; } table { display:block; overflow-x:auto; } }
+    @media print { body { background:#fff; } .layout { display:block; width:100%; margin:0; } nav { display:none; } main { padding:0; border:0; box-shadow:none; } h2 { break-after:avoid; } .card,.steps li,table { break-inside:avoid; } }
+  </style>
+</head>
+<body>
+<div class="layout">
+  <nav aria-label="目录">
+    <strong>操作目录</strong>
+    <a href="#start">1. 下载与启动</a>
+    <a href="#screen">2. 界面怎么认</a>
+    <a href="#canvas">3. 地图操作</a>
+    <a href="#first15">4. 白手起家到第 15 项</a>
+    <a href="#laws">5. 制定法条</a>
+    <a href="#warehouse">6. 仓库收购</a>
+    <a href="#land">7. 开拓与工业建筑</a>
+    <a href="#landmarks">8. 地标完整操作</a>
+    <a href="#inspector">9. 猫咪检查器</a>
+    <a href="#save">10. 存档与按键</a>
+    <a href="#trouble">11. 故障排查</a>
+  </nav>
+
+  <main>
+    <span class="badge">0.11.0 · 离线可读 · 中文逐步说明</span>
+    <h1>🐾 猫咪工坊<br>具体操作指南</h1>
+    <p class="lead">这份页面只讲“点哪里、看什么、下一步做什么”。游戏没有强制终局；造出星门后仍可继续经营。</p>
+
+    <div class="quick" aria-label="五步快速流程">
+      <div><b>① 让猫开工</b><span>新档已有 11 只猫和开局法，先观察前 9 项自动生产。</span></div>
+      <div><b>② 解锁配方</b><span>进入“配方图”，用国库逐项购买第 10–15 项。</span></div>
+      <div><b>③ 调价格/税</b><span>进入“法典”，生成、检查并颁布自然语言法规。</span></div>
+      <div><b>④ 收购与建设</b><span>进入“仓库”，把猫咪闲置现货买入玩家仓库。</span></div>
+      <div><b>⑤ 地标加成</b><span>买永久图纸，备齐仓库建材，选普通空地落成。</span></div>
+    </div>
+
+    <section id="start">
+      <h2>1. 下载与启动</h2>
+      <ol class="steps">
+        <li><strong>下载游戏。</strong>打开 <a href="https://github.com/TingJShen/CatLaw2/releases/latest/download/CatWorkshop.exe">CatWorkshop.exe</a>，保存到任意可写文件夹。</li>
+        <li><strong>可选：核对校验值。</strong>同一发布页下载 <code>CatWorkshop.exe.sha256</code>，PowerShell 运行 <code>Get-FileHash .\CatWorkshop.exe -Algorithm SHA256</code>，结果应与校验文件一致。</li>
+        <li><strong>双击启动。</strong>便携版会准备内置 Electron 运行时，通常约 8 秒显示“猫咪工坊 · 法条驱动沙盒”窗口，不需要安装 Node.js。</li>
+        <li><strong>选择难度。</strong>右上角默认是“3 · 空间工业”。难度下拉框会重建并清空当前工坊，所以只在开局选择。</li>
+      </ol>
+      <div class="warn"><strong>DeepSeek 密钥：</strong>游戏无密钥也能用内置演示编译器。若要调用真实模型，把已经轮换的新密钥放在 EXE 同目录的 <code>.env</code>；不要把聊天中出现过的旧密钥继续使用。</div>
+    </section>
+
+    <section id="screen">
+      <h2>2. 界面怎么认</h2>
+      <table>
+        <thead><tr><th>区域</th><th>你会看到</th><th>主要用途</th></tr></thead>
+        <tbody>
+          <tr><td>顶栏</td><td>国库、猫咪现金、产值、工作中数量、暂停、开拓、难度</td><td>看总体经济，暂停模拟，购买相邻地块。</td></tr>
+          <tr><td>中央画布</td><td>等距地块、猫、资源中心、建筑、地标、动作进度环</td><td>平移缩放、放猫、选猫、选址建设。</td></tr>
+          <tr><td>法典</td><td>新法条、生成预览、现行法典</td><td>制定行为法、价格法、税法并调整优先级。</td></tr>
+          <tr><td>配方图</td><td>65 项商品、配方、解锁条件和价格</td><td>了解科技链并花国库购买配方。</td></tr>
+          <tr><td>仓库</td><td>地标工程、65 种商品货架、工业建筑</td><td>从猫咪收购闲置商品，建建筑和地标。</td></tr>
+          <tr><td>猫咪</td><td>地标加成、资产、市场、行动</td><td>排查某只猫为什么做或不做某件事。</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="canvas">
+      <h2>3. 地图操作</h2>
+      <div class="cards">
+        <div class="card"><strong>平移与缩放</strong>在画布按住鼠标左键拖动；滚轮缩放。缩放后坐标命中仍保持准确。</div>
+        <div class="card"><strong>放置新猫</strong>把鼠标移到已开拓的合法空格，出现绿色工位预览后单击；也可在当前预览格按空格。</div>
+        <div class="card"><strong>选择猫</strong>直接点击猫，右侧自动切到“猫咪”，显示它的私有现金、债务、库存、合同和地标覆盖。</div>
+        <div class="card"><strong>资源格</strong>资源 Emoji 所在中心不能放猫；周围 8 个彩色格可以放猫，并采集对应基础资源。</div>
+      </div>
+      <div class="note">坐标规则：第一只猫位于 <code>(0,0)</code>；画面右下方向为 <code>x+1</code>，左下方向为 <code>y+1</code>。传递只发生在上下左右相邻猫之间。</div>
+    </section>
+
+    <section id="first15">
+      <h2>4. 白手起家到第 15 项</h2>
+      <ol class="steps">
+        <li><strong>先不操作，观察开局。</strong>11 只预制猫会采集并制造木材到砖等前 9 项。头顶进度环走满表示动作结算，<code>+1</code> 表示完成或收到物品。</li>
+        <li><strong>看国库增长。</strong>猫咪外部销售后，开局销售税会把一部分收入送入国库；猫咪现金仍归猫自己。</li>
+        <li><strong>打开“配方图”。</strong>找到第 10–15 项：线、纸、工具、玻璃、金属、齿轮。按钮显示“解锁 · 金额”时，用国库逐项购买。</li>
+        <li><strong>每次解锁后继续运行。</strong>教学目标会自动推进，直到齿轮首次制造完成；不需要玩家注入物品或手工控制单只猫。</li>
+        <li><strong>第 16 项起主动干预。</strong>线缆到工厂会遇到设计好的市场门槛。用价格法提高目标商品收益，再继续解锁和建设。</li>
+      </ol>
+      <div class="path"><span>前 9 项自动</span><i>→</i><span>国库买 10–15 配方</span><i>→</i><span>完成六项产业认证</span><i>→</i><span>价格法推动 16+</span></div>
+    </section>
+
+    <section id="laws">
+      <h2>5. 制定法条</h2>
+      <ol class="steps">
+        <li><strong>进入“法典”。</strong>在“新法条”输入自然语言，或先点示例按钮填入一条可修改的模板。</li>
+        <li><strong>点“生成法条”。</strong>等待摘要、源码、样例与安全校验出现。生成失败不会收费，也不会改变现行法典。</li>
+        <li><strong>检查预览。</strong>确认它属于你想要的行为、价格或税收规则；安全和语法必须都通过。</li>
+        <li><strong>点“颁布”。</strong>前 5 次成功颁布免费；之后第 6、7、8 次分别花 5、10、15 金币。新行为版本影响所有猫的下一次决策，不中断在途动作。</li>
+        <li><strong>管理现行法。</strong>用 <code>↑</code>/<code>↓</code> 免费改优先级；“修”会生成新版本并计一次颁布；“废”花 5 金币且不退款。锁定系统法不能改。</li>
+      </ol>
+      <h3>可直接尝试的三条法</h3>
+      <div class="cards">
+        <div class="card"><strong>价格引导</strong>“把线缆的基础价格提高 100%。”用于推动第 16 项后的盈利判断。</div>
+        <div class="card"><strong>国库税收</strong>“对所有外部销售收入征收 80% 的税，税款进入国库。”税只作用于外部销售。</div>
+        <div class="card"><strong>行为偏好</strong>“如果听到木材订单，就把制作木材的候选评分提高 3 倍，否则按局部收益行动。”</div>
+      </div>
+      <div class="warn">价格法先修正外部售价，商贸中心再乘地标加成，最后才计算税。仓库收购、建筑报价和首次发现悬赏不吃商贸中心加价。</div>
+    </section>
+
+    <section id="warehouse">
+      <h2>6. 仓库收购商品</h2>
+      <ol class="steps">
+        <li><strong>打开“仓库”。</strong>向下滚动可看到按 9 个时代排列的全部 65 个货架。</li>
+        <li><strong>看三项数字。</strong>每张卡显示“仓库 ×数量”“猫咪现货”和“最低价格”。“暂无现货”表示没有未被动作、计划、合同或建筑报价占用的商品。</li>
+        <li><strong>点“收购 1 件”。</strong>国库立即付款给报价最低的确定性卖家；卖家先还债，余款进入猫咪私有现金；商品进入玩家仓库。</li>
+        <li><strong>重复收购备料。</strong>地标材料完全从玩家仓库扣除。只是“猫咪库存里有”不算玩家已持有。</li>
+      </ol>
+      <div class="note">玩家仓库与猫咪私产严格分开。仓库收购不算外部销售、不收销售税，也不会拿走猫咪已预约的生产原料或托运货物。</div>
+    </section>
+
+    <section id="land">
+      <h2>7. 开拓土地与放置工业建筑</h2>
+      <h3>开拓相邻 9×9 地块</h3>
+      <ol class="steps">
+        <li><strong>点顶栏“开拓”。</strong>画布出现与已拥有土地四邻相接的候选地块及价格。</li>
+        <li><strong>点击目标候选地块。</strong>国库足够时立即购买；再点“退出开拓”或按 <kbd>Esc</kbd> 取消模式。</li>
+      </ol>
+      <h3>放置工厂、机床、天线、实验室、反应堆</h3>
+      <ol class="steps">
+        <li><strong>等猫咪挂牌，再从仓库收购建筑商品。</strong>收购后对应货架出现“放置”。</li>
+        <li><strong>点“放置”。</strong>画布显示该建筑作用范围；移动鼠标寻找合法普通空地，红色格不可放。</li>
+        <li><strong>单击确认。</strong>建筑从仓库移到地面。失败或取消不会丢失库存；“已放置建筑”列表中的“拆除”会把整栋建筑退回仓库。</li>
+      </ol>
+      <div class="warn">工业建筑和地标不是一回事。地标不满足工厂、机床、天线、实验室或反应堆的配方场地要求。</div>
+    </section>
+
+    <section id="landmarks">
+      <h2>8. 地标工程完整操作</h2>
+      <ol class="steps">
+        <li><strong>先完成“曾发现”门槛。</strong>进入“仓库”顶部的“地标工程”。某张卡显示“待发现 N”时，需要先让所有列出的建材至少被制造或获得过一次。</li>
+        <li><strong>购买图纸。</strong>门槛满足且国库足够后，点“图纸 金额”。图纸永久解锁，重复购买无效，拆除也不会让图纸消失。</li>
+        <li><strong>把每种建材买进玩家仓库。</strong>卡片上的 <code>当前库存/需求</code> 全部达到要求后，“建造”按钮才可用。</li>
+        <li><strong>点“建造”进入选址。</strong>画布显示曼哈顿菱形作用范围；把鼠标移到已开拓普通空地。</li>
+        <li><strong>单击合法格落成。</strong>成功时一次性扣除全部材料并立即生效。点击非法格、按 <kbd>Esc</kbd> 或点“取消选址”都不扣材料。</li>
+        <li><strong>检查加成。</strong>点击范围内的猫，在“猫咪 → 地标加成”查看覆盖类型、层数、总速度、视野、售价、信用和中转费。</li>
+        <li><strong>需要时拆除。</strong>在“已建地标”列表点“拆除”。每项材料返还 <code>floor(原数量÷2)</code> 到玩家仓库，图纸保留。</li>
+      </ol>
+
+      <table>
+        <thead><tr><th>地标</th><th>仓库建材</th><th>图纸</th><th>单层效果</th></tr></thead>
+        <tbody>
+          <tr><td>⛲ 创业广场</td><td>石料×6、木板×2、工具×1</td><td>10 金币</td><td>半径2；全部动作 +10% 速度</td></tr>
+          <tr><td>🏛️ 工匠学院</td><td>砖×4、纸×4、工具×2、玻璃×2</td><td>30 金币</td><td>半径3；制作 +20% 速度</td></tr>
+          <tr><td>🚉 物流枢纽</td><td>底盘×4、车轮×4、燃料×2、无线电×1</td><td>158 金币</td><td>半径4；传递 +25%，中转费 +20%</td></tr>
+          <tr><td>🏦 商贸中心</td><td>砖×6、显示器×2、无线电×2、计算机×1</td><td>317 金币</td><td>半径3；外部售价 +15%，信用 +25 金币</td></tr>
+          <tr><td>⚡ 能源尖塔</td><td>电池×6、线缆×4、控制器×2、太阳能阵列×2</td><td>190 金币</td><td>半径4；制作和传递 +15% 速度</td></tr>
+          <tr><td>🗼 量子信标</td><td>卫星×2、AI核心×2、量子传感器×1、超导体×2</td><td>2870 金币</td><td>半径5；观察半径 +1，全部动作 +5% 速度</td></tr>
+        </tbody>
+      </table>
+
+      <h3>合法选址条件</h3>
+      <ul class="check">
+        <li>坐标是已开拓土地内的整数格。</li>
+        <li>格上没有猫、工业建筑、资源中心、资源采集格或其他地标。</li>
+        <li>图纸已经购买，玩家仓库中的每种材料都足量。</li>
+      </ul>
+      <div class="ok">同类地标的范围可以重叠，但每只猫最多计算 3 层；不同类型相加。总速度最高 60%，动作最短 2 秒；视野最高半径 5。加成在新动作/合同开始时锁定，中途建造或拆除不改正在执行的动作。</div>
+    </section>
+
+    <section id="inspector">
+      <h2>9. 猫咪检查器怎么读</h2>
+      <div class="cards">
+        <div class="card"><strong>地标加成</strong>确认这只猫被哪些地标覆盖、各有几层，以及合计后的有效数值。</div>
+        <div class="card"><strong>资产</strong>现金和库存属于这只猫；债务会从后续收入优先偿还；可用信用受难度与商贸中心影响。</div>
+        <div class="card"><strong>市场</strong>查看自己的订单、听到的全局广播、运输合同与正在携带的托运物。</div>
+        <div class="card"><strong>行动</strong>查看当前制作/传递/出售、剩余毫秒、最后一次法条决策和候选评分线索。</div>
+      </div>
+      <div class="note">若猫长期待机，依次检查：配方是否解锁、原料是否在它的局部视野/自身库存、目标是否有正收益、场地建筑是否满足、相邻猫链和信用是否足够。</div>
+    </section>
+
+    <section id="save">
+      <h2>10. 存档、暂停和快捷键</h2>
+      <table>
+        <thead><tr><th>操作</th><th>效果</th></tr></thead>
+        <tbody>
+          <tr><td>顶栏“Ⅱ 暂停 / ▶ 继续”</td><td>暂停或恢复模拟。</td></tr>
+          <tr><td><kbd>F</kbd></td><td>切换全屏；输入法条时不会误触。</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td>退出全屏，或取消开拓、建筑放置、地标选址。</td></tr>
+          <tr><td>自动存档</td><td>保存在本机 IndexedDB；切到后台时暂停，不结算离线产量。</td></tr>
+          <tr><td>右侧底部“清空存档”</td><td>确认后重建当前难度的新工坊，不能撤销。</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="trouble">
+      <h2>11. 常见问题与排查</h2>
+      <table>
+        <thead><tr><th>现象</th><th>处理</th></tr></thead>
+        <tbody>
+          <tr><td>双击后没有马上出现窗口</td><td>等待约 8–15 秒；不要连续双击。确认没有旧的“猫咪工坊”进程占用本地端口。</td></tr>
+          <tr><td>Windows 提示未知发布者</td><td>先用发布页 SHA-256 核对文件；确认来源是本项目 Release 后，再按系统提示决定是否运行。</td></tr>
+          <tr><td>图纸按钮显示“待发现”</td><td>这是永久发现门槛，不是仓库数量。先解锁并实际获得卡片列出的每种材料。</td></tr>
+          <tr><td>“建造”显示缺料</td><td>到对应商品货架收购；猫咪私有库存不等于玩家仓库。</td></tr>
+          <tr><td>选址点了没扣料也没落成</td><td>该格被猫、资源区、工业建筑或地标占用，或不在已开拓土地内。换普通空地即可；失败是原子的。</td></tr>
+          <tr><td>仓库一直“暂无现货”</td><td>商品可能尚未产出，或已被生产计划/订单/合同/建筑报价预约。提高产量或等待订单结算。</td></tr>
+          <tr><td>生成法条超时/坏 JSON</td><td>草案会保留且不收费；检查网络与 EXE 同目录的 <code>.env</code>，再重试。已有法典和模拟不受影响。</td></tr>
+          <tr><td>地标建好但当前动作没变快</td><td>速度在动作开始时锁定；等当前动作结束，下一动作才采用新加成。</td></tr>
+        </tbody>
+      </table>
+      <p>完整机制与开发说明见 <a href="README.html">README.html</a>；全部配方依赖见 <a href="CatWorkshop-RecipeFlow.html">65 项配方一图流</a>。</p>
+    </section>
+
+    <footer>猫咪工坊 0.11.0 · 玩家地标工程操作指南 · 可直接保存、离线打开或打印</footer>
+  </main>
+</div>
+</body>
+</html>
