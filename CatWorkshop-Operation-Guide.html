@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>猫咪工坊 0.11.0 · 具体操作指南</title>
+  <title>猫咪工坊 0.11.1 · 具体操作指南</title>
   <style>
     :root { color-scheme:light; --ink:#182230; --muted:#667085; --paper:#fff; --soft:#f7faf8; --line:#dde5e0; --green:#347853; --green2:#eaf6ef; --gold:#a36b08; --gold2:#fff7df; --blue:#2468a8; --danger:#a83b32; }
     * { box-sizing:border-box; }
@@ -72,7 +72,7 @@
   </nav>
 
   <main>
-    <span class="badge">0.11.0 · 离线可读 · 中文逐步说明</span>
+    <span class="badge">0.11.1 · 离线可读 · 中文逐步说明</span>
     <h1>🐾 猫咪工坊<br>具体操作指南</h1>
     <p class="lead">这份页面只讲“点哪里、看什么、下一步做什么”。游戏没有强制终局；造出星门后仍可继续经营。</p>
 
@@ -128,7 +128,7 @@
         <li><strong>看国库增长。</strong>猫咪外部销售后，开局销售税会把一部分收入送入国库；猫咪现金仍归猫自己。</li>
         <li><strong>打开“配方图”。</strong>找到第 10–15 项：线、纸、工具、玻璃、金属、齿轮。按钮显示“解锁 · 金额”时，用国库逐项购买。</li>
         <li><strong>每次解锁后继续运行。</strong>教学目标会自动推进，直到齿轮首次制造完成；不需要玩家注入物品或手工控制单只猫。</li>
-        <li><strong>第 16 项起主动干预。</strong>线缆到工厂会遇到设计好的市场门槛。可用全品类 ×1.01 价格法满足悬赏准入；第 22–30 项改用读取开放订单、补料和留存的物流行为法，避免逐项高价扭曲信用与订单成本。</li>
+        <li><strong>第 16 项起主动干预。</strong>线缆到工厂会遇到设计好的市场门槛。可用全品类 ×1.01 价格法满足悬赏准入；第 22–30 项改用读取开放订单、补料和留存的物流行为法。此阶段高于基础价的溢价会按 150% 传导到现有配料订单，逐项 ×2 会同步提高保证金与信用占用。</li>
       </ol>
       <div class="path"><span>前 9 项自动</span><i>→</i><span>国库买 10–15 配方</span><i>→</i><span>×1.01 打开 16+ 准入</span><i>→</i><span>物流法推动 22–30</span></div>
     </section>
@@ -145,6 +145,7 @@
       <h3>可直接尝试的四条法</h3>
       <div class="cards">
         <div class="card"><strong>最低价格准入</strong>“把全部商品价格提高 1%。”只用于打开第 16 项后的悬赏认领，不负责物流调度。</div>
+        <div class="card"><strong>不要用高价代替物流</strong>难度 5 的第 22–30 项会把售价溢价传给配料订单。配方卡会显示“配料作业报价合计”；若它高于目标猫现金与可用信用之和，应留存材料、完成在途合同或改善猫链，而不是继续加价。</div>
         <div class="card"><strong>订单物流</strong>“有开放订单时优先制作订单所需物品并留存关键中间品；磁铁到显示器按机械、电气、电子缺口补料。”用于推动第 22–30 项。</div>
         <div class="card"><strong>国库税收</strong>“对所有外部销售收入征收 80% 的税，税款进入国库。”税只作用于外部销售。</div>
         <div class="card"><strong>行为偏好</strong>“如果听到木材订单，就把制作木材的候选评分提高 3 倍，否则按局部收益行动。”</div>
@@ -255,7 +256,7 @@
       <p>完整机制与开发说明见 <a href="README.html">README.html</a>；最高难度 5 的前 35 项真实操作、法规、费用与坐标见 <a href="CatWorkshop-Difficulty5-35-Operation.html">35 商品具体操作档案</a>；全部配方依赖见 <a href="CatWorkshop-RecipeFlow.html">65 项配方一图流</a>。</p>
     </section>
 
-    <footer>猫咪工坊 0.11.0 · 玩家地标工程操作指南 · 可直接保存、离线打开或打印</footer>
+    <footer>猫咪工坊 0.11.1 · 玩家地标工程操作指南 · 可直接保存、离线打开或打印</footer>
   </main>
 </div>
 </body>

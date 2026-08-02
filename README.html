@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>猫咪工坊 0.11.0 · 项目说明</title>
+  <title>猫咪工坊 0.11.1 · 项目说明</title>
   <style>
     :root { color-scheme: light; --ink:#172033; --muted:#667085; --paper:#fff; --card:#f8faf9; --line:#dfe4e1; --accent:#c58b1b; --green:#3f8f5d; }
     * { box-sizing: border-box; }
@@ -28,7 +28,7 @@
 </head>
 <body>
 <main>
-  <span class="badge">0.11.0 · 玩家地标工程 · 快速启动</span>
+  <span class="badge">0.11.1 · 订单价格反馈 · 快速启动</span>
   <h1>🐾 猫咪工坊</h1>
   <p class="lead">一款逻辑法驱动的空间自动化制造沙盒。每只猫都短视且利己：基础只观察两格内工位，却能署名发布全局即时广播；玩家既可通过自然语言修改共享决策逻辑，也可把仓库商品建成覆盖周边工位的地标。</p>
 
@@ -112,13 +112,15 @@
     <div class="card"><strong>全体共用一份逻辑</strong>行为法颁布后替换上一版共享函数；正在进行的 5 秒动作不被打断，旧版进入历史。</div>
     <div class="card"><strong>DeepSeek 自选决策位置</strong>生成逻辑可以直接返回动作、使用条件分支、在中间修改某类或某商品候选的评分，或混合这些方式，不强制固定模板。</div>
     <div class="card"><strong>价格也参与评分</strong>价格条例决定实际售价，本地贪心把售价、制作工作量、运输距离和现场需求折成候选基础分。</div>
+    <div class="card"><strong>22–30 的价格瓶颈</strong>难度 5 中，售价高出基础价的部分会按 150% 分摊进现有配料订单报价。玩家仍可自由设 ×2、×10 或任意价格；但高价也会抬高订单保证金和信用占用，不能凭空补齐分散库存。</div>
+    <div class="card"><strong>物流法规降低缺料作业</strong>留存中间品、响应开放订单和逐格交付都沿用既有库存与合同系统。目标猫已经持有的材料不会再下单，因此物流组织会直接减少报价、保证金和等待中的配料作业。</div>
     <div class="card"><strong>局部递归自供给</strong>猫锁定盈利计划或听到订单后，可沿已解锁配方递归补做自己当前缺少的中间原料；它只使用自身库存和两格观察，不读取远方库存，也不替全局指定生产者。</div>
     <div class="card"><strong>税收循环</strong>销售收入归卖方猫；税法把部分收入划入国库，国库用于解锁配方、颁布及废止法条。</div>
     <div class="card"><strong>分币与信用</strong>一金币等于 100 分，全部内部账目使用整数分。信用额度为当前难度的基础信用加保守净资产；贷款收 2% 且至少 1 分，后续收入优先还债。</div>
     <div class="card"><strong>不可绕过的利己门槛</strong>DeepSeek 可自由修改直接动作或中间评分，但无合同传递、亏损制作、税后亏损出售和超额信用都会被引擎拒绝。</div>
   </div>
   <p><a href="CatWorkshop-Operation-Guide.html"><strong>打开“具体操作指南”</strong></a>：按真实界面逐步说明启动、白手起家、制定法条、仓库收购、工业建筑、地标选址与故障排查。</p>
-  <p><a href="CatWorkshop-Difficulty5-35-Operation.html"><strong>打开“最高难度 5 · 35 商品具体操作档案”</strong></a>：真实种子 1、极限物流难度；第 22–30 项不再逐项 ×2，而是用最低 ×1.01 悬赏准入和订单物流法规推进。页面包含全部操作、费用、新增猫坐标、三座工业设施位置和 35 项逐项结果。</p>
+  <p><a href="CatWorkshop-Difficulty5-35-Operation.html"><strong>打开“最高难度 5 · 35 商品具体操作档案”</strong></a>：真实种子 1、极限物流难度；第 22–30 项不再逐项 ×2，而是用最低 ×1.01 悬赏准入和订单物流法规推进。档案同时解释为什么直接抬价会把溢价传导到配料作业报价，并列出全部操作、费用、猫坐标、工业设施和 35 项结果。</p>
   <p><a href="CatWorkshop-RecipeFlow.html">打开“65 项配方一图流”</a>：使用大间距独立轨道展示全部原料到成品的生成关系，支持搜索、拖拽、缩放和节点聚焦。</p>
 
   <h2>三阶段 35 项验收</h2>
@@ -141,7 +143,7 @@ npm run dev</code></pre>
 
   <h2>Windows 桌面版</h2>
   <p><a href="https://github.com/TingJShen/CatLaw2/releases/latest/download/CatWorkshop.exe"><strong>⬇️ 下载 CatWorkshop.exe（Windows 64 位，下载后双击即玩）</strong></a></p>
-  <p>运行 <code>release/CatWorkshop.exe</code> 即可直接打开游戏，不需要另行启动 npm、Vite 或浏览器。0.11.0 继续使用免压缩便携载荷，避免单文件 EXE 首次启动长时间无窗口。该 EXE 已注册为 Codex Toolbox 中的“猫咪工坊”。如需真实 DeepSeek 编译，把未提交的 <code>.env</code> 放在 EXE 同一目录。</p>
+  <p>运行 <code>release/CatWorkshop.exe</code> 即可直接打开游戏，不需要另行启动 npm、Vite 或浏览器。0.11.1 继续使用免压缩便携载荷，避免单文件 EXE 首次启动长时间无窗口。该 EXE 已注册为 Codex Toolbox 中的“猫咪工坊”。如需真实 DeepSeek 编译，把未提交的 <code>.env</code> 放在 EXE 同一目录。</p>
 
   <h2>核心规则</h2>
   <table>

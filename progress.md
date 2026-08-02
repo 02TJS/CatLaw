@@ -2,6 +2,7 @@ Original prompt: Implement the approved “猫咪工坊：法条驱动的自动�
 
 ## Progress
 
+- 2026-08-02: Reworked the difficulty-five 22–30 bottleneck without adding a reserve, certification or hard gate. Output-price premium now passes through at 150% into the existing ingredient demand-order bids, so aggressive ×2/×10 laws consume ordinary escrow and cat credit while retained or delivered stock removes those orders. A focused test proves wheel ×2 exceeds a zero-cash cat's 50-coin base buying power yet succeeds once the same cat has enough cash; the two-law logistics run still reaches 35/35 in 3,120 simulated seconds.
 - 2026-08-02: Began 0.11.0 player landmarks. Added the six fixed landmark definitions, schema 7 state, atomic blueprint/place/dismantle APIs, Manhattan stack effects and a per-batch-capable spatial index.
 - 2026-08-02: Integrated locked action duration and external-sale gross, dynamic vision/credit, and locked carrier fee bonuses. Added seven focused landmark tests plus schema 6→7 migration coverage; focused tests and the production web build pass.
 - 2026-08-02: Added the warehouse-top landmark engineering UI, six blueprint/material cards, independent placement mode, Canvas Emoji markers and Manhattan auras, deployed-landmark dismantling, cat inspector totals, DeepSeek landmark context, and complete `render_game_to_text` landmark state.

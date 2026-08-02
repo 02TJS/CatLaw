@@ -11,6 +11,7 @@ import {
   creditLimitCents,
   netWorthCents,
   planForCatPublic,
+  productionOrderBudgetCents,
   readyContractForCat,
   signalsForCat,
 } from "../game/market";
@@ -24,6 +25,9 @@ export function Inspector({ cat, controller, totalItems }: { cat?: CatState; con
   const inventory = Object.entries(cat.inventory).filter(([, quantity]) => quantity > 0).sort((a, b) => b[1] - a[1]);
   const resourceItemId = harvestResourceAt(state, cat.position);
   const productionPlan = planForCatPublic(state, cat.id);
+  const productionOrderBudget = productionPlan
+    ? productionOrderBudgetCents(state, productionPlan.recipeId, (itemId) => itemPrice(state, itemId))
+    : 0;
   const ownOrders = state.demandOrders.filter((order) => order.buyerKind === "cat" && order.buyerCatId === cat.id && order.status === "open");
   const localSignals = signalsForCat(state, cat.id);
   const bountySignals = bountyBroadcastsForCat(state, cat.id);
@@ -91,6 +95,7 @@ export function Inspector({ cat, controller, totalItems }: { cat?: CatState; con
     <section className="detail-block action-block" data-testid="cat-action-detail">
       <Detail label="生产计划" value={productionPlan ? `${ITEM_BY_ID.get(productionPlan.outputItemId)?.emoji ?? ""} ${productionPlan.outputItemId} · ${productionPlan.reason}` : "无"} />
       <Detail label="预计收入" value={productionPlan ? formatMoney(productionPlan.expectedRevenueCents) : "—"} />
+      <Detail label="满缺料作业报价" value={productionPlan ? formatMoney(productionOrderBudget) : "—"} />
       <Detail label="当前动作" value={cat.action ? `${actionName(cat.action.type)} ${ITEM_BY_ID.get(cat.action.itemId)?.emoji ?? ""} ${cat.action.itemId}` : "待机"} />
       <Detail label="剩余时间" value={cat.action ? `${Math.max(0, (cat.action.endsAt - state.simTime) / 1_000).toFixed(1)} 秒` : "—"} />
       <Detail label="决策理由" value={cat.lastDecision} />

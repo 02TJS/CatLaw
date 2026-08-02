@@ -34,6 +34,10 @@ export const MAX_SIGNALS_PER_ITEM = 2;
 export const BASE_CREDIT_CENTS = 2_500;
 export const LOAN_RATE = 0.02;
 
+const PRICE_SENSITIVE_JOB_RECIPE_IDS = new Set(RECIPES.slice(21, 30).map((recipe) => recipe.id));
+const JOB_PRICE_PASS_THROUGH = 1.5;
+
+
 const DIRECTIONS: Array<[Direction, number, number]> = [
   ["north", 0, -1],
   ["east", 1, 0],
@@ -371,8 +375,48 @@ function requiredWorkingCapitalCents(
   return effectiveRecipeInputs(recipe, state.difficulty).reduce((sum, input) => {
     const owned = unofferedOwnedQuantity(state, cat, input.itemId);
     const missing = Math.max(0, input.quantity - owned);
-    return sum + missing * (externalNetCents(state, input.itemId, priceOf) + 100);
+    return sum + missing * productionOrderBidCents(state, recipe.id, input.itemId, priceOf);
   }, 0);
+}
+
+/**
+ * Existing order-market price formation for material jobs. On difficulty five,
+ * goods 22-30 pass an aggressive output-price signal through to the bids for
+ * every required input job. This uses ordinary order escrow and cat credit:
+ * there is no extra balance, certification or hard gate. A richer cat can
+ * still pay, while a modest price signal plus retained/transported stock keeps
+ * the supply chain liquid.
+ */
+export function productionOrderBidCents(
+  state: GameState,
+  recipeId: string,
+  inputItemId: ItemId,
+  priceOf: (itemId: ItemId) => number,
+): number {
+  const recipe = RECIPE_BY_ID.get(recipeId);
+  const ordinaryBid = externalNetCents(state, inputItemId, priceOf) + 100;
+  if (!recipe || state.difficulty !== 5 || !PRICE_SENSITIVE_JOB_RECIPE_IDS.has(recipe.id)) return ordinaryBid;
+  const jobCount = effectiveRecipeInputs(recipe, state.difficulty).reduce((sum, input) => sum + input.quantity, 0);
+  const baseOutputCents = (CATALOG_ANALYSIS.basePrices[recipe.output] ?? 1) * 100;
+  const advertisedPremiumCents = Math.max(0, priceOf(recipe.output) - baseOutputCents);
+  const jobPremiumCents = Math.ceil(advertisedPremiumCents * JOB_PRICE_PASS_THROUGH / Math.max(1, jobCount));
+  return ordinaryBid + jobPremiumCents;
+}
+
+export function productionOrderBudgetCents(
+  state: GameState,
+  recipeId: string,
+  priceOf: (itemId: ItemId) => number,
+): number {
+  const recipe = RECIPE_BY_ID.get(recipeId);
+  if (!recipe) return 0;
+  return effectiveRecipeInputs(recipe, state.difficulty).reduce((sum, input) => (
+    sum + input.quantity * productionOrderBidCents(state, recipe.id, input.itemId, priceOf)
+  ), 0);
+}
+
+export function hasPriceSensitiveJobDemand(state: GameState, recipeId: string): boolean {
+  return state.difficulty === 5 && PRICE_SENSITIVE_JOB_RECIPE_IDS.has(recipeId);
 }
 
 function createPlan(
@@ -419,7 +463,7 @@ function ensurePlanOrders(state: GameState, plan: ProcurementPlan, priceOf: (ite
     return;
   }
   for (const input of effectiveRecipeInputs(recipe, state.difficulty)) {
-    const maxDeliveredCents = externalNetCents(state, input.itemId, priceOf) + 100;
+    const maxDeliveredCents = productionOrderBidCents(state, recipe.id, input.itemId, priceOf);
     // Price-law changes never mutate an order in place. Close the old global
     // ID and let the plan publish a fresh one with a newly locked bid.
     for (const stale of state.demandOrders.filter((order) => order.status === "open"

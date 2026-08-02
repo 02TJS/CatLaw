@@ -18,8 +18,10 @@ import {
   broadcastsForCat,
   buildingOfferBroadcastsForCat,
   creditAvailableCents,
+  hasPriceSensitiveJobDemand,
   netWorthCents,
   planForCatPublic,
+  productionOrderBudgetCents,
   readyContractForCat,
   signalsForCat,
 } from "../game/market";
@@ -75,7 +77,7 @@ export function App() {
       placingLandmarkRef.current,
       landmarkFeedbackRef.current,
     );
-    window.__CAT_WORKSHOP__ = { reset: () => controller.reset(), state: () => controller.state };
+    window.__CAT_WORKSHOP__ = { reset: (difficulty) => controller.reset(difficulty), state: () => controller.state };
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setExpansionMode(false);
@@ -320,6 +322,13 @@ function renderGameToText(
         claimedByCatId: bounty.claimedByCatId,
         paid: bounty.paid,
       })),
+      priceSensitiveJobDemand: RECIPES.filter((recipe) => hasPriceSensitiveJobDemand(state, recipe.id)).map((recipe) => ({
+          recipeId: recipe.id,
+          itemId: recipe.output,
+          advertisedPriceCents: itemPrice(state, recipe.output),
+          allInputsOrderBudgetCents: productionOrderBudgetCents(state, recipe.id, (itemId) => itemPrice(state, itemId)),
+          rule: "售价高于基础价的部分按150%传导至现有配料订单；库存与已送达物品不再下单",
+        })),
     },
     marketChallenge: {
       tutorialTarget: "前15项商品",

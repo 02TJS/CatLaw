@@ -2,6 +2,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { CATALOG_ANALYSIS, ITEM_BY_ID, ITEMS, RECIPES } from "../src/game/catalog";
 import { difficultyProfile, effectiveRecipeInputs, normalizeDifficulty } from "../src/game/difficulty";
+import { itemPrice } from "../src/game/engine";
+import { productionOrderBudgetCents } from "../src/game/market";
 import type { DifficultyLevel, ItemId, MarketBroadcast } from "../src/game/types";
 import { playSeed, type Qa35Operation } from "./qa-35.mts";
 
@@ -106,6 +108,14 @@ const totalPasses = ITEMS.reduce((sum, definition) => sum + state.itemStats[defi
 const totalCatCash = state.cats.reduce((sum, cat) => sum + cat.coins, 0);
 const totalDebt = state.cats.reduce((sum, cat) => sum + cat.debtCents, 0);
 const placedCatCount = operations.filter((operation) => operation.kind === "cat-place").length;
+const wheelX2PriceOf = (itemId: ItemId) => itemId === "wheel"
+  ? (CATALOG_ANALYSIS.basePrices.wheel ?? 1) * 200
+  : itemPrice(state, itemId);
+const wheelX10PriceOf = (itemId: ItemId) => itemId === "wheel"
+  ? (CATALOG_ANALYSIS.basePrices.wheel ?? 1) * 1_000
+  : itemPrice(state, itemId);
+const wheelX2JobBudget = productionOrderBudgetCents(state, "make_wheel", wheelX2PriceOf);
+const wheelX10JobBudget = productionOrderBudgetCents(state, "make_wheel", wheelX10PriceOf);
 const bulkRecipes = first35.filter((recipe) => effectiveRecipeInputs(recipe, difficulty).some((input, index) => (
   input.quantity !== recipe.inputs[index]?.quantity
 )));
@@ -176,7 +186,7 @@ const mapSvg = (() => {
 
 const tracePayload = {
   generatedAt: new Date().toISOString(),
-  version: "0.11.0",
+  version: "0.11.1",
   seed,
   difficulty,
   difficultyProfile: profile,
@@ -230,9 +240,9 @@ const html = `<!doctype html>
 <body>
 <main>
   <header>
-    <span class="badge">猫咪工坊 0.11.0 · ${h(difficultyLabel)} · 确定性操作档案</span>
+    <span class="badge">猫咪工坊 0.11.1 · ${h(difficultyLabel)} · 确定性操作档案</span>
     <h1>${difficulty === 5 ? "最高难度 5" : h(difficultyLabel)}：35 商品具体怎么操作</h1>
-    <p class="lead">这份档案由 <code>scripts/qa-35.mts</code> 的真实种子 ${seed}、${h(difficultyLabel)}运行生成。它逐条记录 ${operations.length} 条公开操作、费用、法规、坐标和模拟时间，并把最终订单、合同、运输与 35 项商品统计反向核对。第 22–30 项不再逐项设 ×2：价格法只用全品类 ×1.01 打开悬赏准入，真正的生产顺序由订单物流法、土地、猫链和复合工区决定。</p>
+    <p class="lead">这份档案由 <code>scripts/qa-35.mts</code> 的真实种子 ${seed}、${h(difficultyLabel)}运行生成。它逐条记录 ${operations.length} 条公开操作、费用、法规、坐标和模拟时间，并把最终订单、合同、运输与 35 项商品统计反向核对。第 22–30 项仍允许任意调价，但售价溢价会传导到现有配料订单；本局只用全品类 ×1.01 打开悬赏准入，真正的生产顺序由订单物流法、土地、猫链和复合工区决定。</p>
     <div class="metrics">
       <div class="metric"><strong>${h(time(result.simTime))}</strong><span>最终检查时刻（模拟时间）</span></div>
       <div class="metric"><strong>${h(difficultyLabel)}</strong><span>本次真实运行档位</span></div>
@@ -302,11 +312,12 @@ const html = `<!doctype html>
       <div class="card"><strong>${baseLogisticsLaws.length} 条基础物流法</strong>读取开放订单和未结悬赏；有订单时提高制作、降低无关外售，并对第 22–30 项所需机械、电气和电子中间品定向加权。</div>
       <div class="card"><strong>${qualificationPriceLaws.length} 条最低准入价格法</strong>全品类仅 ×1.01，只满足第 16 项以后认领悬赏所需的“正向价格指引”。它不决定生产顺序，也不逐项改价。</div>
       <div class="card"><strong>0 条 22–30 单品价格法</strong>磁铁到显示器没有逐项 ×2，也没有用后续临时价格法疏堵；这些商品全部由订单、留存和补料评分完成。</div>
+      <div class="card"><strong>×2 会遇到现有信用瓶颈</strong>以车轮为反例：在本局税法和全品类 ×1.01 背景下，直接把车轮设为 ×2，会令底盘与齿轮两张配料作业报价合计 ${h(money(wheelX2JobBudget))}，高于难度 5 的 ${h(money(profile.baseCreditCents))} 基础信用；×10 时升至 ${h(money(wheelX10JobBudget))}。这仍不是禁令，有现金、净资产或现货的猫可以继续。</div>
       <div class="card"><strong>${enactmentCount} 次成功立法</strong>前 5 次免费，此后第 n 次为 <code>5×(n−5)</code> 金币；立法毛费用 ${h(money(costs.enact))}，废止次数为 ${repealCount}，废止费用 ${h(money(costs.repeal))}。</div>
     </div>
     <h3>基础物流法实际源码</h3>
     <pre class="code">${h(logisticsLaw?.sourceCode ?? "未找到基础物流法源码")}</pre>
-    <p class="callout green"><strong>为什么它有效：</strong>×1.01 只打开“愿意认领悬赏”这道硬门；真正的调度来自订单。供应猫只会为自己看到的盈利计划和订单生成制作候选，物流法再提高这些候选并留住关键中间品。传递动作仍必须匹配已成交的有偿合同，亏损制作、无合同传递和超额信用照样被引擎拒绝。</p>
+    <p class="callout green"><strong>为什么它有效：</strong>×1.01 只打开“愿意认领悬赏”这道硬门；真正的调度来自订单。难度 5 的第 22–30 项把高于基础价的溢价按 150% 分摊进已有配料订单，所以继续抬价也会提高保证金和信用占用。物流法提高供应制作、减少无关外售，让目标猫用现货或真实合同完成缺料；已经持有的材料不再产生订单。无合同传递、亏损制作和超额信用仍会被引擎拒绝。</p>
   </section>
 
   <section class="section" id="space">
@@ -333,7 +344,7 @@ const html = `<!doctype html>
       <tr><td>16–20 无人开工</td><td>300 秒内五项 crafted=0、bountyOpen=true</td><td>全品类只设 ×1.01 准入法</td><td>用最低幅度满足第 16 项后悬赏认领所需的正向玩家价格指引，不用价格决定生产顺序</td></tr>
       <tr><td>远方原料不能共享</td><td>最终 ${totalPasses.toLocaleString("zh-CN")} 次传递，最长合同路线 ${maxRoute} 只猫</td><td>加 ${placedCatCount} 只相邻猫</td><td>扩大 BFS 可达网络和中转承运容量，物品仍逐格移动</td></tr>
       <tr><td>28–35 缺生产位置</td><td>只有工厂时停在芯片等基础电子商品</td><td>等待三项报价，收购并布置复合工区</td><td>让同一工位同时获得工厂、天线与机床的半径 2 条件</td></tr>
-      <tr><td>22–30 关键料被外售或分散</td><td>机械、电气与电子悬赏同时开放，订单需要多种中间品</td><td>按订单提高制作，降低关键料外售；磁铁到显示器分组补料</td><td>只给已经进入本地盈利候选的订单物资加权，不制造无合同传递，也不抬高信用成本</td></tr>
+      <tr><td>22–30 关键料被外售或分散</td><td>机械、电气与电子悬赏同时开放；高价溢价会以 150% 传导到配料订单</td><td>按订单提高制作，降低关键料外售；磁铁到显示器分组补料</td><td>现货不再下单，真实运输直接减少缺料作业；避免用继续加价扩大保证金和信用占用</td></tr>
       <tr><td>中后期长时间等待</td><td>开放订单、在途合同和大宗配料会跨越多个 30 秒检查点</td><td>检查信用、路线和工区后保持两条法规不变</td><td>让已经成交的逐格合同自然结算，避免反复立法打断稳定的物流优先级</td></tr>
     </tbody></table></div>
     <h3>市场规模</h3>
@@ -355,11 +366,11 @@ const html = `<!doctype html>
 
   <section class="section">
     <h2>结论与限制</h2>
-    <div class="grid"><div class="card"><strong>通关不是靠全局调度器</strong>猫只读取自身和曼哈顿 2 内工位；全局广播只传需求信息。最终 ${totalPasses.toLocaleString("zh-CN")} 次逐格传递和最长 ${maxRoute} 猫路线证明实物没有瞬移。</div><div class="card"><strong>真正的三个钥匙</strong>×1.01 只打开 16+ 悬赏认领；物流法和猫链组织有偿物理物流；共同覆盖的工厂、天线与机床打开 28–35 的空间制造条件。</div><div class="card"><strong>22–30 不靠单品加价</strong>磁铁、车轮、燃料、冷却剂、天线、机床、芯片、存储器和显示器均没有逐项 ×2 法；它们由订单、留存和定向补料完成。</div><div class="card"><strong>车辆是复合工区产物</strong>车辆在 ${h(time(vehicleClosure ? vehicleClosure.publishedAt * state.simulationSpeed : null))} 出现；制造工位必须同时处于工厂和机床的曼哈顿半径 2 内。</div></div>
+    <div class="grid"><div class="card"><strong>通关不是靠全局调度器</strong>猫只读取自身和曼哈顿 2 内工位；全局广播只传需求信息。最终 ${totalPasses.toLocaleString("zh-CN")} 次逐格传递和最长 ${maxRoute} 猫路线证明实物没有瞬移。</div><div class="card"><strong>真正的三个钥匙</strong>×1.01 只打开 16+ 悬赏认领；物流法和猫链组织有偿物理物流；共同覆盖的工厂、天线与机床打开 28–35 的空间制造条件。</div><div class="card"><strong>22–30 的软瓶颈</strong>玩家仍可自由 ×2 或 ×10；但溢价同步推高配料作业报价。现金和净资产足够时仍能硬顶，普通猫则需要先用物流减少缺料订单。</div><div class="card"><strong>车辆是复合工区产物</strong>车辆在 ${h(time(vehicleClosure ? vehicleClosure.publishedAt * state.simulationSpeed : null))} 出现；制造工位必须同时处于工厂和机床的曼哈顿半径 2 内。</div></div>
     <p class="callout"><strong>仍需区分：</strong>本页使用充足测试国库与确定性法条夹具。若要评价生产版经济平衡，还应另做“150 金币正常开局、只靠税收积累”的长时测试；若要评价 DeepSeek 可靠性，还应单独统计真实模型生成成功率、语义正确率和重试率。</p>
   </section>
 
-  <footer>数据源：猫咪工坊 0.11.0 · ${h(difficultyLabel)} · scripts/qa-35.mts · worldSeed=${seed} · simulationSpeed=${state.simulationSpeed} · JSON 伴随记录：output/qa35-difficulty${difficulty}-seed${seed}-record.json</footer>
+  <footer>数据源：猫咪工坊 0.11.1 · ${h(difficultyLabel)} · scripts/qa-35.mts · worldSeed=${seed} · simulationSpeed=${state.simulationSpeed} · JSON 伴随记录：output/qa35-difficulty${difficulty}-seed${seed}-record.json</footer>
 </main>
 <script>
   const rows=[...document.querySelectorAll('#ledger-table tbody tr')];

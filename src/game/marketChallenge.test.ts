@@ -9,9 +9,10 @@ import {
   missingProductionCertifications,
   recipeUnlockCost,
 } from "./catalog";
-import { advanceGame, createInitialState, enactLaw, unlockRecipe } from "./engine";
+import { advanceGame, createInitialState, enactLaw, itemPrice, unlockRecipe } from "./engine";
 import { hashSource } from "./lawInterpreter";
 import type { GameState, ItemId, LawDraft } from "./types";
+import { buyingPowerCents, productionOrderBidCents, publishBountySignal, refreshCatMarket } from "./market";
 
 const PASSIVE_SOURCE = "function decide(ctx) { return null; }";
 
@@ -190,5 +191,37 @@ describe("market certification challenge", () => {
     expect(state.itemStats.thread.crafted).toBeGreaterThanOrEqual(1);
     expect(state.itemStats.thread.sold).toBeGreaterThanOrEqual(1);
     expect(missingProductionCertifications("make_cable", ["thread"])).not.toContain("thread");
+  });
+
+  it("turns a direct x2 signal into ordinary input-job bids at the 22-30 difficulty-five plateau", () => {
+    const state = createInitialState({ withStarter: false, difficulty: 5, worldSeed: 91 });
+    const wheelRecipeId = "make_wheel";
+    state.unlockedRecipes.push(wheelRecipeId);
+    state.discoveryBounties.forEach((bounty) => {
+      bounty.paid = bounty.itemId !== "wheel";
+      bounty.claimedByCatId = null;
+    });
+    publishBountySignal(state, "wheel", "open", state.cats[0].id);
+    expect(enactLaw(state, priceDraft("wheel", 2)).ok).toBe(true);
+    const priceOf = (itemId: string) => itemPrice(state, itemId);
+    const requiredByOrders = productionOrderBidCents(state, wheelRecipeId, "chassis", priceOf)
+      + productionOrderBidCents(state, wheelRecipeId, "gear", priceOf);
+    const x10PriceOf = (itemId: string) => itemId === "wheel" ? 31_000 : itemPrice(state, itemId);
+    const requiredAtX10 = productionOrderBidCents(state, wheelRecipeId, "chassis", x10PriceOf)
+      + productionOrderBidCents(state, wheelRecipeId, "gear", x10PriceOf);
+
+    expect(requiredByOrders).toBeGreaterThan(buyingPowerCents(state, state.cats[0], priceOf));
+    expect(requiredAtX10).toBeGreaterThan(requiredByOrders);
+    refreshCatMarket(state, state.cats[0], priceOf);
+    expect(state.procurementPlans.some((plan) => plan.outputItemId === "wheel")).toBe(false);
+    expect(state.demandOrders).toHaveLength(0);
+
+    // It is deliberately a soft market bottleneck: existing cash can fund the
+    // same x2 input jobs without changing or bypassing any rule.
+    state.cats[0].coins = requiredByOrders;
+    refreshCatMarket(state, state.cats[0], priceOf);
+    expect(state.procurementPlans.some((plan) => plan.outputItemId === "wheel")).toBe(true);
+    expect(state.demandOrders.filter((order) => order.planId !== null).map((order) => order.maxDeliveredCents).reduce((sum, bid) => sum + bid, 0))
+      .toBe(requiredByOrders);
   });
 });

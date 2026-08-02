@@ -17,6 +17,7 @@ import {
 import type { GameController } from "../game/controller";
 import { formatMoney, inventoryTotal, itemPrice } from "../game/engine";
 import { difficultySiteRequirements, effectiveRecipeInputs } from "../game/difficulty";
+import { hasPriceSensitiveJobDemand, productionOrderBudgetCents } from "../game/market";
 
 const TIER_NAMES = ["基础采集", "手工作坊", "机械制造", "电气工业", "电子自动化", "计算与核能", "航天时代", "量子时代", "星门工程"];
 
@@ -58,6 +59,10 @@ export function CatalogPanel({ controller }: { controller: GameController }) {
             const missingCertifications = missingProductionCertifications(entry.id, craftedItems)
               .map((id) => ITEM_BY_ID.get(id)?.name ?? id);
             const affordable = state.treasuryCoins >= cost;
+            const priceSensitiveJobs = hasPriceSensitiveJobDemand(state, entry.id);
+            const inputJobBudget = priceSensitiveJobs
+              ? productionOrderBudgetCents(state, entry.id, (itemId) => itemPrice(state, itemId))
+              : 0;
             const siteLabel = difficultySiteRequirements(entry, state.difficulty).map((requirement) => {
               const building = ITEM_BY_ID.get(requirement.buildingItemId);
               return `${building?.emoji ?? "🏗️"} ${building?.name ?? requirement.buildingItemId} ${requirement.maxManhattanDistance}格内`;
@@ -74,6 +79,7 @@ export function CatalogPanel({ controller }: { controller: GameController }) {
                 <div className="recipe-title"><strong>{item.name}</strong>{state.discoveredItems.includes(item.id) && <span>已制造</span>}</div>
                 <small className="recipe-formula">{describeRecipe(entry.id)}{state.difficulty === 5 && effectiveRecipeInputs(entry, state.difficulty).some((input, index) => input.quantity !== entry.inputs[index]?.quantity) ? " · 难度5大宗配料" : ""}</small>
                 <small>基础 {formatMoney(CATALOG_ANALYSIS.basePrices[item.id] * 100)} · 实际 {formatMoney(itemPrice(state, item.id))} · 库存 {inventoryTotal(state, item.id)}</small>
+                {priceSensitiveJobs && <small className="site-requirement" data-testid={`job-demand-${entry.id}`}>配料作业报价合计 {formatMoney(inputJobBudget)} · 售价溢价会传导给现有订单</small>}
                 <small>制 {stats.crafted} / 售 {stats.sold}</small>
                 {unlocked
                   ? <span className="recipe-status learned">✓ {INTRO_RECIPE_IDS.includes(entry.id) ? "开局免费启蒙" : "猫咪已学会"}</span>
