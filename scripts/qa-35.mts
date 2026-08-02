@@ -303,8 +303,14 @@ function report(state: GameState, label: string) {
   process.stdout.write(`${label} t=${state.simTime * state.simulationSpeed / 1000}s discovered=${state.discoveredItems.length} highest=${highest} plans=${activePlans.join(",")} orders=${state.demandOrders.filter((o) => o.status === "open").length} offers=${state.buildingOffers.filter((o) => o.status === "open").map((o) => o.itemId).join(",")}\n`);
 }
 
-export function playSeed(seed: number, verbose = false, maxMs = 7_200_000, simulationSpeed = 5_000) {
-  const state = createInitialState({ worldSeed: seed, simulationSpeed, difficulty: 3 as DifficultyLevel });
+export function playSeed(
+  seed: number,
+  verbose = false,
+  maxMs = 7_200_000,
+  simulationSpeed = 5_000,
+  difficulty: DifficultyLevel = 3,
+) {
+  const state = createInitialState({ worldSeed: seed, simulationSpeed, difficulty });
   const scaled = (milliseconds: number) => milliseconds / simulationSpeed;
   const operations: Qa35Operation[] = [];
   const firstCraftObservedAtMs: Partial<Record<string, number>> = {};
@@ -505,6 +511,7 @@ export function playSeed(seed: number, verbose = false, maxMs = 7_200_000, simul
   });
   return {
     seed,
+    difficulty,
     passed: allCrafted(state, 35) && phase2Stalled && placedBuildings.has("factory") && addedCats > 0,
     phase1: { passed: true, completeAtMs: phase1CompleteAt },
     phase2: { passed: phase2Stalled, observedForMs: 300_000, items: phase2Items },
@@ -530,7 +537,8 @@ const entryPath = process.argv[1]?.replace(/\\/g, "/");
 if (entryPath && import.meta.url === `file:///${entryPath}`) {
   const seed = Number(process.argv[2] ?? 1);
   const verbose = process.argv[4] !== "quiet";
-  const result = playSeed(seed, verbose, Number(process.argv[3] ?? 7_200_000));
+  const difficulty = Number(process.argv[5] ?? 3) as DifficultyLevel;
+  const result = playSeed(seed, verbose, Number(process.argv[3] ?? 7_200_000), 5_000, difficulty);
   report(result.state, "final");
   if (!result.passed) {
     process.stdout.write(`${JSON.stringify({

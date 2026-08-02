@@ -1,13 +1,16 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { CATALOG_ANALYSIS, ITEM_BY_ID, ITEMS, RECIPES } from "../src/game/catalog";
-import type { ItemId, MarketBroadcast } from "../src/game/types";
+import { difficultyProfile, effectiveRecipeInputs, normalizeDifficulty } from "../src/game/difficulty";
+import type { DifficultyLevel, ItemId, MarketBroadcast } from "../src/game/types";
 import { playSeed, type Qa35Operation } from "./qa-35.mts";
 
 const seed = Number(process.argv[2] ?? 1);
 const outputPath = resolve(process.argv[3] ?? "CatWorkshop-35-Run-Report.html");
-const jsonPath = resolve("output", `qa35-seed${seed}-record.json`);
-const result = playSeed(seed, false);
+const difficulty = normalizeDifficulty(process.argv[4], 3) as DifficultyLevel;
+const profile = difficultyProfile(difficulty);
+const jsonPath = resolve("output", `qa35-difficulty${difficulty}-seed${seed}-record.json`);
+const result = playSeed(seed, false, difficulty === 5 ? 14_400_000 : 7_200_000, 5_000, difficulty);
 if (!result.passed) throw new Error(`Seed ${seed} did not pass the 35-item acceptance`);
 
 const state = result.state;
@@ -33,9 +36,9 @@ const itemLabel = (id: string) => {
   const index = itemIndex.get(id);
   return `${definition.emoji} ${definition.name}${index ? ` #${index}` : ""} · ${id}`;
 };
-const formula = (recipe: (typeof RECIPES)[number]) => recipe.inputs.length === 0
+const formula = (recipe: (typeof RECIPES)[number]) => effectiveRecipeInputs(recipe, difficulty).length === 0
   ? "资源区采集"
-  : recipe.inputs.map((input) => {
+  : effectiveRecipeInputs(recipe, difficulty).map((input) => {
     const definition = item(input.itemId);
     return `${definition.emoji}${definition.name}${input.quantity > 1 ? `×${input.quantity}` : ""}`;
   }).join(" + ");
@@ -105,6 +108,10 @@ const totalPasses = ITEMS.reduce((sum, definition) => sum + state.itemStats[defi
 const totalCatCash = state.cats.reduce((sum, cat) => sum + cat.coins, 0);
 const totalDebt = state.cats.reduce((sum, cat) => sum + cat.debtCents, 0);
 const placedCatCount = operations.filter((operation) => operation.kind === "cat-place").length;
+const bulkRecipes = first35.filter((recipe) => effectiveRecipeInputs(recipe, difficulty).some((input, index) => (
+  input.quantity !== recipe.inputs[index]?.quantity
+)));
+const difficultyLabel = `难度 ${difficulty} · ${profile.name}`;
 
 const itemRows = first35.map((recipe, index) => {
   const definition = item(recipe.output);
@@ -173,15 +180,17 @@ const mapSvg = (() => {
     <rect x="${sx(-4)}" y="${sy(-4)}" width="${9 * unit}" height="${9 * unit}" class="parcel parcel-a"/>
     <rect x="${sx(5)}" y="${sy(-4)}" width="${9 * unit}" height="${9 * unit}" class="parcel parcel-b"/>
     <g class="grid-lines">${grids.join("")}</g>${resources}${cats}${buildings}
-    <text x="${sx(-4) + 8}" y="${sy(-4) + 18}" class="parcel-title">中央地块 (0,0)</text>
-    <text x="${sx(5) + 8}" y="${sy(-4) + 18}" class="parcel-title">购买地块 (1,0)</text>
+    <text x="${sx(-4) + 8}" y="${sy(-4) - 10}" class="parcel-title">中央地块 (0,0)</text>
+    <text x="${sx(5) + 8}" y="${sy(-4) - 10}" class="parcel-title">购买地块 (1,0)</text>
   </svg>`;
 })();
 
 const tracePayload = {
   generatedAt: new Date().toISOString(),
-  version: "0.9.0",
+  version: "0.11.0",
   seed,
+  difficulty,
+  difficultyProfile: profile,
   simulationSpeed: state.simulationSpeed,
   result: {
     passed: result.passed,
@@ -222,7 +231,7 @@ const html = `<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>猫咪工坊 35 商品通关：完整记录与分析</title>
+  <title>猫咪工坊 ${h(difficultyLabel)} · 35 商品具体操作档案</title>
   <style>
     :root{color-scheme:light;--ink:#17221d;--muted:#66736c;--line:#dfe6e1;--paper:#fff;--soft:#f4f7f5;--green:#2e7d50;--gold:#a66b00;--blue:#286ea8;--red:#b1443e;--orange:#c46c1b}
     *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:#f5f7f5;color:var(--ink);font:15px/1.65 system-ui,"Microsoft YaHei",sans-serif}main{width:min(1180px,calc(100% - 28px));margin:28px auto 80px}header,.section{background:var(--paper);border:1px solid var(--line);border-radius:18px;box-shadow:0 10px 28px rgba(22,36,29,.06)}header{padding:clamp(28px,5vw,58px)}.section{margin-top:18px;padding:clamp(22px,3vw,34px)}h1{max-width:900px;margin:8px 0 14px;font-size:clamp(34px,6vw,62px);line-height:1.08;letter-spacing:-.04em}h2{margin:0 0 18px;font-size:27px;line-height:1.2}h3{margin:25px 0 10px;font-size:19px}.lead{max-width:920px;color:var(--muted);font-size:18px}.badge,.chip,.stage{display:inline-flex;align-items:center;border-radius:999px;white-space:nowrap}.badge{padding:6px 11px;background:#eaf6ee;color:#22633e;font-size:12px;font-weight:800;letter-spacing:.06em}.chip{margin:2px 3px;padding:2px 8px;background:#eef3f0;border:1px solid #dfe7e2;font-size:12px}.toc{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px}.toc a{padding:7px 11px;border:1px solid var(--line);border-radius:8px;color:#305c46;text-decoration:none;background:#fff}.toc a:hover{background:#eff7f2}.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-top:24px}.metric{padding:16px;border:1px solid var(--line);border-radius:13px;background:var(--soft)}.metric strong{display:block;font-size:25px;line-height:1.2}.metric span{color:var(--muted);font-size:12px}.callout{padding:16px 18px;border-left:5px solid var(--gold);border-radius:9px;background:#fff8e6}.callout.red{border-left-color:var(--red);background:#fff1ef}.callout.green{border-left-color:var(--green);background:#edf8f1}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}.card{padding:17px;border:1px solid var(--line);border-radius:13px;background:var(--soft)}.card strong{display:block;margin-bottom:5px;color:var(--green)}.flow{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.phase-card{position:relative;padding:20px;border:1px solid var(--line);border-radius:14px;background:#fff}.phase-card::after{content:"→";position:absolute;right:-20px;top:45%;z-index:2;color:#98a59d;font-size:22px}.phase-card:last-child::after{display:none}.phase-card .number{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#2e7d50;color:white;font-weight:800}.phase-card h3{margin:10px 0 6px}.phase-card p{margin:5px 0;color:var(--muted)}.timeline{position:relative;margin:8px 0 0 10px;padding-left:28px;border-left:2px solid #cdd8d1}.timeline article{position:relative;padding:2px 0 20px}.timeline article::before{content:"";position:absolute;left:-36px;top:8px;width:14px;height:14px;border:3px solid white;border-radius:50%;background:var(--green);box-shadow:0 0 0 2px var(--green)}.timeline time{font:700 13px ui-monospace,Consolas,monospace;color:var(--green)}.timeline h3{margin:2px 0}.timeline p{margin:2px 0;color:var(--muted)}.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px}table{width:100%;border-collapse:collapse;background:white;font-size:13px}th,td{padding:9px 10px;border-bottom:1px solid #e7ece9;text-align:left;vertical-align:top}th{position:sticky;top:0;z-index:1;background:#f0f4f1;color:#315640;white-space:nowrap}tr:last-child td{border-bottom:0}tbody tr:hover{background:#f8fbf9}.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}.mono,code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.emoji{display:inline-block;min-width:28px;font-size:21px}td strong{display:block}small{display:block;color:var(--muted);font-size:11px}.stage{padding:2px 7px;font-size:11px;font-weight:700}.stage.setup{background:#f2efe8;color:#795b25}.stage.phase1{background:#eaf6ee;color:#236a41}.stage.phase2{background:#fff0e5;color:#9a4f14}.stage.phase3{background:#eaf2fb;color:#225f93}.controls{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}.controls button,.controls input{padding:8px 11px;border:1px solid #cad4ce;border-radius:8px;background:#fff;font:inherit}.controls button.active{color:#fff;background:#2e7d50;border-color:#2e7d50}.controls input{min-width:260px;flex:1}.code{padding:16px;border-radius:11px;background:#17241d;color:#edf6f0;overflow:auto}.world-map{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:13px;background:#fff}.parcel{stroke-width:2}.parcel-a{fill:#f1f3f2;stroke:#98a49d}.parcel-b{fill:#f4f8ef;stroke:#7d9d78}.grid-lines{stroke:#d9e0dc;stroke-width:1}.resource{fill:#fff;stroke:#8da69a;stroke-width:2}.resource-label,.building-label{text-anchor:middle;dominant-baseline:central;font-size:20px}.cat-dot{fill:#df8b39;stroke:#8c4e17;stroke-width:1.5}.cat-label{text-anchor:middle;dominant-baseline:central;fill:#fff;font:700 9px ui-monospace,Consolas,monospace}.building-dot{fill:#fff4d6;stroke:#b77800;stroke-width:3}.parcel-title{fill:#54635b;font:700 12px system-ui}.legend{display:flex;flex-wrap:wrap;gap:16px;margin-top:9px;color:var(--muted);font-size:12px}.dot{display:inline-block;width:12px;height:12px;margin-right:5px;border-radius:50%;vertical-align:-1px}.dot.cat{background:#df8b39}.dot.resource{background:#fff;border:2px solid #8da69a}.dot.building{background:#fff4d6;border:2px solid #b77800}.analysis-table td:first-child{font-weight:800;color:#315640}.checklist{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:9px;padding:0;list-style:none}.checklist li{padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:#f7faf8}.checklist li::before{content:"✓";margin-right:8px;color:var(--green);font-weight:900}details{margin-top:13px}summary{cursor:pointer;font-weight:800;color:#315640}footer{padding:24px 6px;color:var(--muted);text-align:center;font-size:12px}@media(max-width:760px){.flow{grid-template-columns:1fr}.phase-card::after{display:none}main{width:min(100% - 16px,1180px);margin-top:8px}.section,header{border-radius:12px;padding:20px}.controls input{min-width:100%}}@media print{body{background:#fff}main{width:100%;margin:0}.section,header{box-shadow:none;break-inside:avoid}.controls,.toc{display:none}details{display:block}details>summary{display:none}}
@@ -231,28 +240,46 @@ const html = `<!doctype html>
 <body>
 <main>
   <header>
-    <span class="badge">猫咪工坊 0.9.0 · 确定性验收档案</span>
-    <h1>35 商品通关：我实际做了什么</h1>
-    <p class="lead">这份报告由 <code>scripts/qa-35.mts</code> 的真实种子 ${seed} 运行生成。它逐条记录公开操作、费用、法规、坐标和模拟时间，并把最终的订单、合同、运输与 35 项商品统计反向核对。结论不是“脚本直接造出车辆”，而是：先证明市场会在 16–20 自然卡死，再用法规、土地、猫链以及猫咪自产的工厂、天线和机床改变激励与空间条件。</p>
+    <span class="badge">猫咪工坊 0.11.0 · ${h(difficultyLabel)} · 确定性操作档案</span>
+    <h1>${difficulty === 5 ? "最高难度 5" : h(difficultyLabel)}：35 商品具体怎么操作</h1>
+    <p class="lead">这份档案由 <code>scripts/qa-35.mts</code> 的真实种子 ${seed}、${h(difficultyLabel)}运行生成。它逐条记录 ${operations.length} 条公开操作、费用、法规、坐标和模拟时间，并把最终订单、合同、运输与 35 项商品统计反向核对。结论不是“脚本直接造出车辆”，而是：先证明市场会在 16–20 自然卡死，再用法规、土地、猫链以及猫咪自产的工厂、天线和机床改变激励与空间条件。</p>
     <div class="metrics">
       <div class="metric"><strong>${h(time(result.simTime))}</strong><span>最终检查时刻（模拟时间）</span></div>
+      <div class="metric"><strong>${h(difficultyLabel)}</strong><span>本次真实运行档位</span></div>
       <div class="metric"><strong>${operations.length}</strong><span>完整操作记录</span></div>
       <div class="metric"><strong>${state.cats.length}</strong><span>最终猫咪工位（11 + ${placedCatCount}）</span></div>
       <div class="metric"><strong>${state.shipmentContracts.length}</strong><span>生成的运输合同</span></div>
       <div class="metric"><strong>${totalPasses.toLocaleString("zh-CN")}</strong><span>逐格实物传递次数</span></div>
       <div class="metric"><strong>${h(money(grossCostCents))}</strong><span>玩家操作毛支出</span></div>
     </div>
-    <nav class="toc"><a href="#boundary">验收边界</a><a href="#stages">三阶段</a><a href="#timeline">关键时间线</a><a href="#laws">法规</a><a href="#space">空间建设</a><a href="#economy">经济与物流</a><a href="#items">35 项结果</a><a href="#ledger">完整账本</a></nav>
+    <nav class="toc"><a href="#boundary">验收边界</a><a href="#replay">照着界面操作</a><a href="#stages">三阶段</a><a href="#timeline">关键时间线</a><a href="#laws">法规</a><a href="#space">空间建设</a><a href="#economy">经济与物流</a><a href="#items">35 项结果</a><a href="#ledger">完整账本</a></nav>
   </header>
 
   <section class="section" id="boundary">
     <h2>先说明边界：这是通关逻辑验收，不是正常开局财务挑战</h2>
-    <div class="callout red"><strong>唯一的测试豁免：</strong>开局把国库设为 1,000,000,000 分，也就是 10,000,000.00 金币。正常新档只有 150.00 金币。这样做是为了隔离“钱够不够”，专门验证法规、订单、逐格物流、建筑市场和空间范围能否把真实物品链推到第 35 项。因此本局证明的是产业机制可通，不证明生产版 150 金币能在同样时间内买完全部内容。</div>
+    <div class="callout red"><strong>唯一的测试豁免：</strong>开局把国库设为 1,000,000,000 分，也就是 10,000,000.00 金币。${h(difficultyLabel)}正常新档只有 ${h(money(profile.initialTreasuryCents))}。这样做是为了隔离“钱够不够”，专门验证法规、订单、逐格物流、建筑市场和空间范围能否把真实物品链推到第 35 项。因此本局证明的是最高难度产业机制可通；正常存档照做时，需要先用高税率与等待销售补足每一步显示的国库费用。</div>
+    ${difficulty === 5 ? `<div class="callout"><strong>最高难度差异：</strong>基础信用只有 ${h(money(profile.baseCreditCents))}，并启用复合工区和大宗配料。前 35 项中受大宗规则改变的配方为 ${bulkRecipes.map((recipe) => `<span class="chip">${h(item(recipe.output).emoji)} ${h(item(recipe.output).name)}：${h(formula(recipe))}</span>`).join(" ")}。报告中的配方列已经显示难度 5 的真实数量。</div>` : ""}
     <h3>运行中允许并实际调用的公开操作</h3>
     <ul class="checklist"><li>购买已经满足前置条件的配方</li><li>颁布或废止经过安全校验的法规</li><li>购买相邻 9×9 地块</li><li>在合法空位放置新猫</li><li>按猫咪报价收购工厂、天线和机床</li><li>从玩家建筑库把三栋设施放进同一复合工区</li><li>推进确定性模拟时钟</li></ul>
     <h3>没有做的事</h3>
     <ul class="checklist"><li>没有直接增加猫咪库存</li><li>没有直接标记商品发现</li><li>没有直接注入建筑或修改建筑范围</li><li>没有绕过配方购买与产业认证</li><li>没有让远方猫读取全局库存</li><li>没有取消实物的相邻猫逐跳运输</li></ul>
     <p class="callout"><strong>DeepSeek 说明：</strong>这次确定性回归没有访问真实 DeepSeek 网络接口，以免模型波动、超时或计费破坏可重复性。脚本把与模型合规输出相同的已验证 <code>LawDraft</code> 通过公开 <code>enactLaw()</code> 颁布。共享函数源码确实是 <code>function decide(ctx) { return choose(); }</code>；动态法规选择则读取当前开放订单，在 120 秒无新发现时临时提高最深缺口商品的价格。换言之，本局验证“法规能否改变游戏”，不验证某次上游模型回答是否稳定。</p>
+  </section>
+
+  <section class="section" id="replay">
+    <h2>照着游戏界面复现这次最高难度操作</h2>
+    <div class="table-wrap"><table><thead><tr><th>顺序</th><th>界面位置</th><th>具体点击或输入</th><th>完成标志</th></tr></thead><tbody>
+      <tr><td>1</td><td>顶栏难度</td><td>新档开始前选择“5 · 极限物流”并确认清档。</td><td>顶栏难度为 5；基础信用 50 金币。</td></tr>
+      <tr><td>2</td><td>配方图</td><td>依次购买第 10–15 项：线、纸、工具、玻璃、金属、齿轮；资金不足就先让外售税积累国库。</td><td>${h(time(result.phase1.completeAtMs))} 前 15 项均有制作记录。</td></tr>
+      <tr><td>3</td><td>配方图</td><td>购买第 16–20 项，保持法条不变观察 300 模拟秒。</td><td>五项 crafted=0 且悬赏仍开放，确认不是等待不足。</td></tr>
+      <tr><td>4</td><td>法典</td><td>颁布“每只猫按自己的库存、计划和全局广播选择当前最有利动作”；再为第 16–27 项逐项输入“把【商品名】实际售价提高 100%”。</td><td>价格卡显示 ×2；商品首次制造后用“废”撤销该阶段法。</td></tr>
+      <tr><td>5</td><td>开拓</td><td>购买东侧地块 <code>(1,0)</code>，按“空间建设”表中的坐标补 ${placedCatCount} 只猫，保持上下左右连续。</td><td>广播虽全局可听，实物仍可沿相邻猫合同路线送达。</td></tr>
+      <tr><td>6</td><td>仓库</td><td>等待并收购工厂、天线、机床报价；分别放到 ${h(buildingPositionSummary)}。</td><td>三栋设施共同覆盖至少一个高级制造工位。</td></tr>
+      <tr><td>7</td><td>配方图 / 法典</td><td>工厂落成后购买第 28–35 项，并为芯片到车辆逐项颁布 ×2 价格法。</td><td>第 35 项车辆进入悬赏计划。</td></tr>
+      <tr><td>8</td><td>猫咪 / 法典</td><td>若连续 120 模拟秒无新发现，在开放订单中找序号最深的商品，临时颁布 ×2；该商品新增产量后立即废止。</td><td>本次完整触发记录见“法规”和“完整账本”。</td></tr>
+      <tr><td>9</td><td>配方图 / 猫咪</td><td>检查车辆难度 5 配料为车轮×4、控制器×1、燃料×2，并确认制造猫同时在工厂和机床半径 2 内。</td><td>${h(time(result.simTime))} 时 35/35，车辆制作数 ${result.vehicle}。</td></tr>
+    </tbody></table></div>
+    <p class="callout green"><strong>怎样把测试操作换成正常存档：</strong>不要改物品、发现或建筑；只把“充足测试国库”替换成等待税收。每次以游戏按钮显示的当期费用为准，国库够了再执行下一条购买、颁布或废止。下方完整账本保留了本次 ${operations.length} 条操作及每笔费用。</p>
   </section>
 
   <section class="section" id="stages">
@@ -327,7 +354,7 @@ const html = `<!doctype html>
 
   <section class="section" id="items">
     <h2>35 项商品逐项结果</h2>
-    <p>“首次制作观测”按验收脚本每 30 秒检查一次，所以写作“≤时刻”；“悬赏结案”来自市场广播内部时间，精确到 5 模拟秒，并列出领取悬赏的来源猫。两者可能不同：非悬赏计划也可能先做出商品，而悬赏稍后才由认领者结算。</p>
+    <p>“首次制作观测”按验收脚本每 30 秒检查一次，所以写作“≤时刻”；“悬赏结案”来自市场广播内部时间，精确到 5 模拟秒，并列出领取悬赏的来源猫。配方列采用${h(difficultyLabel)}的有效数量，而不是较低难度的基础数量。</p>
     <div class="table-wrap"><table><thead><tr><th>#</th><th>商品</th><th>固定配方</th><th>首次制作观测</th><th>悬赏结案 / 猫</th><th>制作</th><th>传递</th><th>外售</th><th>外售收入</th></tr></thead><tbody>${itemRows}</tbody></table></div>
   </section>
 
@@ -344,7 +371,7 @@ const html = `<!doctype html>
     <p class="callout"><strong>仍需区分：</strong>本页使用充足测试国库与确定性法条夹具。若要评价生产版经济平衡，还应另做“150 金币正常开局、只靠税收积累”的长时测试；若要评价 DeepSeek 可靠性，还应单独统计真实模型生成成功率、语义正确率和重试率。</p>
   </section>
 
-  <footer>数据源：猫咪工坊 0.9.0 · scripts/qa-35.mts · worldSeed=${seed} · simulationSpeed=${state.simulationSpeed} · JSON 伴随记录：output/qa35-seed${seed}-record.json</footer>
+  <footer>数据源：猫咪工坊 0.11.0 · ${h(difficultyLabel)} · scripts/qa-35.mts · worldSeed=${seed} · simulationSpeed=${state.simulationSpeed} · JSON 伴随记录：output/qa35-difficulty${difficulty}-seed${seed}-record.json</footer>
 </main>
 <script>
   const rows=[...document.querySelectorAll('#ledger-table tbody tr')];
