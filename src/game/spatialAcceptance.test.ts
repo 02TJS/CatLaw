@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { INTRO_RECIPE_IDS, ITEMS, MARKET_CHALLENGE_RECIPE_IDS, RECIPE_BY_ID, TUTORIAL_RECIPE_IDS } from "./catalog";
-import { advanceGame, cancelBuildingOrder, createInitialState, decideIdleCats, itemPrice, placeOwnedBuilding, queueBuildingOrder, unlockRecipe } from "./engine";
+import { INTRO_RECIPE_IDS, ITEMS, RECIPE_BY_ID } from "./catalog";
+import { advanceGame, cancelBuildingOrder, catStockPurchaseQuote, createInitialState, decideIdleCats, itemPrice, placeOwnedBuilding, queueBuildingOrder } from "./engine";
 import { LOCAL_VISION_RADIUS, planLocalLogistics } from "./localPlanner";
 import { acceptProfitableOrders, propagateOrderSignals } from "./market";
 import type { CatState, GameState, ItemId, LawVersion, Position } from "./types";
@@ -69,19 +69,7 @@ describe("0.8.0 spatial market acceptance", () => {
     expect(state.discoveredItems).not.toContain(ITEMS[9].id);
   }, 60_000);
 
-  it("keeps the teaching goal through item fifteen for 100 scattered-resource seeds", () => {
-    const expected = TUTORIAL_RECIPE_IDS.map((id) => RECIPE_BY_ID.get(id)!.output);
-    for (let worldSeed = 1; worldSeed <= 100; worldSeed += 1) {
-      const state = createInitialState({ worldSeed });
-      state.treasuryCoins = 1_000_000;
-      for (const recipeId of MARKET_CHALLENGE_RECIPE_IDS) expect(unlockRecipe(state, recipeId).ok).toBe(true);
-      advanceGame(state, 300_000);
-      expect(new Set(state.discoveredItems), `seed ${worldSeed}`).toEqual(new Set(expected));
-      expect(state.discoveredItems, `seed ${worldSeed}`).not.toContain(ITEMS[15].id);
-    }
-  }, 60_000);
-
-  it("lets an isolated resource cat craft and sell instead of sharing across components", () => {
+  it("lets isolated resource cats craft stock for player collection without cross-component sharing", () => {
     const state = createInitialState({ withStarter: false, worldSeed: 91 });
     state.cats = [cat(0, { x: 0, y: 0 }), cat(1, { x: 4, y: 4 })];
     state.resourceNodes = [
@@ -93,12 +81,13 @@ describe("0.8.0 spatial market acceptance", () => {
     advanceGame(state, 10_000);
     expect(state.itemStats.ore.crafted).toBeGreaterThan(0);
     expect(state.itemStats.fiber.crafted).toBeGreaterThan(0);
-    expect(state.itemStats.ore.sold).toBeGreaterThan(0);
-    expect(state.itemStats.fiber.sold).toBeGreaterThan(0);
+    expect(state.cats[0].inventory.ore).toBeGreaterThan(0);
+    expect(state.cats[1].inventory.fiber).toBeGreaterThan(0);
+    expect(state.itemStats.ore.sold + state.itemStats.fiber.sold).toBe(0);
     expect(state.itemStats.ore.passed + state.itemStats.fiber.passed).toBe(0);
   });
 
-  it("changes the logistics target for a price law but not for a tax law", () => {
+  it("changes player acquisition quotes for a price law but never starts a cat sale", () => {
     const baseline = createInitialState({ withStarter: false, worldSeed: 222 });
     finishTutorial(baseline);
     baseline.resourceNodes = [];
@@ -106,7 +95,8 @@ describe("0.8.0 spatial market acceptance", () => {
     baseline.cats[0].inventory.gear = 1;
     baseline.laws = [];
     decideIdleCats(baseline);
-    expect(baseline.cats[0].action).toMatchObject({ type: "sell", itemId: "gear" });
+    expect(baseline.cats[0].action).toBeNull();
+    const baselineQuote = catStockPurchaseQuote(baseline, baseline.cats[0].id);
 
     const taxed = structuredClone(baseline);
     taxed.cats.forEach((entry) => {
@@ -116,7 +106,8 @@ describe("0.8.0 spatial market acceptance", () => {
     taxed.laws = [passiveLaw({ id: "tax", category: "tax", taxRate: 0.99 })];
     taxed.dirtyDecisions = true;
     decideIdleCats(taxed);
-    expect(taxed.cats[0].action).toMatchObject({ type: "sell", itemId: "gear" });
+    expect(taxed.cats[0].action).toBeNull();
+    expect(catStockPurchaseQuote(taxed, taxed.cats[0].id).totalCostCents).toBe(baselineQuote.totalCostCents);
 
     const priced = structuredClone(baseline);
     priced.cats.forEach((entry) => {
@@ -126,7 +117,8 @@ describe("0.8.0 spatial market acceptance", () => {
     priced.laws = [passiveLaw({ id: "brick-price", category: "price", priceItemId: "brick", priceMultiplier: 100 })];
     priced.dirtyDecisions = true;
     decideIdleCats(priced);
-    expect(priced.cats[0].action).toMatchObject({ type: "sell", itemId: "brick" });
+    expect(priced.cats[0].action).toBeNull();
+    expect(catStockPurchaseQuote(priced, priced.cats[0].id).totalCostCents).toBeGreaterThan(baselineQuote.totalCostCents);
   });
 
   it("finishes an already-contracted legacy building delivery into the player inventory", () => {

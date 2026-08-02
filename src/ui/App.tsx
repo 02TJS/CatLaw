@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { GameController } from "../game/controller";
-import { formatMoney, inventoryTotal, itemPrice, purchasableParcels, warehouseQuote } from "../game/engine";
+import { catStockPurchaseQuote, formatMoney, inventoryTotal, itemPrice, purchasableParcels, warehouseQuote, warehouseSellPrice } from "../game/engine";
 import { GameCanvas } from "./GameCanvas";
 import { LawPanel } from "./LawPanel";
 import { CatalogPanel } from "./CatalogPanel";
@@ -84,6 +84,12 @@ export function App() {
       state: () => controller.state,
       setSpeed: (multiplier) => controller.setSpeed(multiplier),
       removeCat: (catId) => controller.removeCat(catId),
+      buyCatItem: (catId, itemId) => controller.buyCatItem(catId, itemId),
+      buyAllCatStock: () => controller.buyAllCatStock(),
+      buyAllCatStockAndSell: () => controller.buyAllCatStockAndSell(),
+      sellWarehouseItem: (itemId, quantity) => controller.sellWarehouseItem(itemId, quantity),
+      sellAllUnlockedWarehouseItems: () => controller.sellAllUnlockedWarehouseItems(),
+      toggleWarehouseItemLock: (itemId) => controller.toggleWarehouseItemLock(itemId),
     };
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -306,9 +312,13 @@ function renderGameToText(
       buildingOffers: state.buildingOffers.filter((offer) => offer.status === "open"),
       warehouse: {
         inventory: state.playerBuildingInventory,
+        lockedItemIds: state.lockedWarehouseItemIds,
+        fixedSellPricesCents: Object.fromEntries(ITEMS.map((item) => [item.id, warehouseSellPrice(item.id)])),
+        sellPriceRule: "catalog base price × 2; unaffected by laws, tax, difficulty, or landmarks",
         distinctItems: ITEMS.filter((item) => (state.playerBuildingInventory[item.id] ?? 0) > 0).length,
         totalItems: Object.values(state.playerBuildingInventory).reduce((sum, quantity) => sum + quantity, 0),
         purchasable: ITEMS.map((item) => warehouseQuote(state, item.id)).filter((quote) => quote.availableQuantity > 0),
+        allCatStockQuote: catStockPurchaseQuote(state),
       },
       playerBuildingInventory: state.playerBuildingInventory,
       buildingPlacement: {
@@ -397,6 +407,7 @@ function renderGameToText(
       netWorthCents: netWorthCents(state, cat, (itemId) => itemPrice(state, itemId)),
       creditAvailableCents: creditAvailableCents(state, cat, (itemId) => itemPrice(state, itemId)),
       inventory: cat.inventory,
+      playerPurchaseQuote: catStockPurchaseQuote(state, cat.id),
       action: cat.action ? { type: cat.action.type, itemId: cat.action.itemId, contractId: cat.action.contractId ?? null, remainingMs: Math.max(0, Math.round(cat.action.endsAt - state.simTime)) } : null,
       productionPlan: planForCatPublic(state, cat.id) ?? null,
       ownOrders: state.demandOrders.filter((order) => order.buyerKind === "cat" && order.buyerCatId === cat.id && order.status === "open"),

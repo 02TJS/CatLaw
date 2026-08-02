@@ -13,41 +13,79 @@ page.on("console", (message) => {
 });
 page.on("pageerror", (error) => errors.push(`pageerror: ${String(error)}`));
 
+const stateText = async () => JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+
 try {
   await page.goto(process.argv[2] ?? "http://127.0.0.1:5173", { waitUntil: "networkidle" });
-  await page.waitForFunction(() => typeof window.render_game_to_text === "function" && typeof window.advanceTime === "function");
-  await page.evaluate(() => window.advanceTime(30_000));
-  await page.getByRole("button", { name: "仓库", exact: true }).click();
-  await page.waitForSelector('[data-testid="warehouse-item-wood"]');
+  await page.waitForFunction(() => typeof window.render_game_to_text === "function" && Boolean(window.__CAT_WORKSHOP__));
+  await page.evaluate(async () => {
+    await window.__CAT_WORKSHOP__.reset(3);
+    const state = window.__CAT_WORKSHOP__.state();
+    for (const cat of state.cats) {
+      cat.inventory = {};
+      cat.action = null;
+    }
+    state.procurementPlans.forEach((plan) => { plan.status = "cancelled"; });
+    state.buildingOffers = [];
+    state.playerBuildingInventory = {};
+    state.lockedWarehouseItemIds = [];
+    state.paused = true;
+    state.treasuryCoins = 0;
+    state.totalSales = 0;
+    state.discoveredItems = ["wood", "stone"];
+    state.cats[0].inventory.wood = 2;
+    state.cats[1].inventory.stone = 1;
+    window.advanceTime(0);
+  });
 
+  await page.getByRole("button", { name: "仓库", exact: true }).click();
+  await page.waitForSelector('[data-testid="warehouse-batch-actions"]');
   const shelfCount = await page.locator('[data-testid^="warehouse-item-"]').count();
   if (shelfCount !== 65) throw new Error(`expected 65 warehouse shelves, got ${shelfCount}`);
-  const before = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
-  if (before.world.warehouse.purchasable.length < 1) throw new Error("expected at least one purchasable item after 30 seconds");
-  await page.screenshot({ path: path.join(outputDir, "warehouse-before.png"), fullPage: true });
 
-  const enabledBuy = page.locator('[data-testid^="buy-item-"]:not([disabled])').first();
-  const testId = await enabledBuy.getAttribute("data-testid");
-  if (!testId) throw new Error("no enabled warehouse buy button");
-  const itemId = testId.slice("buy-item-".length);
-  const sellerNetWorthBefore = before.personalCashCents - before.totalDebtCents;
-  await enabledBuy.click();
-  await page.waitForFunction(() => document.querySelector('[data-testid="warehouse-message"]')?.textContent?.includes("已收购"));
-  const after = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  await page.locator('[data-testid="lock-item-wood"]').click();
+  let text = await stateText();
+  if (!text.world.warehouse.lockedItemIds.includes("wood")) throw new Error("wood lock was not persisted in text state");
+  if (text.world.warehouse.allCatStockQuote.totalQuantity !== 3) throw new Error("unexpected batch quantity");
+  if (text.world.warehouse.allCatStockQuote.resaleRevenueCents !== 200) throw new Error("locked wood incorrectly entered resale revenue");
+  const requiredTreasuryCents = text.world.warehouse.allCatStockQuote.requiredTreasuryCents;
+  if (requiredTreasuryCents !== text.world.warehouse.allCatStockQuote.totalCostCents - 200) throw new Error("unexpected minimum treasury difference");
+  await page.evaluate((amount) => {
+    window.__CAT_WORKSHOP__.state().treasuryCoins = amount;
+    window.advanceTime(0);
+  }, requiredTreasuryCents - 1);
+  if (!(await page.locator('[data-testid="buy-all-cat-stock-and-sell"]').isDisabled())) throw new Error("net-difference button should be disabled one cent short");
+  await page.locator('[data-testid="warehouse-batch-actions"]').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: path.join(outputDir, "01-net-difference-insufficient.png"), fullPage: true });
 
-  if (after.treasuryCents >= before.treasuryCents) throw new Error("treasury was not charged");
-  if (after.world.warehouse.totalItems !== before.world.warehouse.totalItems + 1) throw new Error("warehouse total did not increase by one");
-  if ((after.world.warehouse.inventory[itemId] ?? 0) !== (before.world.warehouse.inventory[itemId] ?? 0) + 1) {
-    throw new Error(`${itemId} did not enter warehouse inventory`);
+  await page.evaluate((amount) => {
+    window.__CAT_WORKSHOP__.state().treasuryCoins = amount;
+    window.advanceTime(0);
+  }, requiredTreasuryCents);
+  await page.locator('[data-testid="buy-all-cat-stock-and-sell"]').click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="warehouse-message"]')?.textContent?.includes("并转卖"));
+  text = await stateText();
+  if (text.treasuryCents !== 0) throw new Error(`expected net-difference treasury 0, got ${text.treasuryCents}`);
+  if (text.world.warehouse.inventory.wood !== 2 || text.world.warehouse.inventory.stone) throw new Error("locked/unlocked buy-resell inventory mismatch");
+  if (text.totalSalesCents !== 200 || text.itemStats.stone?.sold !== 1) throw new Error("batch resale stats mismatch");
+  await page.locator('[data-testid="warehouse-batch-actions"]').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: path.join(outputDir, "02-locked-buy-resell.png"), fullPage: true });
+
+  await page.locator('[data-testid="sell-item-wood"]').click();
+  text = await stateText();
+  if (text.treasuryCents !== 200 || text.world.warehouse.inventory.wood !== 1) throw new Error("single warehouse sale mismatch");
+  await page.locator('[data-testid="lock-item-wood"]').click();
+  await page.locator('[data-testid="sell-all-warehouse"]').click();
+  text = await stateText();
+  if (text.treasuryCents !== 400 || text.world.warehouse.totalItems !== 0 || text.totalSalesCents !== 600) {
+    throw new Error("unlocked bulk liquidation mismatch");
   }
-  const sellerNetWorthAfter = after.personalCashCents - after.totalDebtCents;
-  if (sellerNetWorthAfter <= sellerNetWorthBefore) throw new Error("seller cat did not receive purchase proceeds");
-  if (after.totalSalesCents !== before.totalSalesCents) throw new Error("warehouse purchase incorrectly changed external sales");
+  await page.locator('[data-testid="warehouse-batch-actions"]').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: path.join(outputDir, "03-single-and-bulk-sale.png"), fullPage: true });
 
-  await page.screenshot({ path: path.join(outputDir, "warehouse-after.png"), fullPage: true });
-  fs.writeFileSync(path.join(outputDir, "result.json"), JSON.stringify({ shelfCount, itemId, before, after, errors }, null, 2));
+  fs.writeFileSync(path.join(outputDir, "result.json"), JSON.stringify({ shelfCount, final: text, errors }, null, 2));
   if (errors.length) throw new Error(errors.join("\n"));
-  process.stdout.write(JSON.stringify({ ok: true, shelfCount, itemId, treasurySpent: before.treasuryCents - after.treasuryCents }));
+  process.stdout.write(JSON.stringify({ ok: true, shelfCount, screenshots: 3, finalTreasuryCents: text.treasuryCents, totalSalesCents: text.totalSalesCents }));
 } finally {
   await browser.close();
 }

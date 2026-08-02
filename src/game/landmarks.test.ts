@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { advanceGame, createInitialState, itemPrice } from "./engine";
+import { advanceGame, createInitialState, itemPrice, sellWarehouseItem, warehouseSellPrice } from "./engine";
 import {
   actionSpeedReductionAt,
   buyLandmarkBlueprint,
@@ -113,7 +113,7 @@ describe("0.11.0 player landmarks", () => {
     expect(actionSpeedReductionAt(state, { x: 0, y: 0 }, "craft")).toBeCloseTo(0.60);
   });
 
-  it("locks accelerated duration and landmark sale gross when actions start", () => {
+  it("locks accelerated duration while player warehouse sales ignore landmarks and tax", () => {
     const state = blank();
     state.landmarks.push({ id: "p", landmarkId: "founders_plaza", position: { x: 2, y: 0 }, deployedAt: 0 });
     state.cats[0].inventory.wood = 2;
@@ -128,23 +128,14 @@ describe("0.11.0 player landmarks", () => {
     expect(state.itemStats.plank.crafted).toBe(1);
 
     const sale = blank();
-    sale.cats[0].inventory.wood = 1;
-    sale.unlockedRecipes = [];
-    sale.discoveryBounties = [];
-    sale.marketBroadcasts = [];
+    sale.playerBuildingInventory.wood = 1;
     sale.landmarks.push({ id: "m", landmarkId: "market_center", position: { x: 1, y: 0 }, deployedAt: 0 });
-    sale.laws = [
-      behaviorLaw('function decide(ctx) { return { type: "sell", itemId: "wood" }; }'),
-      { ...behaviorLaw("function decide(ctx) { return null; }"), id: "tax", category: "tax", taxRate: 0.5 },
-    ];
+    sale.laws = [{ ...behaviorLaw("function decide(ctx) { return null; }"), id: "tax", category: "tax", taxRate: 0.5 }];
     const treasuryBefore = sale.treasuryCoins;
-    advanceGame(sale, 1);
-    expect(sale.cats[0].action?.saleGrossCents).toBe(Math.ceil(itemPrice(sale, "wood") * 1.15));
-    sale.landmarks = [];
-    advanceGame(sale, 4_999);
-    expect(sale.totalSales).toBe(115);
-    expect(sale.treasuryCoins - treasuryBefore).toBe(58);
-    expect(sale.cats[0].coins).toBe(57);
+    expect(sellWarehouseItem(sale, "wood")).toMatchObject({ ok: true, revenueCents: warehouseSellPrice("wood") });
+    expect(sale.totalSales).toBe(warehouseSellPrice("wood"));
+    expect(sale.treasuryCoins - treasuryBefore).toBe(warehouseSellPrice("wood"));
+    expect(sale.cats[0].coins).toBe(0);
   });
 
   it("applies dynamic credit and locked carrier fee bonuses", () => {
@@ -160,7 +151,7 @@ describe("0.11.0 player landmarks", () => {
     expect(carrierFeeCents(state, cat, (id) => itemPrice(state, id))).toBe(Math.ceil(baseFee * 1.2));
   });
 
-  it("migrates schema 6 saves to empty schema 7 landmark state without loss", () => {
+  it("migrates schema 6 saves to empty schema 8 landmark and warehouse-lock state without loss", () => {
     const legacy = structuredClone(blank()) as any;
     legacy.schemaVersion = 6;
     delete legacy.landmarks;
@@ -169,7 +160,7 @@ describe("0.11.0 player landmarks", () => {
     legacy.treasuryCoins = 12_345;
     legacy.playerBuildingInventory = { wood: 9 };
     const migrated = migrateSaveSnapshot(legacy);
-    expect(migrated.schemaVersion).toBe(7);
+    expect(migrated.schemaVersion).toBe(8);
     expect(migrated.landmarks).toEqual([]);
     expect(migrated.unlockedLandmarkIds).toEqual([]);
     expect(migrated.nextLandmarkIndex).toBe(0);

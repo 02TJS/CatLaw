@@ -592,7 +592,8 @@ function tryCreateBountyPlanForCat(state: GameState, cat: CatState, priceOf: (it
 }
 
 function tryCreateExternalPlanForCat(state: GameState, cat: CatState, priceOf: (itemId: ItemId) => number): boolean {
-  if (Object.values(cat.inventory).some((quantity) => quantity > 0)) return false;
+  // Finished stock now waits for the player to purchase it. It must not stop a
+  // cat from opening its next profitable production plan.
   if (signalsForCat(state, cat.id).length > 0) return false;
   if (bountyBroadcastsForCat(state, cat.id).some((broadcast) => (
     state.unlockedRecipes.includes(RECIPE_BY_OUTPUT.get(broadcast.itemId)?.id ?? "")

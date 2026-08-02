@@ -4,7 +4,7 @@ import { migrateSaveSnapshot } from "./persistence";
 import { BASE_RESOURCE_ITEM_IDS, parcelForPosition } from "./world";
 
 describe("schema 5 building-market migration", () => {
-  it("preserves cats, money, inventory, laws, recipes, and active actions", () => {
+  it("preserves state while cancelling and refunding legacy cat sale actions", () => {
     const original = createInitialState({ worldSeed: 12 });
     original.cats[0].position = { x: 15, y: -5 };
     original.cats[0].inventory.gear = 3;
@@ -25,13 +25,13 @@ describe("schema 5 building-market migration", () => {
     delete legacy.logisticsStatus;
 
     const migrated = migrateSaveSnapshot(legacy, 999);
-    expect(migrated.schemaVersion).toBe(7);
+    expect(migrated.schemaVersion).toBe(8);
     expect(migrated.difficulty).toBe(2);
     expect(migrated.treasuryCoins).toBe(32_100);
     expect(migrated.cats).toHaveLength(original.cats.length);
     expect(migrated.cats[0].position).toEqual({ x: 15, y: -5 });
-    expect(migrated.cats[0].inventory.gear).toBe(3);
-    expect(migrated.cats[0].action).toEqual(original.cats[0].action);
+    expect(migrated.cats[0].inventory.gear).toBe(4);
+    expect(migrated.cats[0].action).toBeNull();
     expect(migrated.unlockedRecipes).toContain("make_thread");
     expect(migrated.laws.map((law) => law.id)).toEqual(original.laws.map((law) => law.id));
     expect(migrated.unlockedParcels).toContainEqual(parcelForPosition({ x: 15, y: -5 }));
@@ -58,7 +58,7 @@ describe("schema 5 building-market migration", () => {
       position: { ...cat.position },
     }));
     const migrated = migrateSaveSnapshot(schema2);
-    expect(migrated.schemaVersion).toBe(7);
+    expect(migrated.schemaVersion).toBe(8);
     expect(migrated.cats.map((cat) => cat.position)).toEqual(schema2.cats.map((cat: any) => cat.position));
     expect(migrated.resourceNodes.every((node) => !migrated.cats.some((cat) => node.position.x === cat.position.x
       && node.position.y === cat.position.y))).toBe(true);

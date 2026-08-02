@@ -1,4 +1,4 @@
-import { advanceGame, buyBuildingOffer, buyLandmarkBlueprint, buyWarehouseItem, cancelBuildingOrder, createInitialState, dismantleBuilding, dismantleLandmark, enactLaw, expandParcel, placeCat, placeLandmark, placeOwnedBuilding, queueBuildingOrder, removeCat, reorderLaw, repealLaw, setPaused, unlockRecipe } from "./engine";
+import { advanceGame, buyAllCatStock, buyAllCatStockAndSell, buyBuildingOffer, buyCatItem, buyLandmarkBlueprint, buyWarehouseItem, cancelBuildingOrder, createInitialState, dismantleBuilding, dismantleLandmark, enactLaw, expandParcel, placeCat, placeLandmark, placeOwnedBuilding, queueBuildingOrder, removeCat, reorderLaw, repealLaw, sellAllUnlockedWarehouseItems, sellWarehouseItem, setPaused, toggleWarehouseItemLock, unlockRecipe } from "./engine";
 import { clearSave, loadGame, saveGame } from "./persistence";
 import type { GameState, LandmarkId, LawDraft, Position } from "./types";
 import { randomWorldSeed } from "./world";
@@ -155,6 +155,42 @@ export class GameController {
 
   buyWarehouseItem(itemId: string) {
     const result = buyWarehouseItem(this.state, itemId);
+    this.emit();
+    return result;
+  }
+
+  buyCatItem(catId: string, itemId: string) {
+    const result = buyCatItem(this.state, catId, itemId);
+    this.emit();
+    return result;
+  }
+
+  buyAllCatStock() {
+    const result = buyAllCatStock(this.state);
+    this.emit();
+    return result;
+  }
+
+  buyAllCatStockAndSell() {
+    const result = buyAllCatStockAndSell(this.state);
+    this.emit();
+    return result;
+  }
+
+  sellWarehouseItem(itemId: string, quantity = 1) {
+    const result = sellWarehouseItem(this.state, itemId, quantity);
+    this.emit();
+    return result;
+  }
+
+  sellAllUnlockedWarehouseItems() {
+    const result = sellAllUnlockedWarehouseItems(this.state);
+    this.emit();
+    return result;
+  }
+
+  toggleWarehouseItemLock(itemId: string) {
+    const result = toggleWarehouseItemLock(this.state, itemId);
     this.emit();
     return result;
   }

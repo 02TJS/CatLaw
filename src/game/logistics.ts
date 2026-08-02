@@ -80,9 +80,7 @@ export function planLogistics(state: GameState, priceOf: (itemId: ItemId) => num
       else if (kind === "profit") {
         const holder = component.filter((cat) => available(shadow, cat.id, target!.output) > 0 && idle(cat, assignments))
           .sort((a, b) => a.createdIndex - b.createdIndex)[0];
-        if (holder) assignSell(assignments, shadow, holder, target.output);
-        else {
-          sellUnneeded(state, component, recipeClosure(target.output), assignments, shadow, priceOf);
+        if (!holder) {
           ensureAt(state, component, target.output, producer, assignments, shadow, map, new Set());
         }
       } else {
@@ -375,51 +373,19 @@ function fillParallelCrafts(
   }
 }
 
-function sellUnneeded(
-  state: GameState,
-  component: CatState[],
-  closure: Set<ItemId>,
-  assignments: Map<string, Exclude<CatAction, null>>,
-  shadow: Map<string, Record<ItemId, number>>,
-  priceOf: (itemId: ItemId) => number,
-): void {
-  for (const cat of component) {
-    if (!idle(cat, assignments)) continue;
-    const itemId = Object.keys(shadow.get(cat.id) ?? {}).filter((id) => !closure.has(id) && ITEM_BY_ID.has(id) && available(shadow, cat.id, id) > 0)
-      .sort((a, b) => priceOf(b) - priceOf(a) || a.localeCompare(b))[0];
-    if (itemId) assignSell(assignments, shadow, cat, itemId);
-  }
-}
-
 function fallback(
   state: GameState,
   component: CatState[],
   assignments: Map<string, Exclude<CatAction, null>>,
   shadow: Map<string, Record<ItemId, number>>,
-  priceOf: (itemId: ItemId) => number,
+  _priceOf: (itemId: ItemId) => number,
 ): void {
   for (const cat of component) {
     if (!idle(cat, assignments)) continue;
-    const itemId = Object.keys(shadow.get(cat.id) ?? {}).filter((id) => ITEM_BY_ID.has(id) && available(shadow, cat.id, id) > 0)
-      .sort((a, b) => priceOf(b) - priceOf(a))[0];
-    if (itemId) {
-      assignSell(assignments, shadow, cat, itemId);
-      continue;
-    }
     const resource = resourceItemAt(state, cat.position);
     const recipe = resource ? RECIPE_BY_OUTPUT.get(resource) : undefined;
     if (recipe && state.unlockedRecipes.includes(recipe.id)) assignments.set(cat.id, { type: "craft", recipeId: recipe.id });
   }
-}
-
-function assignSell(
-  assignments: Map<string, Exclude<CatAction, null>>,
-  shadow: Map<string, Record<ItemId, number>>,
-  cat: CatState,
-  itemId: ItemId,
-): void {
-  assignments.set(cat.id, { type: "sell", itemId });
-  reserve(shadow, cat.id, itemId);
 }
 
 function baseRequirements(itemId: ItemId, multiplier = 1, result: Record<ItemId, number> = {}, difficulty: GameState["difficulty"] = 2): Record<ItemId, number> {

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>猫咪工坊 0.11.2 · 项目说明</title>
+  <title>猫咪工坊 0.12.0 · 玩家收购与仓库销售</title>
   <style>
     :root { color-scheme: light; --ink:#172033; --muted:#667085; --paper:#fff; --card:#f8faf9; --line:#dfe4e1; --accent:#c58b1b; --green:#3f8f5d; }
     * { box-sizing: border-box; }
@@ -28,7 +28,7 @@
 </head>
 <body>
 <main>
-  <span class="badge">0.11.2 · 加速与猫咪清算 · 快速启动</span>
+  <span class="badge">0.12.0 · 猫咪生产、玩家收购与销售 · 快速启动</span>
   <h1>🐾 猫咪工坊</h1>
   <p class="lead">一款逻辑法驱动的空间自动化制造沙盒。每只猫都短视且利己：基础只观察两格内工位，却能署名发布全局即时广播；玩家既可通过自然语言修改共享决策逻辑，也可把仓库商品建成覆盖周边工位的地标。</p>
 
@@ -44,10 +44,14 @@
 
   <h2>65 种商品通用仓库</h2>
   <div class="grid">
-    <div class="card"><strong>全科技树固定陈列</strong>仓库按 9 个时代展示全部 65 种商品；每个货架同时显示玩家库存、猫咪可售现货、最低收购价与购买状态。</div>
+    <div class="card"><strong>全科技树固定陈列</strong>仓库按 9 个时代展示全部 65 种商品；每个货架同时显示玩家库存、猫咪可收购现货、最低收购价、固定玩家售价与锁定状态。</div>
     <div class="card"><strong>产权清晰的即时收购</strong>玩家从国库支付，成交款归卖方猫咪并优先还债；商品进入玩家仓库，交易不计外部销售额，也不征销售税。</div>
-    <div class="card"><strong>生产与合同受保护</strong>正在执行的动作、生产计划配料、订单合同托管物和既有建筑报价不会被仓库按钮抽走，只出售真正空闲的现货。</div>
+    <div class="card"><strong>生产与合同受保护</strong>正在执行的动作、生产计划配料、订单合同托管物和既有建筑报价不会被仓库按钮抽走，只收购真正空闲的现货。</div>
     <div class="card"><strong>建筑仍可放置</strong>工厂、机床、天线、实验室和反应堆收购后也进入同一仓库；有库存时可直接进入地面放置模式，拆除后退回仓库。</div>
+    <div class="card"><strong>点击猫咪收购</strong>猫咪检查器逐项显示可收购数量和价格；猫不会再执行外部出售动作，只负责制作和履行有偿运输合同。</div>
+    <div class="card"><strong>两种批量结算</strong>“一键收购全部”要求国库付清总成本；“收购并转卖”只要求国库覆盖 <code>max(0, 成本−本次收入)</code>。</div>
+    <div class="card"><strong>固定 ×2 玩家售价</strong>玩家仓库商品按目录基准价的 2 倍出售，不受价格法、税法、难度或地标影响。可单件出售，也可一键出售全部未锁定商品。</div>
+    <div class="card"><strong>品类锁定</strong>任意货架可锁定；锁定品类不会被“一键卖出”或“收购并转卖”清掉，仍可单项手动出售或作为建筑、地标材料使用。</div>
   </div>
 
   <h2>六种玩家地标工程</h2>
@@ -91,7 +95,7 @@
   <div class="grid">
     <div class="card"><strong>128×64 等距世界</strong>支持负坐标、无限网格、深度遮挡、视口裁剪以及缩放平移后的精确命中。</div>
     <div class="card"><strong>2/5 尺寸工匠猫</strong>大头、短身体、大眼睛和腮红；世界内缩为原尺寸的 40%，工作循环约 1.44 秒。</div>
-    <div class="card"><strong>差异化物品动作</strong>制作顺时针绕物、传递时抱着物品走向相邻工位、出售反向绕行；仅保留 Emoji 圆形进度。</div>
+    <div class="card"><strong>差异化物品动作</strong>制作时顺时针绕物，传递时抱着物品走向相邻工位；猫咪不再外部出售，玩家交易在检查器和仓库中即时原子结算。</div>
     <div class="card"><strong>大规模工坊</strong>静态地面与 Emoji 都会缓存；局部观察只枚举半径 2 的 13 个格子，1000 只猫的压力场景仍可交互。</div>
   </div>
   <p>主画布使用纯白背景，不绘制网格或装饰地景，只保留猫脚下的灰色等距工位；右侧面板也压缩为简洁白色卡片。等距构图参考了 <a href="https://github.com/t42ji2ji/keyfarm">t42ji2ji/keyfarm</a> 的空间组织方式。该仓库未提供许可证，因此本项目没有复制其代码、GIF 或图片；猫咪精灵、工位和界面均为独立实现。</p>
@@ -99,7 +103,7 @@
   <h2>金币驱动的教学开局</h2>
   <div class="grid">
     <div class="card"><strong>前 9 项免费启蒙</strong>木材至砖的配方开局可用，11 只猫会先完成这些基础物资的首次制造。</div>
-    <div class="card"><strong>教学保持到第 15 项</strong>线、纸、工具、玻璃、金属、齿轮仍需用国库购买配方；每次解锁后，教学目标会自动继续，直至首次制造齿轮。</div>
+    <div class="card"><strong>教学保持到第 15 项</strong>线、纸、工具、玻璃、金属、齿轮仍需用国库购买配方；每次解锁后用“收购并转卖”清出猫咪成品，教学目标会继续到首次制造齿轮。</div>
     <div class="card"><strong>3 条基础经济法</strong>《分币结算法》《猫咪信用法》《全品类首次发现悬赏法》固定显示在法典中，不可修订、重排或废止，也不占前 5 次免费立法。</div>
     <div class="card"><strong>全品类真实悬赏</strong>65 项商品首次制作均可获得基础售价 3 倍悬赏；广播后由开工猫原子锁定，完工支付且不消耗商品。前 15 项会自动响应悬赏，第 16 项起必须先由玩家价格法规给出正向引导。</div>
   </div>
@@ -110,14 +114,14 @@
     <div class="card"><strong>六项产业认证</strong>教学会保障线、纸、工具、玻璃、金属、齿轮在解锁后依次被实际制造；全部完成后，线缆至工厂的五项配方才可购买。</div>
     <div class="card"><strong>每件商品有基础价</strong>配方图同时显示基础价格和法条修正后的实际售价；生产工作量决定未经干预的基准。</div>
     <div class="card"><strong>全体共用一份逻辑</strong>行为法颁布后替换上一版共享函数；正在进行的 5 秒动作不被打断，旧版进入历史。</div>
-    <div class="card"><strong>DeepSeek 自选决策位置</strong>生成逻辑可以直接返回动作、使用条件分支、在中间修改某类或某商品候选的评分，或混合这些方式，不强制固定模板。</div>
+    <div class="card"><strong>DeepSeek 自选决策位置</strong>生成逻辑可以直接制作、履行合同、使用条件分支或修改候选评分；<code>sell</code> 已从猫咪可执行行为中禁用，生成器会拒绝此类法条。</div>
     <div class="card"><strong>价格也参与评分</strong>价格条例决定实际售价，本地贪心把售价、制作工作量、运输距离和现场需求折成候选基础分。</div>
     <div class="card"><strong>22–30 的价格瓶颈</strong>难度 5 中，售价高出基础价的部分会按 150% 分摊进现有配料订单报价。玩家仍可自由设 ×2、×10 或任意价格；但高价也会抬高订单保证金和信用占用，不能凭空补齐分散库存。</div>
     <div class="card"><strong>物流法规降低缺料作业</strong>留存中间品、响应开放订单和逐格交付都沿用既有库存与合同系统。目标猫已经持有的材料不会再下单，因此物流组织会直接减少报价、保证金和等待中的配料作业。</div>
     <div class="card"><strong>局部递归自供给</strong>猫锁定盈利计划或听到订单后，可沿已解锁配方递归补做自己当前缺少的中间原料；它只使用自身库存和两格观察，不读取远方库存，也不替全局指定生产者。</div>
-    <div class="card"><strong>税收循环</strong>销售收入归卖方猫；税法把部分收入划入国库，国库用于解锁配方、颁布及废止法条。</div>
+    <div class="card"><strong>玩家销售回流</strong>玩家出售仓库商品时，固定 ×2 收入直接进入国库，用于收购、解锁配方、颁布、废止和地标图纸。</div>
     <div class="card"><strong>分币与信用</strong>一金币等于 100 分，全部内部账目使用整数分。信用额度为当前难度的基础信用加保守净资产；贷款收 2% 且至少 1 分，后续收入优先还债。</div>
-    <div class="card"><strong>不可绕过的利己门槛</strong>DeepSeek 可自由修改直接动作或中间评分，但无合同传递、亏损制作、税后亏损出售和超额信用都会被引擎拒绝。</div>
+    <div class="card"><strong>不可绕过的利己门槛</strong>DeepSeek 可修改制作、合同传递或中间评分，但猫咪 <code>sell</code>、无合同传递、亏损制作和超额信用都会被引擎拒绝。</div>
   </div>
   <p><a href="CatWorkshop-Operation-Guide.html"><strong>打开“具体操作指南”</strong></a>：按真实界面逐步说明启动、白手起家、制定法条、仓库收购、工业建筑、地标选址与故障排查。</p>
   <p><a href="CatWorkshop-Difficulty5-35-Operation.html"><strong>打开“最高难度 5 · 35 商品具体操作档案”</strong></a>：真实种子 1、极限物流难度；第 22–30 项不再逐项 ×2，而是用最低 ×1.01 悬赏准入和订单物流法规推进。档案同时解释为什么直接抬价会把溢价传导到配料作业报价，并列出全部操作、费用、猫坐标、工业设施和 35 项结果。</p>
@@ -127,7 +131,7 @@
   <table>
     <thead><tr><th>阶段</th><th>允许操作</th><th>确定性结果</th></tr></thead>
     <tbody>
-      <tr><td>1–15 · 白手起家</td><td>仅购买第 10–15 项配方并推进时间。</td><td>100 个固定种子均在 300 模拟秒内实际制造前 15 项，不需要改法、放猫、购地或建筑。</td></tr>
+      <tr><td>1–15 · 白手起家</td><td>购买第 10–15 项配方，每 60 模拟秒使用一次“收购并转卖”。</td><td>100 个固定种子均在 300 模拟秒内实际制造前 15 项；无需改法、放猫、购地或建筑。</td></tr>
       <tr><td>16–20 · 设计卡点</td><td>继续购买第 16–20 项配方，再观察 300 模拟秒。</td><td>五项均保持未制造，首次发现悬赏广播仍开放；用全品类 ×1.01 价格法满足正向指引硬门槛。</td></tr>
       <tr><td>21–35 · 玩家建设</td><td>购买后续配方，颁布读取订单与悬赏的物流行为法，购买相邻土地、放置连通猫链，并收购、共同布置猫咪挂牌的工厂、机床和天线。</td><td>第 22–30 项靠补料和留存评分推进；第 35 项车辆必须在工厂与机床共同覆盖的工位实际制造。</td></tr>
     </tbody>
@@ -143,19 +147,19 @@ npm run dev</code></pre>
 
   <h2>Windows 桌面版</h2>
   <p><a href="https://github.com/TingJShen/CatLaw2/releases/latest/download/CatWorkshop.exe"><strong>⬇️ 下载 CatWorkshop.exe（Windows 64 位，下载后双击即玩）</strong></a></p>
-  <p>运行 <code>release/CatWorkshop.exe</code> 即可直接打开游戏，不需要另行启动 npm、Vite 或浏览器。0.11.2 继续使用免压缩便携载荷，避免单文件 EXE 首次启动长时间无窗口。该 EXE 已注册为 Codex Toolbox 中的“猫咪工坊”。如需真实 DeepSeek 编译，把未提交的 <code>.env</code> 放在 EXE 同一目录。</p>
+  <p>运行 <code>release/CatWorkshop.exe</code> 即可直接打开游戏，不需要另行启动 npm、Vite 或浏览器。0.12.0 继续使用免压缩便携载荷，避免单文件 EXE 首次启动长时间无窗口。该 EXE 已注册为 Codex Toolbox 中的“猫咪工坊”。如需真实 DeepSeek 编译，把未提交的 <code>.env</code> 放在 EXE 同一目录。</p>
 
   <h2>核心规则</h2>
   <table>
     <thead><tr><th>对象</th><th>规则</th></tr></thead>
     <tbody>
       <tr><td>地块</td><td>每块 9×9；中央免费，新地块只能相邻开拓，费用为 50 + 25 × 地块曼哈顿距离。</td></tr>
-      <tr><td>动作</td><td>制作、向四邻传递、出售；基础耗时 5 秒，地标加速后最短 2 秒。传递必须匹配不可撤销的有偿运输合同。</td></tr>
+      <tr><td>猫咪动作</td><td>制作、向四邻传递；基础耗时 5 秒，地标加速后最短 2 秒。传递必须匹配不可撤销的有偿运输合同；外部出售由玩家仓库完成。</td></tr>
       <tr><td>资源</td><td>资源中心不可放猫；中心周围 8 个彩色采集格均可采集对应资源。生成器优先保证不同资源采集区不重叠。</td></tr>
-      <tr><td>仓库</td><td>65 种商品全部陈列；玩家用国库收购猫咪未被计划、动作、合同或报价占用的现货，货款归猫，商品进入独立玩家仓库。</td></tr>
+      <tr><td>仓库</td><td>65 种商品全部陈列；可单猫单项或批量收购、固定基准价 ×2 出售、锁定品类并一键出售未锁定库存。</td></tr>
       <tr><td>建筑</td><td>工厂、机床、天线、实验室和反应堆提供制造范围；玩家收购后从通用仓库放置到普通空地。</td></tr>
       <tr><td>地标</td><td>玩家购买永久图纸、消耗仓库建材即时落成；六类地标提供速度、售价、信用、中转费或视野加成，不满足工业建筑场地要求。</td></tr>
-      <tr><td>经济</td><td>金额统一为整数分。猫持有现金、债务、信用和保守净资产；内部交易免税，外部销售才应用最高优先级税法。</td></tr>
+      <tr><td>经济</td><td>金额统一为整数分。猫持有现金、债务、信用和保守净资产；收购款归猫并优先还债，玩家仓库销售收入进入国库。</td></tr>
       <tr><td>删除猫咪</td><td>检查器显示清算预览；确认后取消未完成订单与合同，返还动作锁定物，按当前外部净价变现库存，先偿还全部贷款，净额转入国库。工坊至少保留一只猫。</td></tr>
       <tr><td>立法</td><td>所有猫共用一份逻辑，基础视野半径 2、受地标提升到最高 5。DeepSeek 可读取有效加成并直接决策或修正局部候选评分；法典不接收配料表。</td></tr>
       <tr><td>科技</td><td>共 65 项固定物品与配方；前 9 项免费，第 10–15 项用国库购买且保持教学目标，第 16–20 项要求六种中间品均已实际制造。</td></tr>
@@ -171,7 +175,7 @@ npm run dev</code></pre>
 npm run build
 npx tsx scripts/qa-35.mts 1
 npm start</code></pre>
-  <p>自动化测试还可调用 <code>window.advanceTime(ms)</code>、<code>window.render_game_to_text()</code>、<code>window.__CAT_WORKSHOP__.setSpeed()</code> 和 <code>window.__CAT_WORKSHOP__.removeCat()</code>。文本状态包含当前运行倍率、图纸、地标坐标与材料、放置模式，以及每只猫的有效视野、速度、售价、信用、中转费和各地标层数。</p>
+  <p>自动化测试还可调用 <code>window.advanceTime(ms)</code>、<code>window.render_game_to_text()</code>，以及 <code>window.__CAT_WORKSHOP__</code> 中的速度、删猫、单猫收购、批量收购/转卖、仓库出售和品类锁定接口。文本状态包含固定玩家售价、锁定品类、批量交易成本/收入/净差额，以及图纸、地标和每只猫的有效加成。</p>
 
   <h2>安全说明</h2>
   <div class="notice">请轮换任何曾经出现在聊天记录中的 DeepSeek 密钥。新密钥只应保存在未提交的本地 <code>.env</code> 中，不能写进浏览器代码、存档、日志或 README。</div>

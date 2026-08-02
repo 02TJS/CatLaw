@@ -345,7 +345,7 @@ export interface FloatingEvent {
 }
 
 export interface GameState {
-  schemaVersion: 7;
+  schemaVersion: 8;
   difficulty: DifficultyLevel;
   catalogVersion: string;
   worldSeed: number;
@@ -362,6 +362,8 @@ export interface GameState {
   buildingOffers: BuildingOffer[];
   /** Legacy field name retained for save compatibility; stores every item in the player's warehouse. */
   playerBuildingInventory: Record<ItemId, number>;
+  /** Item kinds protected from bulk warehouse sales and buy-then-resell operations. */
+  lockedWarehouseItemIds: ItemId[];
   nextBuildingOfferIndex: number;
   buildingOrders: BuildingOrder[];
   nextBuildingIndex: number;
@@ -431,6 +433,12 @@ declare global {
       state: () => GameState;
       setSpeed: (multiplier: number) => void;
       removeCat: (catId: string) => { ok: boolean; error?: string; settledCents?: number; debtRepaidCents?: number; treasuryDeltaCents?: number };
+      buyCatItem: (catId: string, itemId: ItemId) => { ok: boolean; error?: string; cost?: number; sellerCatId?: string };
+      buyAllCatStock: () => { ok: boolean; error?: string; costCents?: number; quantity?: number };
+      buyAllCatStockAndSell: () => { ok: boolean; error?: string; costCents?: number; revenueCents?: number; netCents?: number; quantity?: number };
+      sellWarehouseItem: (itemId: ItemId, quantity?: number) => { ok: boolean; error?: string; revenueCents?: number; quantity?: number };
+      sellAllUnlockedWarehouseItems: () => { ok: boolean; error?: string; revenueCents?: number; quantity?: number };
+      toggleWarehouseItemLock: (itemId: ItemId) => { ok: boolean; error?: string; locked?: boolean };
     };
   }
 }

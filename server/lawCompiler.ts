@@ -99,6 +99,8 @@ function buildDraft(playerText: string, raw: z.infer<typeof modelOutputSchema>):
   const checked = validateLawSource(sourceCode);
   const examples = sanitizeExamples(raw.examples);
   const messages = [...checked.messages];
+  const containsSellAction = category === "behavior" && /\btype\s*:\s*["']sell["']/.test(sourceCode);
+  if (containsSellAction) messages.push("猫咪不能外部出售；请改为制作或履行运输合同，由玩家收购成品。 ");
   let examplesPassed = 0;
   if (checked.ok) {
     const fixed = [emptyObservation(), { ...emptyObservation(), position: { x: -999_999, y: 999_999 } }];
@@ -125,14 +127,14 @@ function buildDraft(playerText: string, raw: z.infer<typeof modelOutputSchema>):
     sourceCode,
     astHash: checked.hash || hashSource(sourceCode),
     examples,
-    warnings: raw.warnings,
+    warnings: containsSellAction ? [...raw.warnings, "sell 动作已被游戏规则禁用。"] : raw.warnings,
     category,
     taxRate,
     priceItemId,
     priceMultiplier,
     validation: {
       syntax: checked.ok,
-      safety: checked.ok && !messages.some((message) => message.startsWith("边界样例失败") || message.startsWith("未知商品")) && examplesPassed === examples.length,
+      safety: checked.ok && !messages.some((message) => message.startsWith("边界样例失败") || message.startsWith("未知商品") || message.startsWith("猫咪不能外部出售")) && examplesPassed === examples.length,
       examplesPassed,
       examplesTotal: examples.length,
       messages,
@@ -147,7 +149,7 @@ function localFallback(text: string): LawDraft {
     const normalized = /成/.test(text) && !/%|％/.test(text) ? percent / 10 : percent / 100;
     return buildDraft(text, {
       title: "销售税条例",
-      summary: `猫咪出售物品时，将 ${Math.round(Math.min(1, normalized) * 100)}% 收入缴入玩家国库。`,
+      summary: `税率参数设为 ${Math.round(Math.min(1, normalized) * 100)}%；猫咪已不能外部出售，玩家仓库固定售价也不受税法影响。`,
       category: "tax",
       taxRate: Math.min(1, Math.max(0, normalized)),
       sourceCode: "function decide(ctx) { return null; }",
@@ -181,16 +183,16 @@ function localFallback(text: string): LawDraft {
   }
   if (/卖|出售/.test(text) && itemMatch) {
     return buildDraft(text, {
-      title: `${itemMatch.name}局部出售条例`,
-      summary: `当前工位持有${itemMatch.name}时优先出售，否则采用局部贪心。`,
+      title: `${itemMatch.name}生产衔接条例`,
+      summary: `猫咪不能对外出售；继续采用局部盈利生产，成品等待玩家收购。`,
       category: "behavior",
-      sourceCode: `function decide(ctx) { if (has("${itemId}")) return { type: "sell", itemId: "${itemId}" }; return earnCoins(); }`,
-      warnings: ["未配置 DEEPSEEK_API_KEY，当前使用本地逻辑法条编译器。"],
+      sourceCode: "function decide(ctx) { return earnCoins(); }",
+      warnings: ["猫咪外部出售已禁用；请在猫咪检查器或玩家仓库中收购，再由玩家出售。", "未配置 DEEPSEEK_API_KEY，当前使用本地逻辑法条编译器。"],
       examples: [],
     });
   }
   if (/评分|权重|优先/.test(text) && itemMatch) {
-    const actionType = /传|送|搬/.test(text) ? "pass" : /制作|制造|合成/.test(text) ? "craft" : "sell";
+    const actionType = /传|送|搬/.test(text) ? "pass" : "craft";
     const multiplier = Math.max(0.1, Math.min(20, Number(text.match(/([\d.]+)\s*倍/)?.[1] ?? 3)));
     return buildDraft(text, {
       title: `${itemMatch.name}局部评分条例`,
@@ -223,14 +225,14 @@ function systemPrompt(existingLaws: Array<{ title: string; summary: string; cate
   const priceCatalog = ITEMS.map((item) => `${item.id}:${item.name}:${CATALOG_ANALYSIS.basePrices[item.id]}`).join("；");
   return `你是“猫咪工坊”的法条编译器。必须只输出 JSON 对象，不要 Markdown。
 法典允许三类：behavior 局部逻辑法、price 商品价格条例、tax 销售税法。不要保存、推测或复述配料表。
-每只猫只读取曼哈顿距离 2 内的工位。behavior 的 sourceCode 是 function decide(ctx) { ... }。不要强迫使用某种模板：你应自行判断是直接返回动作对象、调用 earnCoins()，还是在函数中间修改局部候选评分，以上方式可任意混用。直接动作对象格式为 { type: "craft", recipeId: "make_wood" }、{ type: "pass", direction: "east", itemId: "wood" } 或 { type: "sell", itemId: "wood" }。配方 ID 统一为 make_商品ID。
+每只猫只读取曼哈顿距离 2 内的工位。behavior 的 sourceCode 是 function decide(ctx) { ... }。不要强迫使用某种模板：你应自行判断是直接返回动作对象、调用 earnCoins()，还是在函数中间修改局部候选评分，以上方式可任意混用。直接动作只允许 { type: "craft", recipeId: "make_wood" } 或履行合同的 { type: "pass", direction: "east", itemId: "wood" }。猫咪不能外部出售，禁止生成 sell；成品等待玩家收购后，由玩家仓库出售。配方 ID 统一为 make_商品ID。
 ctx 只包含自身 position、inventory、四邻 neighbors、半径2 nearby、自身 site、wallet、全局即时广播 heardOrders/heardBounties/heardBuildingOffers/broadcasts 和当前 carrying；不会提供远方库存或配方表。广播由具体猫咪署名发布，不沿猫链传播；只有实物运输需要相邻猫链。只允许 const、if、return、字面量、比较/布尔运算和安全对象返回；禁止循环、赋值、递归、异步、DOM、网络、存储、时间和随机数。
-评分逻辑可在任意条件分支调用 adjust(actionType,itemId,multiplier,bonus) 一次或多次，再 return choose()。actionType 可为 craft/pass/sell/*，itemId 可为稳定英文 ID 或 *；多个修正按调用顺序叠加。weighted(craftWeight,passWeight,sellWeight) 只为简单情形与旧法兼容，并非固定结构。
+评分逻辑可在任意条件分支调用 adjust(actionType,itemId,multiplier,bonus) 一次或多次，再 return choose()。actionType 可为 craft/pass/*，itemId 可为稳定英文 ID 或 *；多个修正按调用顺序叠加。weighted(craftWeight,passWeight,sellWeight) 只为旧法兼容，第三个参数已不产生出售候选。
 白名单函数：count(itemId)、has(itemId,quantity)、neighborExists(direction)、neighborCount(direction,itemId)、nearbyCount(itemId)、nearbyCatCount()、onResource(itemId)、nearBuilding(itemId)、canCraft(recipeId)、at(x,y)、cash()、debt()、netWorth()、bestBid(itemId)、orderCount(itemId)、bounty(itemId)、buildingAsk(itemId)、broadcastCount(kind,itemId)、carrying(itemId)、earnCoins()、adjust(actionType,itemId,multiplier,bonus)、choose()、weighted(craftWeight,passWeight,sellWeight)。金额助手均返回整数分。
 直接动作示例：function decide(ctx) { if (carrying("wood")) return { type: "pass", direction: ctx.carrying.nextDirection, itemId: "wood" }; return earnCoins(); }
 混合评分示例：function decide(ctx) { if (orderCount("ore") > 0) adjust("craft", "ore", 3, 30); if (nearbyCount("wood") >= 2) adjust("craft", "plank", 2, 20); return choose(); }
 除非玩家明确要求全部待机，否则 behavior 不得只返回 null。必须完整回应玩家描述的条件或评分意图。
-行为逻辑之后还会经过不可绕过的利己经济门槛：无运输合同的 pass 会因“没有对价”失败；亏损制作、税后亏损出售或超额信用也会失败。内部订单免销售税，外部出售才应用税法。
+行为逻辑之后还会经过不可绕过的利己经济门槛：sell 一律失败；无运输合同的 pass 会因“没有对价”失败；亏损制作或超额信用也会失败。玩家仓库售价固定为目录基准价的 2 倍，不受价格法、税法、难度或地标影响。
 price 条例用 priceItemId 指定稳定英文商品 ID，或用 * 表示全部商品；priceMultiplier 是相对基础价格的倍率，范围 0.1 到 10。若多个价格条例命中同一商品，只采用优先级最高的一条。
 tax 条例用 taxRate 表示 0 到 1 的税率；最高优先级税法生效，税款进入玩家国库，其余收入归卖方猫咪。
 price/tax 的 sourceCode 固定输出 function decide(ctx) { return null; }。warnings 和 examples 通常为空数组。

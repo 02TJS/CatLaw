@@ -10,6 +10,8 @@ import {
 } from "./catalog";
 import {
   advanceGame,
+  buyAllCatStockAndSell,
+  catStockPurchaseQuote,
   createInitialState,
   enactLaw,
   itemPrice,
@@ -17,7 +19,9 @@ import {
   placeCat,
   removeCat,
   repealLaw,
+  sellWarehouseItem,
   unlockRecipe,
+  warehouseSellPrice,
 } from "./engine";
 import { hashSource } from "./lawInterpreter";
 import { openDemandOrder } from "./market";
@@ -180,30 +184,32 @@ describe("deterministic engine", () => {
     expect(state.cats[0].action).toMatchObject({ type: "craft", recipeId: "make_fire" });
   });
 
-  it("taxes sales made at the price-law-adjusted value", () => {
+  it("sells player warehouse stock at fixed base x2 without cat tax or price laws", () => {
     const state = createInitialState({ withStarter: false });
     markIntroDiscovered(state);
     unlockMarketChallenge(state);
     state.treasuryCoins = 0;
     enactLaw(state, draft("tax", { taxRate: 0.5 }));
     enactLaw(state, draft("price", { itemId: "gear", multiplier: 2 }));
-    state.cats[0].inventory.gear = 1;
-    const expected = itemPrice(state, "gear");
-    advanceGame(state, 5_000);
+    state.playerBuildingInventory.gear = 1;
+    const expected = warehouseSellPrice("gear");
+    expect(sellWarehouseItem(state, "gear")).toMatchObject({ ok: true, revenueCents: expected });
     expect(state.totalSales).toBe(expected);
-    expect(state.treasuryCoins).toBe(Math.ceil(expected * 0.5));
-    expect(state.cats[0].coins).toBe(expected - Math.ceil(expected * 0.5));
+    expect(state.treasuryCoins).toBe(expected);
+    expect(state.cats[0].coins).toBe(0);
   });
 
-  it("price laws guide the autonomous profit target without action laws", () => {
+  it("price laws change acquisition quotes but never make a cat sell", () => {
     const state = createInitialState({ withStarter: false });
     markIntroDiscovered(state);
     unlockMarketChallenge(state);
     enactLaw(state, draft("price", { itemId: "glass", multiplier: 10 }));
     state.cats[0].inventory.glass = 1;
     state.cats[0].inventory.gear = 1;
+    const quote = catStockPurchaseQuote(state, state.cats[0].id);
     advanceGame(state, 1);
-    expect(state.cats[0].action).toMatchObject({ type: "sell", itemId: "glass", lawId: "local-greedy" });
+    expect(quote.lines.find((line) => line.itemId === "glass")?.unitPriceCents).toBeGreaterThan(warehouseSellPrice("glass"));
+    expect(state.cats[0].action).toBeNull();
   });
 
   it("replaces the one shared logic function and applies it to every cat", () => {
@@ -216,7 +222,8 @@ describe("deterministic engine", () => {
     expect(enactLaw(state, draft("behavior", { sourceCode: source })).ok).toBe(true);
     advanceGame(state, 1);
     expect(state.laws.filter((law) => law.category === "behavior")).toHaveLength(1);
-    expect(state.cats.map((cat) => cat.action?.type)).toEqual(["sell", "sell"]);
+    expect(state.cats.every((cat) => cat.action?.type !== "sell")).toBe(true);
+    expect(state.laws.find((law) => law.category === "behavior")?.invalidCount).toBeGreaterThan(0);
 
     const replacement = "function decide(ctx) { return weighted(2, 0.5, 0.25); }";
     expect(enactLaw(state, draft("behavior", { sourceCode: replacement })).ok).toBe(true);
@@ -236,20 +243,22 @@ describe("deterministic engine", () => {
     }`;
     expect(enactLaw(state, draft("behavior", { sourceCode: source })).ok).toBe(true);
     advanceGame(state, 1);
-    expect(state.cats[0].action).toMatchObject({ type: "sell", itemId: "brick" });
+    expect(state.cats[0].action).toBeNull();
   });
 
-  it("resolves simultaneous sales in stable creation order", () => {
+  it("atomically buys and resells simultaneous stock from cats in stable order", () => {
     const state = createInitialState({ withStarter: false });
     placeCat(state, { x: 2, y: 0 });
     markIntroDiscovered(state);
     unlockMarketChallenge(state);
     state.cats[0].inventory.gear = 1;
     state.cats[1].inventory.gear = 1;
-    const value = itemPrice(state, "gear");
-    advanceGame(state, 5_000);
+    const quote = catStockPurchaseQuote(state);
+    state.treasuryCoins = quote.requiredTreasuryCents;
+    expect(buyAllCatStockAndSell(state)).toMatchObject({ ok: true, quantity: 2 });
     expect(state.itemStats.gear.sold).toBe(2);
-    expect(state.totalSales).toBe(value * 2);
+    expect(state.totalSales).toBe(warehouseSellPrice("gear") * 2);
+    expect(state.cats.every((cat) => (cat.inventory.gear ?? 0) === 0)).toBe(true);
   });
 
   it("charges lifetime enactments after five free laws and charges repeal from treasury", () => {

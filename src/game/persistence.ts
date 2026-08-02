@@ -92,7 +92,7 @@ export async function loadGame(fallbackSeed?: number): Promise<GameState> {
 }
 
 export function migrateSaveSnapshot(raw: any, fallbackSeed?: number): GameState {
-  if (!raw || ![1, 2, 3, 4, 5, 6, 7].includes(raw.schemaVersion ?? 0) || !Array.isArray(raw.cats)) return createInitialState({ worldSeed: fallbackSeed });
+  if (!raw || ![1, 2, 3, 4, 5, 6, 7, 8].includes(raw.schemaVersion ?? 0) || !Array.isArray(raw.cats)) return createInitialState({ worldSeed: fallbackSeed });
   const legacy = raw.schemaVersion === 1;
   const needsResourceRegionMigration = raw.schemaVersion < 3;
   const needsMarketMigration = raw.schemaVersion < 4;
@@ -101,7 +101,7 @@ export function migrateSaveSnapshot(raw: any, fallbackSeed?: number): GameState 
   const worldSeed = normalizeWorldSeed(raw.worldSeed ?? (legacy ? legacySeed(raw) : fallbackSeed ?? 0));
   const fallback = createInitialState({ worldSeed, difficulty: needsDifficultyMigration ? LEGACY_SAVE_DIFFICULTY : normalizeDifficulty(raw.difficulty) });
   const state = { ...fallback, ...structuredClone(raw) } as GameState;
-  state.schemaVersion = 7;
+  state.schemaVersion = 8;
   state.difficulty = needsDifficultyMigration
     ? LEGACY_SAVE_DIFFICULTY
     : normalizeDifficulty(raw.difficulty, fallback.difficulty);
@@ -124,6 +124,14 @@ export function migrateSaveSnapshot(raw: any, fallbackSeed?: number): GameState 
     action: cat.action ?? null,
     decisionTrace: cat.decisionTrace ?? [],
   }));
+  for (const cat of state.cats) {
+    if (cat.action?.type !== "sell") continue;
+    for (const [itemId, quantity] of Object.entries(cat.action.reserved ?? {})) {
+      cat.inventory[itemId] = (cat.inventory[itemId] ?? 0) + quantity;
+    }
+    cat.action = null;
+    cat.lastDecision = "旧版外部出售动作已取消，商品退回猫咪库存，等待玩家收购";
+  }
   if (legacy) migrateLegacyWorld(state);
   else normalizeWorld(state, fallback);
   normalizeResourceRegions(state, needsResourceRegionMigration);
@@ -191,6 +199,9 @@ export function migrateSaveSnapshot(raw: any, fallbackSeed?: number): GameState 
   state.landmarks = Array.isArray(state.landmarks) ? state.landmarks : [];
   state.unlockedLandmarkIds = Array.isArray(state.unlockedLandmarkIds) ? state.unlockedLandmarkIds : [];
   state.nextLandmarkIndex = Number.isInteger(state.nextLandmarkIndex) ? state.nextLandmarkIndex : state.landmarks.length;
+  state.lockedWarehouseItemIds = [...new Set(Array.isArray(state.lockedWarehouseItemIds)
+    ? state.lockedWarehouseItemIds.filter((itemId: unknown): itemId is string => typeof itemId === "string" && ITEMS.some((item) => item.id === itemId))
+    : [])];
   if (needsBuildingMarketMigration) migrateBuildingMarket(state);
   else {
     state.buildingOffers = Array.isArray(state.buildingOffers) ? state.buildingOffers : [];

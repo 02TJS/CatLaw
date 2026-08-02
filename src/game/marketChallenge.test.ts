@@ -9,7 +9,7 @@ import {
   missingProductionCertifications,
   recipeUnlockCost,
 } from "./catalog";
-import { advanceGame, createInitialState, enactLaw, itemPrice, unlockRecipe } from "./engine";
+import { advanceGame, buyAllCatStockAndSell, createInitialState, enactLaw, itemPrice, unlockRecipe } from "./engine";
 import { hashSource } from "./lawInterpreter";
 import type { GameState, ItemId, LawDraft } from "./types";
 import { buyingPowerCents, productionOrderBidCents, publishBountySignal, refreshCatMarket } from "./market";
@@ -189,6 +189,8 @@ describe("market certification challenge", () => {
     expect(enactLaw(state, priceDraft("thread", 10)).ok).toBe(true);
     advanceGame(state, 180_000);
     expect(state.itemStats.thread.crafted).toBeGreaterThanOrEqual(1);
+    state.treasuryCoins = 1_000_000_000;
+    expect(buyAllCatStockAndSell(state).ok).toBe(true);
     expect(state.itemStats.thread.sold).toBeGreaterThanOrEqual(1);
     expect(missingProductionCertifications("make_cable", ["thread"])).not.toContain("thread");
   });

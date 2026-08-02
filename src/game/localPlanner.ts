@@ -1,4 +1,4 @@
-import { ITEM_BY_ID, RECIPE_BY_ID, RECIPE_BY_OUTPUT, itemDependencyDistance } from "./catalog";
+import { RECIPE_BY_ID, RECIPE_BY_OUTPUT, itemDependencyDistance } from "./catalog";
 import { effectiveRecipeInputs } from "./difficulty";
 import { siteFailure } from "./logistics";
 import {
@@ -177,20 +177,6 @@ function chooseLocalAction(
       reason: activePlan?.recipeId === recipeId ? `执行盈利计划，制作 ${recipe.output}` : producingForOrder ? `响应全局订单广播，制作 ${recipe.output}` : `制作后净资产不下降：${recipe.output}`,
       targetItemId: recipe.output,
       kind: activePlan?.reason === "bounty" ? "tutorial" : "profit",
-    });
-  }
-
-  for (const [itemId, quantity] of Object.entries(cat.inventory)) {
-    if (quantity <= 0 || unreservedOwnedQuantity(state, cat, itemId) <= 0 || !ITEM_BY_ID.has(itemId) || protectedInputs.has(itemId)) continue;
-    const action: Exclude<CatAction, null> = { type: "sell", itemId };
-    const gain = expectedActionGainCents(state, cat, action, priceOf);
-    if (gain <= 0) continue;
-    candidates.push({
-      action,
-      score: gain,
-      reason: `外部出售 ${itemId}，税后收入 ${gain}分`,
-      targetItemId: itemId,
-      kind: "profit",
     });
   }
 

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { DEPLOYABLE_BUILDING_IDS, ITEM_BY_ID, ITEMS } from "../game/catalog";
 import type { GameController } from "../game/controller";
-import { formatMoney, warehouseQuote } from "../game/engine";
+import { catStockPurchaseQuote, formatMoney, warehouseQuote, warehouseSellPrice } from "../game/engine";
 import { LANDMARK_BY_ID, LANDMARK_DEFINITIONS } from "../game/landmarks";
 import type { LandmarkId } from "../game/types";
 
@@ -48,6 +48,12 @@ export function BuildingPanel({
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
   const totalStored = Object.values(state.playerBuildingInventory).reduce((sum, quantity) => sum + quantity, 0);
   const stockedKinds = ITEMS.filter((item) => (state.playerBuildingInventory[item.id] ?? 0) > 0).length;
+  const batchQuote = catStockPurchaseQuote(state);
+  const lockedItems = new Set(state.lockedWarehouseItemIds);
+  const warehouseSaleQuantity = ITEMS.reduce((sum, item) => sum + (lockedItems.has(item.id) ? 0 : state.playerBuildingInventory[item.id] ?? 0), 0);
+  const warehouseSaleRevenue = ITEMS.reduce((sum, item) => (
+    sum + (lockedItems.has(item.id) ? 0 : (state.playerBuildingInventory[item.id] ?? 0) * warehouseSellPrice(item.id))
+  ), 0);
 
   return <div className="building-panel warehouse-panel">
     <div className="panel-summary">
@@ -55,6 +61,40 @@ export function BuildingPanel({
       <strong>{stockedKinds}/{ITEMS.length} 种 · {totalStored} 件</strong>
     </div>
     <p className="recipe-note">65 种商品全部陈列。猫咪未被生产计划、订单、合同或建筑报价占用的现货都可收购；货款归卖方猫咪，商品进入仓库。</p>
+
+    <section className="warehouse-batch-card" data-testid="warehouse-batch-actions">
+      <div className="section-heading"><h3>猫咪现货总台</h3><span>{batchQuote.totalQuantity} 件可收购</span></div>
+      <p className="recipe-note">猫咪不再自行对外出售。普通收购需支付全部成本；收购并转卖只校验成本与本次转卖收入的正差额。锁定品类会收进仓库而不立即转卖。</p>
+      <div className="warehouse-batch-metrics">
+        <span>全部收购成本 <strong>{formatMoney(batchQuote.totalCostCents)}</strong></span>
+        <span>本次可转卖收入 <strong>{formatMoney(batchQuote.resaleRevenueCents)}</strong></span>
+        <span>净额 <strong>{batchQuote.netCents >= 0 ? "+" : "−"}{formatMoney(Math.abs(batchQuote.netCents))}</strong></span>
+        <span>最低国库 <strong>{formatMoney(batchQuote.requiredTreasuryCents)}</strong></span>
+      </div>
+      <div className="warehouse-batch-buttons">
+        <button data-testid="buy-all-cat-stock" disabled={batchQuote.totalQuantity === 0 || state.treasuryCoins < batchQuote.totalCostCents} onClick={() => {
+          const result = controller.buyAllCatStock();
+          setMessage({ ok: result.ok, text: result.ok
+            ? `已收购全部猫咪现货 ${result.quantity} 件，支付 ${formatMoney(result.costCents ?? 0)}。`
+            : result.error ?? "批量收购失败" });
+        }}>一键收购全部 · {formatMoney(batchQuote.totalCostCents)}</button>
+        <button data-testid="buy-all-cat-stock-and-sell" disabled={batchQuote.totalQuantity === 0 || state.treasuryCoins < batchQuote.requiredTreasuryCents} onClick={() => {
+          const result = controller.buyAllCatStockAndSell();
+          setMessage({ ok: result.ok, text: result.ok
+            ? `已收购 ${result.quantity} 件并转卖未锁定商品，收入 ${formatMoney(result.revenueCents ?? 0)}，净额 ${(result.netCents ?? 0) < 0 ? "−" : "+"}${formatMoney(Math.abs(result.netCents ?? 0))}。`
+            : result.error ?? "收购并转卖失败" });
+        }}>收购并转卖 · 到账 {formatMoney(batchQuote.resaleRevenueCents)}</button>
+      </div>
+      <div className="warehouse-liquidation-row">
+        <span>未锁定仓库商品 {warehouseSaleQuantity} 件 · 可得 {formatMoney(warehouseSaleRevenue)}</span>
+        <button data-testid="sell-all-warehouse" disabled={warehouseSaleQuantity === 0} onClick={() => {
+          const result = controller.sellAllUnlockedWarehouseItems();
+          setMessage({ ok: result.ok, text: result.ok
+            ? `已售出 ${result.quantity} 件未锁定商品，国库获得 ${formatMoney(result.revenueCents ?? 0)}。`
+            : result.error ?? "一键出售失败" });
+        }}>一键卖出未锁定商品</button>
+      </div>
+    </section>
 
     <section className="landmark-engineering" data-testid="landmark-engineering">
       <div className="section-heading"><h3>地标工程</h3><span>图纸 {state.unlockedLandmarkIds.length}/{LANDMARK_DEFINITIONS.length} · 已建 {state.landmarks.length}</span></div>
@@ -140,13 +180,36 @@ export function BuildingPanel({
             const quote = warehouseQuote(state, item.id);
             const deployable = DEPLOYABLE_BUILDING_IDS.includes(item.id as typeof DEPLOYABLE_BUILDING_IDS[number]);
             const affordable = state.treasuryCoins >= quote.unitPriceCents;
-            return <article className={`warehouse-item-card ${stored > 0 ? "stocked" : "empty"}`} key={item.id} data-testid={`warehouse-item-${item.id}`}>
+            const locked = lockedItems.has(item.id);
+            const sellPrice = warehouseSellPrice(item.id);
+            return <article className={`warehouse-item-card ${stored > 0 ? "stocked" : "empty"} ${locked ? "locked" : ""}`} key={item.id} data-testid={`warehouse-item-${item.id}`}>
               <span className="warehouse-emoji">{item.emoji}</span>
               <div className="warehouse-item-main">
                 <strong>{item.name}</strong>
                 <small>仓库 ×{stored} · 猫咪现货 {quote.availableQuantity}</small>
                 <small>{quote.availableQuantity > 0 ? `最低 ${formatMoney(quote.unitPriceCents)}` : "等待猫咪产出可售现货"}</small>
+                <small>玩家售价 {formatMoney(sellPrice)}/件 · {locked ? "🔒 已锁定" : "未锁定"}</small>
                 <div className="warehouse-actions">
+                  <button
+                    data-testid={`sell-item-${item.id}`}
+                    disabled={stored < 1}
+                    onClick={() => {
+                      const result = controller.sellWarehouseItem(item.id);
+                      setMessage({ ok: result.ok, text: result.ok
+                        ? `${item.emoji} 已出售 1 件${item.name}，国库获得 ${formatMoney(result.revenueCents ?? 0)}。`
+                        : result.error ?? "出售失败" });
+                    }}
+                  >出售 1 件</button>
+                  <button
+                    data-testid={`lock-item-${item.id}`}
+                    className={locked ? "active lock-button" : "lock-button"}
+                    onClick={() => {
+                      const result = controller.toggleWarehouseItemLock(item.id);
+                      setMessage({ ok: result.ok, text: result.ok
+                        ? `${item.emoji} ${item.name}已${result.locked ? "锁定，不参与一键出售" : "解锁"}。`
+                        : result.error ?? "锁定失败" });
+                    }}
+                  >{locked ? "解锁" : "锁定"}</button>
                   <button
                     disabled={quote.availableQuantity < 1 || !affordable}
                     data-testid={`buy-item-${item.id}`}

@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { ITEM_BY_ID } from "../game/catalog";
 import type { GameController } from "../game/controller";
-import { formatMoney, harvestResourceAt, itemPrice } from "../game/engine";
+import { catStockPurchaseQuote, formatMoney, harvestResourceAt, itemPrice } from "../game/engine";
 import type { CatState } from "../game/types";
 import {
   bountyBroadcastsForCat,
@@ -21,6 +22,7 @@ import { LANDMARK_BY_ID, landmarkEffectsAt } from "../game/landmarks";
 
 export function Inspector({ cat, controller, totalItems, onRemoved }: { cat?: CatState; controller: GameController; totalItems: number; onRemoved: () => void }) {
   const state = controller.state;
+  const [purchaseMessage, setPurchaseMessage] = useState<{ ok: boolean; text: string } | null>(null);
   if (!cat) return <div className="empty-state">点击画布中的猫咪查看详情。</div>;
 
   const inventory = Object.entries(cat.inventory).filter(([, quantity]) => quantity > 0).sort((a, b) => b[1] - a[1]);
@@ -49,8 +51,35 @@ export function Inspector({ cat, controller, totalItems, onRemoved }: { cat?: Ca
   ), 0);
   const liquidationAssetsCents = cat.coins + liquidationStockCents;
   const liquidationDeltaCents = liquidationAssetsCents - cat.debtCents;
+  const catPurchaseQuote = catStockPurchaseQuote(state, cat.id);
+  const catPurchaseControls = <>
+    <div className="section-heading"><h3>玩家收购</h3><span>可收购 {catPurchaseQuote.totalQuantity} 件 · {formatMoney(catPurchaseQuote.totalCostCents)}</span></div>
+    <p className="recipe-note">点击单项现货即可收进玩家仓库；作业、计划、运输合同或建筑报价占用的数量不会重复出售。</p>
+    {purchaseMessage && <div className={purchaseMessage.ok ? "success-box" : "error-box"} data-testid="cat-purchase-message">{purchaseMessage.text}</div>}
+    {catPurchaseQuote.totalQuantity === 0 ? <div className="empty-state small">这只猫目前没有可收购现货</div> : <div className="inventory-list cat-purchase-list">{inventory.map(([id]) => {
+      const item = ITEM_BY_ID.get(id);
+      const lines = catPurchaseQuote.lines.filter((line) => line.itemId === id);
+      const available = lines.reduce((sum, line) => sum + line.quantity, 0);
+      const lowest = lines.reduce((price, line) => Math.min(price, line.unitPriceCents), Number.POSITIVE_INFINITY);
+      if (available < 1) return null;
+      return <div key={`purchase-${id}`} className="cat-stock-row">
+        <span>{item?.emoji} {item?.name ?? id} · 可收购 {available}</span>
+        <button
+          data-testid={`buy-cat-${cat.id}-${id}`}
+          disabled={state.treasuryCoins < lowest}
+          onClick={() => {
+            const result = controller.buyCatItem(cat.id, id);
+            setPurchaseMessage({ ok: result.ok, text: result.ok
+              ? `${item?.emoji ?? ""} 已收购 1 件，支付 ${formatMoney(result.cost ?? 0)}。`
+              : result.error ?? "收购失败" });
+          }}
+        >收购 1 件 · {formatMoney(lowest)}</button>
+      </div>;
+    })}</div>}
+  </>;
 
   return <div className="inspector">
+    {catPurchaseControls}
     <section className="cat-profile">
       <div className="cat-avatar" style={{ backgroundImage: `url(${catSpriteUrl})` }} role="img" aria-label="姜黄色工匠猫" />
       <div><span className="eyebrow">猫咪 #{cat.createdIndex}</span><h2>工位 ({cat.position.x}, {cat.position.y})</h2><p>{resourceItemId ? `${ITEM_BY_ID.get(resourceItemId)?.emoji} ${ITEM_BY_ID.get(resourceItemId)?.name}采集区` : "普通工位"}</p></div>
