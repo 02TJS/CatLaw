@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>猫咪工坊 · 65 项配方一图流</title>
+  <style>
+    :root { color-scheme: light; --ink:#172033; --muted:#667085; --line:#dfe4e8; --paper:#fff; --soft:#f6f8f7; }
+    * { box-sizing:border-box; }
+    html,body { width:100%; height:100%; margin:0; overflow:hidden; background:#f4f6f5; color:var(--ink); font-family:Inter,"Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif; }
+    header { position:relative; z-index:5; height:92px; display:flex; align-items:center; gap:18px; padding:12px 18px; background:rgba(255,255,255,.96); border-bottom:1px solid var(--line); box-shadow:0 4px 18px rgba(20,32,28,.05); }
+    .brand { min-width:250px; }
+    .brand h1 { margin:0; font-size:19px; letter-spacing:.02em; }
+    .brand p { margin:4px 0 0; color:var(--muted); font-size:11px; }
+    .stats { display:flex; gap:6px; flex-wrap:wrap; }
+    .chip { padding:5px 8px; border:1px solid #dde3df; border-radius:7px; color:#56616c; background:#f8faf9; font-size:10px; white-space:nowrap; }
+    .chip strong { color:#2d3743; }
+    .tools { margin-left:auto; display:flex; align-items:center; gap:6px; }
+    input { width:210px; height:34px; padding:0 11px; border:1px solid #d5dce0; border-radius:8px; outline:none; color:#27313c; background:#fff; }
+    input:focus { border-color:#4a9a66; box-shadow:0 0 0 3px rgba(74,154,102,.12); }
+    button { height:34px; padding:0 10px; border:1px solid #d7dde0; border-radius:8px; color:#44505b; background:#fff; font-weight:700; cursor:pointer; }
+    button:hover { background:#f4f7f5; }
+    button.primary { color:#fff; border-color:#3f8f5d; background:#3f8f5d; }
+    #selection { min-width:150px; color:#6b7480; font-size:11px; text-align:right; }
+    #viewport { position:absolute; inset:92px 0 0; overflow:hidden; background:#f7f9f8; cursor:grab; touch-action:none; }
+    #viewport.dragging { cursor:grabbing; }
+    #map { display:block; width:100%; height:100%; user-select:none; }
+    .world-bg { fill:#fbfcfb; stroke:#dbe2de; stroke-width:2; }
+    .era-band { stroke-width:2; }
+    .era-title { font-size:25px; font-weight:900; letter-spacing:.04em; }
+    .era-count { fill:#78838d; font-size:14px; font-weight:700; }
+    .rail-title { fill:#4e5b66; font-size:21px; font-weight:900; }
+    .rail-note { fill:#869099; font-size:14px; }
+    .edge-halo { fill:none; stroke:#fff; stroke-width:12; stroke-linejoin:round; stroke-linecap:round; }
+    .edge { fill:none; stroke-width:3.2; stroke-linejoin:round; stroke-linecap:round; opacity:.66; transition:opacity .12s,stroke-width .12s; }
+    .edge.dim { opacity:.07; }
+    .edge.active { opacity:1; stroke-width:5; }
+    .node { cursor:pointer; transition:opacity .12s; }
+    .node.dim { opacity:.16; }
+    .node.active .node-card { stroke-width:5; filter:drop-shadow(0 10px 12px rgba(29,42,35,.16)); }
+    .node-card { fill:#fff; stroke-width:2.5; }
+    .node-index { fill:#8a949e; font-size:12px; font-weight:800; }
+    .node-name { fill:#202a35; font-size:22px; font-weight:900; }
+    .node-id { fill:#8a949e; font-size:12px; font-weight:700; }
+    .node-emoji { font-family:"Segoe UI Emoji","Apple Color Emoji",sans-serif; font-size:40px; }
+    .node-formula { fill:#4f5c67; font-size:14px; font-weight:650; }
+    .node-price { fill:#86640f; font-size:13px; font-weight:900; }
+    .node-site { font-size:12px; font-weight:900; }
+    .node-stage { font-size:11px; font-weight:900; letter-spacing:.04em; }
+    .port { stroke:#fff; stroke-width:3; }
+    #tooltip { position:fixed; z-index:10; display:none; width:310px; padding:12px 14px; pointer-events:none; border:1px solid #d7deda; border-radius:10px; background:rgba(255,255,255,.98); box-shadow:0 12px 32px rgba(22,34,28,.14); }
+    #tooltip strong { display:block; margin-bottom:5px; font-size:15px; }
+    #tooltip span { display:block; color:#69747e; font-size:11px; line-height:1.6; }
+    .help { position:absolute; z-index:4; left:16px; bottom:14px; padding:7px 10px; border:1px solid #dce2df; border-radius:8px; color:#68737c; background:rgba(255,255,255,.92); font-size:10px; box-shadow:0 4px 14px rgba(30,40,35,.05); }
+    @media (prefers-reduced-motion:reduce) { * { transition:none !important; } }
+    @media print {
+      header,.help,#tooltip { display:none !important; }
+      #viewport { position:static; width:100%; height:auto; overflow:visible; }
+      #map { width:100%; height:auto; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand"><h1>🐾 猫咪工坊 · 配方一图流</h1><p>从木材到星门，箭头方向表示“原料 → 成品”</p></div>
+    <div class="stats">
+      <span class="chip"><strong>65</strong> 个物品</span>
+      <span class="chip"><strong>164</strong> 条原料连线</span>
+      <span class="chip"><strong>9</strong> 个时代</span>
+      <span class="chip">🏭 3格 · 🔬 2格 · ☢️ 4格</span>
+    </div>
+    <div class="tools">
+      <span id="selection">点击物品聚焦依赖</span>
+      <input id="search" placeholder="搜索名称或 ID…" aria-label="搜索物品">
+      <button id="zoomOut" title="缩小">−</button>
+      <button id="zoomIn" title="放大">＋</button>
+      <button id="actual" title="恢复 100%">100%</button>
+      <button id="fit" class="primary">适配全图</button>
+    </div>
+  </header>
+  <main id="viewport">
+    <svg id="map" role="img" aria-label="猫咪工坊 65 项物品配方依赖图">
+      <defs>
+        <marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L9,4.5 L0,9 Z" fill="context-stroke"/></marker>
+      </defs>
+      <g id="scene"></g>
+    </svg>
+    <div class="help">拖拽平移 · 滚轮缩放 · 点击节点聚焦 · Esc 清除聚焦</div>
+  </main>
+  <aside id="tooltip"></aside>
+  <script>
+    const ITEMS = [
+      {id:"wood",e:"🪵",n:"木材",t:0,p:1,i:[]},{id:"stone",e:"🪨",n:"石料",t:0,p:1,i:[]},{id:"sand",e:"🏖️",n:"沙",t:0,p:1,i:[]},{id:"water",e:"💧",n:"水",t:0,p:1,i:[]},{id:"fiber",e:"🌿",n:"纤维",t:0,p:1,i:[]},{id:"ore",e:"⛏️",n:"矿石",t:0,p:1,i:[]},
+      {id:"fire",e:"🔥",n:"炉火",t:1,p:3,i:[["wood",1]]},{id:"plank",e:"🪚",n:"木板",t:1,p:4,i:[["wood",2]]},{id:"brick",e:"🧱",n:"砖",t:1,p:5,i:[["stone",2],["water",1]]},{id:"thread",e:"🧵",n:"线",t:1,p:4,i:[["fiber",2]]},{id:"paper",e:"📄",n:"纸",t:1,p:4,i:[["wood",1],["water",1]]},{id:"tools",e:"🔨",n:"工具",t:1,p:6,i:[["plank",1],["stone",1]]},{id:"glass",e:"🪟",n:"玻璃",t:1,p:6,i:[["sand",2],["fire",1]]},
+      {id:"metal",e:"🔩",n:"金属",t:2,p:7,i:[["ore",2],["fire",1]]},{id:"gear",e:"⚙️",n:"齿轮",t:2,p:15,i:[["metal",2]]},{id:"cable",e:"🔌",n:"线缆",t:2,p:12,i:[["metal",1],["thread",1]]},{id:"battery",e:"🔋",n:"电池",t:2,p:10,i:[["metal",1],["water",1]]},{id:"chemical",e:"🧪",n:"化学品",t:2,p:11,i:[["water",1],["fiber",1],["glass",1]]},{id:"chassis",e:"📦",n:"底盘",t:2,p:12,i:[["plank",1],["metal",1]]},{id:"factory",e:"🏭",n:"工厂",t:2,p:39,i:[["brick",2],["gear",1],["tools",1],["glass",1]]},
+      {id:"lamp",e:"💡",n:"灯",t:3,p:32,i:[["glass",1],["cable",1],["battery",1]]},{id:"magnet",e:"🧲",n:"磁铁",t:3,p:19,i:[["metal",1],["battery",1]]},{id:"wheel",e:"🛞",n:"车轮",t:3,p:31,i:[["chassis",1],["gear",1]]},{id:"fuel",e:"🛢️",n:"燃料",t:3,p:16,i:[["chemical",1],["fire",1]]},{id:"coolant",e:"❄️",n:"冷却剂",t:3,p:24,i:[["water",2],["chemical",1],["metal",1]]},{id:"antenna",e:"📡",n:"天线",t:3,p:35,i:[["cable",2],["metal",1]]},{id:"machine_tool",e:"🛠️",n:"机床",t:3,p:32,i:[["gear",1],["tools",1],["metal",1]]},
+      {id:"chip",e:"🔲",n:"芯片",t:4,p:31,i:[["sand",1],["chemical",1],["cable",1]]},{id:"memory",e:"💾",n:"存储器",t:4,p:40,i:[["chip",1],["metal",1]]},{id:"display",e:"📺",n:"显示器",t:4,p:76,i:[["glass",1],["chip",1],["lamp",1]]},{id:"controller",e:"🎛️",n:"控制器",t:4,p:61,i:[["chip",1],["gear",1],["battery",1]]},{id:"radio",e:"📻",n:"无线电",t:4,p:112,i:[["antenna",1],["controller",1],["battery",1]]},{id:"robot",e:"🤖",n:"机器人",t:4,p:109,i:[["controller",1],["machine_tool",1],["battery",1]]},{id:"fabricator",e:"🖨️",n:"制造机",t:4,p:220,i:[["robot",1],["factory",1],["controller",1]]},{id:"vehicle",e:"🚗",n:"车辆",t:4,p:148,i:[["wheel",2],["controller",1],["fuel",1]]},
+      {id:"computer",e:"💻",n:"计算机",t:5,p:228,i:[["chip",1],["memory",1],["display",1],["controller",1]]},{id:"server",e:"🖥️",n:"服务器",t:5,p:485,i:[["computer",2],["coolant",1]]},{id:"network",e:"🌐",n:"网络",t:5,p:651,i:[["server",1],["antenna",1],["radio",1]]},{id:"ai_core",e:"🧠",n:"AI 核心",t:5,p:564,i:[["server",1],["chip",1],["memory",1]]},{id:"lab",e:"🔬",n:"实验室",t:5,p:252,i:[["computer",1],["glass",1],["chemical",1]]},{id:"atom_core",e:"⚛️",n:"原子核心",t:5,p:289,i:[["lab",1],["battery",1],["magnet",1]]},{id:"reactor",e:"☢️",n:"反应堆",t:5,p:371,i:[["atom_core",1],["factory",1],["coolant",1]]},
+      {id:"solar_array",e:"☀️",n:"太阳能阵列",t:6,p:75,i:[["glass",2],["chip",1],["cable",1]]},{id:"telescope",e:"🔭",n:"望远镜",t:6,p:314,i:[["glass",2],["computer",1],["antenna",1]]},{id:"rocket",e:"🚀",n:"火箭",t:6,p:430,i:[["fuel",2],["robot",1],["computer",1],["metal",1]]},{id:"satellite",e:"🛰️",n:"卫星",t:6,p:798,i:[["rocket",1],["antenna",1],["solar_array",1],["computer",1]]},{id:"life_support",e:"🧬",n:"生命维持",t:6,p:664,i:[["chemical",1],["water",2],["ai_core",1],["coolant",1]]},{id:"lunar_base",e:"🌕",n:"月球基地",t:6,p:1710,i:[["rocket",2],["factory",1],["robot",1],["life_support",1]]},{id:"star_map",e:"🪐",n:"星图",t:6,p:1726,i:[["telescope",1],["satellite",1],["ai_core",1]]},{id:"starship",e:"🛸",n:"星际飞船",t:6,p:2539,i:[["rocket",2],["reactor",1],["ai_core",1],["life_support",1]]},
+      {id:"superconductor",e:"💠",n:"超导体",t:7,p:513,i:[["coolant",2],["metal",1],["reactor",1]]},{id:"quantum_field",e:"〰️",n:"量子场",t:7,p:1610,i:[["reactor",1],["superconductor",1],["ai_core",1]]},{id:"quantum_sensor",e:"🧿",n:"量子传感器",t:7,p:1989,i:[["quantum_field",1],["telescope",1],["chip",1]]},{id:"spacetime_clock",e:"⏱️",n:"时空钟",t:7,p:3164,i:[["quantum_sensor",1],["ai_core",1],["superconductor",1]]},{id:"quantum_computer",e:"🔮",n:"量子计算机",t:7,p:3824,i:[["ai_core",2],["quantum_sensor",1],["superconductor",1]]},{id:"spacetime_map",e:"🌌",n:"时空图",t:7,p:8850,i:[["star_map",1],["quantum_computer",1],["spacetime_clock",1]]},{id:"singularity",e:"🕳️",n:"奇点",t:7,p:6304,i:[["reactor",2],["quantum_field",1],["quantum_computer",1]]},{id:"gate_key",e:"🔑",n:"星门密钥",t:7,p:15816,i:[["spacetime_map",1],["singularity",1],["ai_core",1]]},
+      {id:"gate_ring",e:"⭕",n:"门环",t:8,p:2247,i:[["superconductor",4],["metal",4]]},{id:"stabilizer",e:"🔺",n:"稳定器",t:8,p:4330,i:[["quantum_field",1],["quantum_sensor",1],["reactor",1]]},{id:"exotic_crystal",e:"💎",n:"奇异晶体",t:8,p:7335,i:[["singularity",1],["chemical",1],["superconductor",1]]},{id:"address_core",e:"📍",n:"坐标核心",t:8,p:30576,i:[["gate_key",1],["spacetime_map",1],["quantum_computer",1]]},{id:"containment",e:"🛡️",n:"约束场",t:8,p:7287,i:[["gate_ring",1],["stabilizer",1],["ai_core",1]]},{id:"energy_matrix",e:"🌠",n:"能量矩阵",t:8,p:9997,i:[["reactor",2],["exotic_crystal",1],["quantum_field",1]]},{id:"stargate",e:"🌀",n:"星门",t:8,p:61772,i:[["gate_ring",1],["stabilizer",1],["exotic_crystal",1],["address_core",1],["containment",1],["energy_matrix",1]]}
+    ];
+
+    const ERAS = ["基础采集","手工作坊","机械制造","电气工业","电子自动化","计算与核能","航天时代","量子时代","星门工程"];
+    const COLORS = ["#64748b","#22a75a","#1687bd","#5b63d3","#8756c4","#d44883","#e56722","#169b91","#c99313"];
+    const FACTORY_REQUIRED = new Set(["chip","memory","display","controller","radio","robot","fabricator","vehicle","computer","server","network","ai_core","lab"]);
+    const LAB_REQUIRED = new Set(["atom_core","reactor","solar_array","telescope","life_support","star_map"]);
+    const REACTOR_REQUIRED = new Set(["rocket","satellite","lunar_base","starship","superconductor","quantum_field","quantum_sensor","spacetime_clock","quantum_computer","spacetime_map","singularity","gate_key","gate_ring","stabilizer","exotic_crystal","address_core","containment","energy_matrix","stargate"]);
+    const NS = "http://www.w3.org/2000/svg";
+    const scene = document.querySelector("#scene");
+    const map = document.querySelector("#map");
+    const viewport = document.querySelector("#viewport");
+    const tooltip = document.querySelector("#tooltip");
+    const byId = new Map(ITEMS.map((item,index) => [item.id,{...item,index}]));
+    const edges = ITEMS.flatMap(target => target.i.map(([source,quantity]) => ({id:`${source}--${target.id}`,source,target:target.id,quantity,color:COLORS[target.t]})));
+    const outgoing = new Map(ITEMS.map(item => [item.id,edges.filter(edge => edge.source===item.id)]));
+    const incoming = new Map(ITEMS.map(item => [item.id,edges.filter(edge => edge.target===item.id)]));
+    const NODE_W = 320, COLUMN_STEP = 1640, NODE_GAP = 86, X_TRACK_GAP = 16, RAIL_GAP = 30;
+    const LEFT = 190, TOP = 150;
+
+    function formula(item) {
+      if (!item.i.length) return "空手采集";
+      return item.i.map(([id,q]) => `${byId.get(id).e}${byId.get(id).n}${q>1?`×${q}`:""}`).join(" + ");
+    }
+    function site(item) {
+      if (FACTORY_REQUIRED.has(item.id)) return {label:"🏭 工厂 3格内",color:"#32835a"};
+      if (LAB_REQUIRED.has(item.id)) return {label:"🔬 实验室 2格内",color:"#8756c4"};
+      if (REACTOR_REQUIRED.has(item.id)) return {label:"☢️ 反应堆 4格内",color:"#c66522"};
+      return null;
+    }
+    function wrapFormula(value,max=26) {
+      const tokens=value.split(" + "), lines=[]; let line="";
+      for (const token of tokens) {
+        const next=line?`${line} + ${token}`:token;
+        if (line && [...next].length>max) { lines.push(line); line=token; } else line=next;
+      }
+      if (line) lines.push(line);
+      return lines;
+    }
+
+    const nodes = new Map();
+    const columns = Array.from({length:9},(_,tier)=>ITEMS.filter(item=>item.t===tier));
+    for (const item of ITEMS) {
+      const degree=Math.max(outgoing.get(item.id).length,incoming.get(item.id).length);
+      const lines=wrapFormula(formula(item));
+      const siteRule=site(item);
+      nodes.set(item.id,{...item,index:byId.get(item.id).index,w:NODE_W,h:Math.max(128+(lines.length-1)*18+(siteRule?20:0),48+(degree+1)*16),lines,siteRule});
+    }
+    const columnHeights=columns.map(items=>items.reduce((sum,item)=>sum+nodes.get(item.id).h,0)+Math.max(0,items.length-1)*NODE_GAP);
+    const nodeAreaHeight=Math.max(...columnHeights);
+    columns.forEach((items,tier)=>{
+      let y=TOP+90+(nodeAreaHeight-columnHeights[tier])/2;
+      for (const item of items) { const node=nodes.get(item.id); node.x=LEFT+tier*COLUMN_STEP; node.y=y; y+=node.h+NODE_GAP; }
+    });
+
+    const railEdges=[...edges].sort((a,b)=>nodes.get(a.target).t-nodes.get(b.target).t || nodes.get(a.target).y-nodes.get(b.target).y || nodes.get(a.source).t-nodes.get(b.source).t || nodes.get(a.source).y-nodes.get(b.source).y);
+    const railIndex=new Map(railEdges.map((edge,index)=>[edge.id,index]));
+    const outTierIndex=new Map(), inTierIndex=new Map();
+    for (let tier=0;tier<9;tier++) {
+      const outs=edges.filter(edge=>nodes.get(edge.source).t===tier).sort((a,b)=>nodes.get(a.source).y-nodes.get(b.source).y || nodes.get(a.target).y-nodes.get(b.target).y);
+      const ins=edges.filter(edge=>nodes.get(edge.target).t===tier).sort((a,b)=>nodes.get(a.target).y-nodes.get(b.target).y || nodes.get(a.source).y-nodes.get(b.source).y);
+      outs.forEach((edge,index)=>outTierIndex.set(edge.id,index));
+      ins.forEach((edge,index)=>inTierIndex.set(edge.id,index));
+    }
+    const railsTop=TOP+nodeAreaHeight+330;
+    const worldW=LEFT+8*COLUMN_STEP+NODE_W+980;
+    const worldH=railsTop+edges.length*RAIL_GAP+190;
+
+    function svg(tag,attrs={},text="") {
+      const element=document.createElementNS(NS,tag);
+      for (const [key,value] of Object.entries(attrs)) element.setAttribute(key,String(value));
+      if (text) element.textContent=text;
+      return element;
+    }
+    scene.append(svg("rect",{class:"world-bg",x:20,y:20,width:worldW-40,height:worldH-40,rx:34}));
+    columns.forEach((items,tier)=>{
+      const x=LEFT+tier*COLUMN_STEP;
+      scene.append(svg("rect",{class:"era-band",x:x-38,y:TOP,width:NODE_W+76,height:nodeAreaHeight+180,rx:26,fill:`${COLORS[tier]}08`,stroke:`${COLORS[tier]}36`}));
+      scene.append(svg("text",{class:"era-title",x,y:TOP+38,fill:COLORS[tier]},`${tier}. ${ERAS[tier]}`));
+      scene.append(svg("text",{class:"era-count",x,y:TOP+65},`${items.length} 项物品`));
+    });
+    scene.append(svg("text",{class:"rail-title",x:LEFT,y:railsTop-94},"配方依赖独立轨道"));
+    scene.append(svg("text",{class:"rail-note",x:LEFT,y:railsTop-64},"每条横向轨道间隔 30px；竖向进出轨间隔 16px；白色断桥分隔交叉线。"));
+
+    const edgeLayer=svg("g",{id:"edges"}); scene.append(edgeLayer);
+    const routes=[];
+    for (const edge of railEdges) {
+      const source=nodes.get(edge.source), target=nodes.get(edge.target);
+      const sourceList=outgoing.get(edge.source), targetList=incoming.get(edge.target);
+      const sy=source.y+(sourceList.indexOf(edge)+1)*source.h/(sourceList.length+1);
+      const ty=target.y+(targetList.indexOf(edge)+1)*target.h/(targetList.length+1);
+      const sx=source.x+source.w, tx=target.x;
+      const outX=sx+74+outTierIndex.get(edge.id)*X_TRACK_GAP;
+      const inX=tx-74-inTierIndex.get(edge.id)*X_TRACK_GAP;
+      const railY=railsTop+railIndex.get(edge.id)*RAIL_GAP;
+      const points=[[sx,sy],[outX,sy],[outX,railY],[inX,railY],[inX,ty],[tx,ty]];
+      const d=points.map((point,index)=>`${index?"L":"M"}${point[0]} ${point[1]}`).join(" ");
+      const group=svg("g",{class:"edge-group","data-edge":edge.id});
+      group.append(svg("path",{class:"edge-halo",d}));
+      group.append(svg("path",{class:"edge",d,stroke:edge.color,"marker-end":"url(#arrow)","data-source":edge.source,"data-target":edge.target}));
+      edgeLayer.append(group);
+      routes.push({...edge,points});
+    }
+
+    const nodeLayer=svg("g",{id:"nodes"}); scene.append(nodeLayer);
+    for (const item of ITEMS) {
+      const node=nodes.get(item.id), color=COLORS[item.t];
+      const group=svg("g",{class:"node",tabindex:"0","data-id":item.id,role:"button","aria-label":`${item.n}，${formula(item)}${node.siteRule?`，制造地点 ${node.siteRule.label}`:""}`});
+      group.append(svg("rect",{class:"node-card",x:node.x,y:node.y,width:node.w,height:node.h,rx:18,stroke:color}));
+      group.append(svg("rect",{x:node.x,y:node.y,width:8,height:node.h,rx:4,fill:color}));
+      group.append(svg("text",{class:"node-emoji",x:node.x+24,y:node.y+57},item.e));
+      group.append(svg("text",{class:"node-index",x:node.x+NODE_W-18,y:node.y+24,"text-anchor":"end"},`#${node.index+1}`));
+      group.append(svg("text",{class:"node-name",x:node.x+82,y:node.y+35},item.n));
+      group.append(svg("text",{class:"node-id",x:node.x+82,y:node.y+56},item.id));
+      node.lines.forEach((line,index)=>group.append(svg("text",{class:"node-formula",x:node.x+24,y:node.y+88+index*18},line)));
+      if(node.siteRule) group.append(svg("text",{class:"node-site",x:node.x+24,y:node.y+node.h-38,fill:node.siteRule.color},`制造地点 · ${node.siteRule.label}`));
+      group.append(svg("text",{class:"node-stage",x:node.x+24,y:node.y+node.h-16,fill:color},ERAS[item.t]));
+      group.append(svg("text",{class:"node-price",x:node.x+NODE_W-18,y:node.y+node.h-16,"text-anchor":"end"},`基础价 ${item.p} 🪙`));
+      const outCount=outgoing.get(item.id).length, inCount=incoming.get(item.id).length;
+      for (let index=0;index<outCount;index++) group.append(svg("circle",{class:"port",cx:node.x+node.w,cy:node.y+(index+1)*node.h/(outCount+1),r:5,fill:color}));
+      for (let index=0;index<inCount;index++) group.append(svg("circle",{class:"port",cx:node.x,cy:node.y+(index+1)*node.h/(inCount+1),r:5,fill:color}));
+      group.addEventListener("pointerenter",event=>showTooltip(event,item));
+      group.addEventListener("pointermove",event=>moveTooltip(event));
+      group.addEventListener("pointerleave",()=>tooltip.style.display="none");
+      group.addEventListener("click",event=>{ event.stopPropagation(); focusItem(item.id,true); });
+      group.addEventListener("keydown",event=>{ if(event.key==="Enter"||event.key===" ") focusItem(item.id,true); });
+      nodeLayer.append(group);
+    }
+
+    function showTooltip(event,item) {
+      const siteRule=site(item);
+      tooltip.innerHTML=`<strong>${item.e} ${item.n} <small>#${byId.get(item.id).index+1}</small></strong><span>${formula(item)}</span>${siteRule?`<span>制造地点：${siteRule.label}</span>`:""}<span>${ERAS[item.t]} · 基础价格 ${item.p} 🪙 · ${incoming.get(item.id).length} 种原料 · ${outgoing.get(item.id).length} 个下游用途</span>`;
+      tooltip.style.display="block"; moveTooltip(event);
+    }
+    function moveTooltip(event) {
+      const pad=14,w=310,h=104;
+      tooltip.style.left=`${Math.min(innerWidth-w-pad,event.clientX+16)}px`;
+      tooltip.style.top=`${Math.min(innerHeight-h-pad,event.clientY+16)}px`;
+    }
+
+    let locked=null;
+    function focusItem(id,center=false) {
+      locked=id;
+      const relatedEdges=edges.filter(edge=>edge.source===id||edge.target===id);
+      const relatedNodes=new Set([id,...relatedEdges.flatMap(edge=>[edge.source,edge.target])]);
+      document.querySelectorAll(".node").forEach(element=>{
+        element.classList.toggle("dim",!relatedNodes.has(element.dataset.id));
+        element.classList.toggle("active",element.dataset.id===id);
+      });
+      document.querySelectorAll(".edge").forEach(element=>{
+        const active=element.dataset.source===id||element.dataset.target===id;
+        element.classList.toggle("dim",!active); element.classList.toggle("active",active);
+      });
+      const item=byId.get(id); document.querySelector("#selection").textContent=`${item.e} ${item.n} · ${formula(item)}`;
+      if(center) centerNode(id);
+    }
+    function clearFocus() {
+      locked=null; document.querySelector("#selection").textContent="点击物品聚焦依赖";
+      document.querySelectorAll(".node,.edge").forEach(element=>element.classList.remove("dim","active"));
+    }
+
+    let scale=1,translateX=0,translateY=0,drag=null;
+    function renderTransform(){ scene.setAttribute("transform",`translate(${translateX} ${translateY}) scale(${scale})`); }
+    function fitAll(){ const box=viewport.getBoundingClientRect(),pad=26; scale=Math.min((box.width-pad*2)/worldW,(box.height-pad*2)/worldH); translateX=(box.width-worldW*scale)/2; translateY=(box.height-worldH*scale)/2; renderTransform(); }
+    function setScale(next,cx=viewport.clientWidth/2,cy=viewport.clientHeight/2){ const old=scale; scale=Math.max(.06,Math.min(2,next)); translateX=cx-(cx-translateX)*scale/old; translateY=cy-(cy-translateY)*scale/old; renderTransform(); }
+    function centerNode(id){ const node=nodes.get(id); scale=Math.max(scale,.72); translateX=viewport.clientWidth/2-(node.x+node.w/2)*scale; translateY=viewport.clientHeight/2-(node.y+node.h/2)*scale; renderTransform(); }
+    viewport.addEventListener("pointerdown",event=>{ if(event.button!==0||event.target.closest(".node"))return; drag={x:event.clientX,y:event.clientY,tx:translateX,ty:translateY}; viewport.setPointerCapture(event.pointerId); viewport.classList.add("dragging"); });
+    viewport.addEventListener("pointermove",event=>{ if(!drag)return; translateX=drag.tx+event.clientX-drag.x; translateY=drag.ty+event.clientY-drag.y; renderTransform(); });
+    viewport.addEventListener("pointerup",()=>{ drag=null; viewport.classList.remove("dragging"); });
+    viewport.addEventListener("wheel",event=>{ event.preventDefault(); const rect=viewport.getBoundingClientRect(); setScale(scale*Math.exp(-event.deltaY*.0012),event.clientX-rect.left,event.clientY-rect.top); },{passive:false});
+    viewport.addEventListener("click",event=>{ if(event.target===map||event.target.classList.contains("world-bg")) clearFocus(); });
+    document.querySelector("#fit").onclick=fitAll;
+    document.querySelector("#actual").onclick=()=>{scale=1;translateX=30;translateY=30;renderTransform();};
+    document.querySelector("#zoomIn").onclick=()=>setScale(scale*1.25);
+    document.querySelector("#zoomOut").onclick=()=>setScale(scale/1.25);
+    document.querySelector("#search").addEventListener("input",event=>{
+      const query=event.target.value.trim().toLowerCase();
+      if(!query){clearFocus();return;}
+      const item=ITEMS.find(entry=>entry.id===query||entry.n===query) ?? ITEMS.find(entry=>entry.id.includes(query)||entry.n.includes(query));
+      if(item) focusItem(item.id,true);
+    });
+    addEventListener("keydown",event=>{if(event.key==="Escape"){document.querySelector("#search").value="";clearFocus();}});
+    addEventListener("resize",fitAll);
+
+    function segmentHitsRect(a,b,rect,pad=6) {
+      const left=rect.x-pad,right=rect.x+rect.w+pad,top=rect.y-pad,bottom=rect.y+rect.h+pad;
+      if(a[0]===b[0]) return a[0]>=left&&a[0]<=right&&Math.max(Math.min(a[1],b[1]),top)<=Math.min(Math.max(a[1],b[1]),bottom);
+      return a[1]>=top&&a[1]<=bottom&&Math.max(Math.min(a[0],b[0]),left)<=Math.min(Math.max(a[0],b[0]),right);
+    }
+    function validateLayout() {
+      const list=[...nodes.values()], overlaps=[];
+      for(let a=0;a<list.length;a++)for(let b=a+1;b<list.length;b++){
+        const one=list[a],two=list[b];
+        if(one.x<two.x+two.w&&one.x+one.w>two.x&&one.y<two.y+two.h&&one.y+one.h>two.y) overlaps.push([one.id,two.id]);
+      }
+      const collisions=[];
+      for(const route of routes)for(const node of list){
+        if(node.id===route.source||node.id===route.target)continue;
+        for(let index=0;index<route.points.length-1;index++)if(segmentHitsRect(route.points[index],route.points[index+1],node)){collisions.push([route.id,node.id]);break;}
+      }
+      return {items:ITEMS.length,edges:edges.length,nodeOverlaps:overlaps,edgeNodeCollisions:collisions,minVerticalNodeGap:NODE_GAP,minHorizontalRailGap:RAIL_GAP,minVerticalTrackGap:X_TRACK_GAP,world:{width:worldW,height:worldH}};
+    }
+    window.__RECIPE_FLOW_QA__={validate:validateLayout,nodes:[...nodes.values()],routes,focusItem,fitAll};
+    fitAll();
+  </script>
+</body>
+</html>

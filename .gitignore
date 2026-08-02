@@ -1,0 +1,33 @@
+node_modules/
+dist/
+dist-server/
+.vite/
+
+# Local secrets
+.env
+.env.local
+.env.*
+!.env.example
+
+# Tests and generated output
+test-results/
+coverage/
+output/
+tmp/
+tmp-*.json
+*.log
+
+# Electron/Windows packaging output
+release/
+release-*/
+packaged-*/
+electron-runtime-*/
+build/
+*.exe
+*.asar
+
+# Editor and OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

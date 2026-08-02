@@ -1,1 +1,22 @@
-# CatLaw2
+# 猫咪工坊 CatLaw2
+
+法条驱动的自动化制造沙盒。玩家通过自然语言法条影响猫咪共享决策逻辑，在带私人产权、税收、信用、有偿物流和 65 种商品科技树的等距世界中建设工坊。
+
+当前版本：`0.10.0`
+
+- 65 种商品通用玩家仓库
+- 五档累计难度与空间工业建筑
+- React + TypeScript + Vite + Canvas 2D
+- Electron Windows 桌面版
+- Express DeepSeek 法条编译代理
+
+完整中文说明请打开 [README.html](README.html)。
+
+```powershell
+npm install
+npm run dev
+```
+
+本地访问：<http://127.0.0.1:5173>
+
+> `.env`、Windows EXE、Electron 运行时、构建目录和测试输出不会提交到 Git。请仅在本机 `.env` 中配置已经轮换的 `DEEPSEEK_API_KEY`。
