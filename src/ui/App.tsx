@@ -505,12 +505,12 @@ export function App() {
   const productionValuePerMinute = grossProductionValuePerMinute(state);
   const allCatStock = catStockPurchaseQuote(state);
   const queuedAchievements = pendingAchievements(state);
-  const currentAchievement = commerceFeedback || !achievementReviewArmed ? null : (queuedAchievements[0] ?? null);
+  const currentAchievement = !achievementReviewArmed ? null : (queuedAchievements[0] ?? null);
   useEffect(() => {
-    if (achievementReviewArmed && !commerceFeedback && queuedAchievements.length === 0) {
+    if (achievementReviewArmed && queuedAchievements.length === 0) {
       setAchievementReviewArmed(false);
     }
-  }, [achievementReviewArmed, commerceFeedback, queuedAchievements.length]);
+  }, [achievementReviewArmed, queuedAchievements.length]);
   const selectedCat = state.cats.find((cat) => cat.id === selectedCatId) ?? state.cats[0];
   const selectedInventoryCount = useMemo(() => selectedCat ? Object.values(selectedCat.inventory).reduce((sum, value) => sum + value, 0) : 0, [selectedCat, state.simTime]);
   const warehouseKinds = ITEMS.filter((item) => (state.playerBuildingInventory[item.id] ?? 0) > 0).length;
@@ -980,8 +980,9 @@ function renderGameToText(
       presentationTrigger: "successful-main-commerce-action",
       reviewArmed: achievementReviewArmed,
       awaitingCommerceTrigger: !achievementReviewArmed && pendingAchievements(state).length > 0,
-      currentDialogId: commerceFeedback || !achievementReviewArmed ? null : (pendingAchievements(state)[0]?.id ?? null),
-      deferredByCommerce: Boolean(achievementReviewArmed && commerceFeedback && pendingAchievements(state).length > 0),
+      currentDialogId: !achievementReviewArmed ? null : (pendingAchievements(state)[0]?.id ?? null),
+      concurrentWithCommerce: Boolean(achievementReviewArmed && commerceFeedback && pendingAchievements(state).length > 0),
+      deferredByCommerce: false,
     },
     decisionModel: {
       visionRadius: LOCAL_VISION_RADIUS,

@@ -52,16 +52,22 @@ try {
   assert(resellPriceText?.includes((Math.abs(commerceQuote.netCents) / 100).toFixed(2)), `packaged buy-resell net is stale: ${resellPriceText}`);
   await page.screenshot({ path: path.join(output, "commerce-price-labels.png"), omitBackground: true });
   await page.getByTestId("buy-all-cat-stock").click();
-  await page.getByTestId("main-commerce-message").waitFor({ state: "visible" });
-  assert(!(await achievementDialog.isVisible().catch(() => false)), "packaged achievement appeared before commerce feedback ended");
-  await page.waitForTimeout(3_350);
-  assert(await achievementDialog.isVisible(), "packaged first-craft achievement did not appear after purchase");
-  await page.screenshot({ path: path.join(output, "achievement-dialog-after-purchase.png"), omitBackground: true });
+  const commerceMessage = page.getByTestId("main-commerce-message");
+  await commerceMessage.waitFor({ state: "visible" });
+  assert(await achievementDialog.isVisible(), "packaged first-craft achievement did not appear together with commerce feedback");
+  const packagedAchievementState = JSON.parse(await page.evaluate(() => window.render_game_to_text())).achievements;
+  assert(packagedAchievementState.concurrentWithCommerce && !packagedAchievementState.deferredByCommerce,
+    `packaged commerce and achievement were not concurrent: ${JSON.stringify(packagedAchievementState)}`);
+  const commerceZIndex = Number(await commerceMessage.evaluate((element) => getComputedStyle(element).zIndex));
+  const achievementZIndex = Number(await page.getByTestId("achievement-backdrop").evaluate((element) => getComputedStyle(element).zIndex));
+  assert(commerceZIndex > achievementZIndex, `packaged commerce feedback is obscured by achievement: ${commerceZIndex} <= ${achievementZIndex}`);
+  await page.screenshot({ path: path.join(output, "commerce-and-achievement-concurrent.png"), omitBackground: true });
   for (let index = 0; index < 80 && await achievementDialog.isVisible().catch(() => false); index += 1) {
     await page.getByTestId("acknowledge-achievement").click();
     await page.waitForTimeout(15);
   }
   assert(!(await achievementDialog.isVisible().catch(() => false)), "packaged achievement queue did not drain");
+  await commerceMessage.waitFor({ state: "hidden" });
   const assertTopLayout = async (label) => {
     const drag = await box(".pet-drag-region");
     const headline = await box(".pet-headline-stats");

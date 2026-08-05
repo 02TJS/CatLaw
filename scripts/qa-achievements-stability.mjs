@@ -33,12 +33,17 @@ try {
   const buyButton = page.getByTestId("buy-all-cat-stock");
   if (await buyButton.isDisabled()) throw new Error("制作成就等待验收时没有可执行的一键购买");
   await buyButton.click();
-  await page.getByTestId("main-commerce-message").waitFor({ state: "visible" });
-  if (await firstDialog.isVisible().catch(() => false)) throw new Error("交易提示尚未结束时成就提前弹出");
+  const commerceMessage = page.getByTestId("main-commerce-message");
+  await commerceMessage.waitFor({ state: "visible" });
+  await firstDialog.waitFor({ state: "visible" });
   const duringCommerce = JSON.parse(await page.evaluate(() => window.render_game_to_text())).achievements;
-  if (!duringCommerce.reviewArmed || !duringCommerce.deferredByCommerce || duringCommerce.currentDialogId !== null) {
-    throw new Error(`交易阶段没有正确延后成就：${JSON.stringify(duringCommerce)}`);
+  if (!duringCommerce.reviewArmed || !duringCommerce.concurrentWithCommerce || duringCommerce.deferredByCommerce
+    || duringCommerce.currentDialogId === null) {
+    throw new Error(`交易阶段没有与成就并行展示：${JSON.stringify(duringCommerce)}`);
   }
+  const commerceZIndex = Number(await commerceMessage.evaluate((element) => getComputedStyle(element).zIndex));
+  const achievementZIndex = Number(await page.getByTestId("achievement-backdrop").evaluate((element) => getComputedStyle(element).zIndex));
+  if (commerceZIndex <= achievementZIndex) throw new Error(`交易浮窗没有位于成就遮罩上方：${commerceZIndex} <= ${achievementZIndex}`);
   const commerce = {
     skipped: false,
     rarities: await page.locator("[data-testid='commerce-item-deltas'] i").evaluateAll((nodes) => nodes.map((node) => ({
@@ -51,9 +56,14 @@ try {
       throw new Error(`交易商品没有按稀有度降序：${JSON.stringify(commerce.rarities)}`);
     }
   }
-  await page.screenshot({ path: path.join(outputDir, "commerce-rarity-order.png") });
-  await page.waitForTimeout(3_350);
-  await firstDialog.waitFor({ state: "visible" });
+  const rarityStyles = await page.locator("[data-testid='commerce-item-deltas'] i").evaluateAll((nodes) => nodes.map((node) => {
+    const style = getComputedStyle(node);
+    return { color: style.color, borderLeftColor: style.borderLeftColor, backgroundImage: style.backgroundImage };
+  }));
+  if (rarityStyles.some((style) => style.color === "rgb(70, 84, 74)" || style.backgroundImage === "none")) {
+    throw new Error(`交易稀有度颜色没有加深：${JSON.stringify(rarityStyles)}`);
+  }
+  await page.screenshot({ path: path.join(outputDir, "commerce-and-achievement-concurrent.png") });
   const firstAchievement = await firstDialog.evaluate((element) => ({
     id: element.getAttribute("data-achievement-id"),
     kind: element.getAttribute("data-achievement-kind"),
@@ -95,7 +105,6 @@ try {
   if (await resellButton.isDisabled()) throw new Error("第二轮制作成就等待验收时没有可执行的购买并转售");
   await resellButton.click();
   await page.getByTestId("main-commerce-message").waitFor({ state: "visible" });
-  await page.waitForTimeout(3_350);
   await firstDialog.waitFor({ state: "visible" });
   const resellTriggeredAchievementId = await firstDialog.getAttribute("data-achievement-id");
   await page.screenshot({ path: path.join(outputDir, "achievement-dialog-after-resell.png") });
@@ -135,6 +144,9 @@ try {
     commerce,
     queuedBeforeCommerce,
     duringCommerce,
+    commerceZIndex,
+    achievementZIndex,
+    rarityStyles,
     resellTriggeredAchievementId,
     selectedItemId,
     stability,

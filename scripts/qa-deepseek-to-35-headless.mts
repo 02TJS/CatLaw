@@ -1142,12 +1142,16 @@ function runSeedTo30(seed: number, drafts: Record<string, LawDraft>) {
   let terminalRotationRamp: ReturnType<typeof prepareFrozenTerminalRotation> | null = null;
   let terminalAutonomousRamp: ReturnType<typeof rampAutonomousProductionRange> | null = null;
   let terminalCapitalizationTrades: ReturnType<typeof capitalizeRotationOwners> = [];
-  let warehouseFloorPurchase: ReturnType<typeof acquireWarehouseFloor> | null = null;
+  const plankWarehouseFloorPurchases: Array<ReturnType<typeof acquireWarehouseFloor>> = [];
   const oreWarehouseFloorPurchases: Array<ReturnType<typeof acquireWarehouseFloor>> = [];
   const waterWarehouseFloorPurchases: Array<ReturnType<typeof acquireWarehouseFloor>> = [];
   let fireWarehouseFloorPurchase: ReturnType<typeof acquireWarehouseFloor> | null = null;
   let metalWarehouseFloorPurchase: ReturnType<typeof acquireWarehouseFloor> | null = null;
   const cableWarehouseFloorPurchases: Array<ReturnType<typeof acquireWarehouseFloor>> = [];
+  let glassWarehouseFloorPurchase: ReturnType<typeof acquireWarehouseFloor> | null = null;
+  let lampWarehouseFloorPurchase: ReturnType<typeof acquireWarehouseFloor> | null = null;
+  cableWarehouseFloorPurchases.push(acquireWarehouseFloor(main, mainPlayer, "cable"));
+  cableWarehouseFloorPurchases.push(acquireWarehouseFloor(main, mainPlayer, "cable"));
   const item30StageIndex = stages.push(stage(main, seed, "物流法规完成并稳定制作22—30", () => {
     const deadline = simulatedNow(main) + LOGISTICS_LIMIT_MS;
     for (let itemIndex = 23; itemIndex <= 30 && simulatedNow(main) < deadline; itemIndex += 1) {
@@ -1180,15 +1184,16 @@ function runSeedTo30(seed: number, drafts: Record<string, LawDraft>) {
           buildingOffers: main.buildingOffers.filter((offer) => ["cat-2", "cat-7"].includes(offer.sellerCatId)),
         })}`);
       }
-      warehouseFloorPurchase = acquireWarehouseFloor(main, mainPlayer, "plank");
+      plankWarehouseFloorPurchases.push(acquireWarehouseFloor(main, mainPlayer, "plank"));
+      plankWarehouseFloorPurchases.push(acquireWarehouseFloor(main, mainPlayer, "plank"));
       oreWarehouseFloorPurchases.push(acquireWarehouseFloor(main, mainPlayer, "ore"));
       oreWarehouseFloorPurchases.push(acquireWarehouseFloor(main, mainPlayer, "ore"));
       waterWarehouseFloorPurchases.push(acquireWarehouseFloor(main, mainPlayer, "water"));
       waterWarehouseFloorPurchases.push(acquireWarehouseFloor(main, mainPlayer, "water"));
       fireWarehouseFloorPurchase = acquireWarehouseFloor(main, mainPlayer, "fire");
       metalWarehouseFloorPurchase = acquireWarehouseFloor(main, mainPlayer, "metal");
-      cableWarehouseFloorPurchases.push(acquireWarehouseFloor(main, mainPlayer, "cable"));
-      cableWarehouseFloorPurchases.push(acquireWarehouseFloor(main, mainPlayer, "cable"));
+      glassWarehouseFloorPurchase = acquireWarehouseFloor(main, mainPlayer, "glass");
+      lampWarehouseFloorPurchase = acquireWarehouseFloor(main, mainPlayer, "lamp");
       const repealed = mainPlayer.repeal(capitalization.law.id);
       if (!repealed.ok) throw new Error(`终端责任猫资本化法废止失败：${repealed.error}`);
       const flowBalance = mainPlayer.enact(drafts["flow-balance-1-30"], main.laws.length);
@@ -1203,12 +1208,14 @@ function runSeedTo30(seed: number, drafts: Record<string, LawDraft>) {
   }, 30, () => ({
     terminalRotationRamp,
     terminalCapitalizationTrades,
-    warehouseFloorPurchase,
+    plankWarehouseFloorPurchases,
     oreWarehouseFloorPurchases,
     waterWarehouseFloorPurchases,
     fireWarehouseFloorPurchase,
     metalWarehouseFloorPurchase,
     cableWarehouseFloorPurchases,
+    glassWarehouseFloorPurchase,
+    lampWarehouseFloorPurchase,
     terminalAutonomousRamp,
   }))) - 1;
   const missingAfterLogistics = missingThrough(main, 30);

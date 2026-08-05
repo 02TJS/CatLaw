@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import net from "node:net";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { chromium } from "playwright";
@@ -16,16 +17,32 @@ const executable = path.resolve(executablePath);
 assert(fs.existsSync(executable), `portable EXE does not exist: ${executable}`);
 
 const outputRoot = path.resolve("output", "fresh-pc-single-exe", `run-${Date.now()}`);
+const isolatedAppDir = path.join(outputRoot, "Portable App");
+const isolatedExecutable = path.join(isolatedAppDir, path.basename(executable));
 const userDataDir = path.join(outputRoot, "Fresh User Data");
 const appDataDir = path.join(outputRoot, "AppData");
 const localAppDataDir = path.join(outputRoot, "LocalAppData");
 const tempDir = path.join(outputRoot, "Temp");
-for (const directory of [userDataDir, appDataDir, localAppDataDir, tempDir]) {
+for (const directory of [isolatedAppDir, userDataDir, appDataDir, localAppDataDir, tempDir]) {
   fs.mkdirSync(directory, { recursive: true });
 }
+fs.copyFileSync(executable, isolatedExecutable);
 
 const windowsRoot = process.env.SystemRoot || process.env.WINDIR || "C:\\Windows";
-const port = 18_829;
+const port = await new Promise((resolve, reject) => {
+  const server = net.createServer();
+  server.unref();
+  server.once("error", reject);
+  server.listen(0, "127.0.0.1", () => {
+    const address = server.address();
+    const availablePort = typeof address === "object" && address ? address.port : 0;
+    server.close((error) => {
+      if (error) reject(error);
+      else resolve(availablePort);
+    });
+  });
+});
+assert(Number.isInteger(port) && port > 0, `failed to reserve a free local port: ${port}`);
 const cleanEnvironment = {
   SystemRoot: windowsRoot,
   WINDIR: windowsRoot,
@@ -44,8 +61,8 @@ const cleanEnvironment = {
 
 const logPath = path.join(outputRoot, "portable-process.log");
 const logHandle = fs.openSync(logPath, "w");
-const portableProcess = spawn(executable, [`--user-data-dir=${userDataDir}`], {
-  cwd: path.dirname(executable),
+const portableProcess = spawn(isolatedExecutable, [`--user-data-dir=${userDataDir}`], {
+  cwd: isolatedAppDir,
   env: cleanEnvironment,
   stdio: ["ignore", logHandle, logHandle],
   windowsHide: false,
@@ -116,8 +133,10 @@ try {
 
   const result = {
     ok: true,
-    executable,
-    executableBytes: fs.statSync(executable).size,
+    sourceExecutable: executable,
+    executable: isolatedExecutable,
+    executableBytes: fs.statSync(isolatedExecutable).size,
+    port,
     health,
     inheritedDeepSeekKey: health.body.configured,
     initial: {

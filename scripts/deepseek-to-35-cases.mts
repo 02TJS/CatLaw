@@ -168,6 +168,11 @@ if (flowEntry) flowEntry.playerText = `${flowEntry.playerText}最终公开库存
 if (stableEntry) stableEntry.playerText = `${stableEntry.playerText}为消除共享轮换的相位空窗，(-1,-1)最终固定memory并用一层重置加三层追加；(0,0)在recentCrafted('display')小于1时先以同样四层补display，否则才在machine_tool/chip间轮换；(1,1)的magnet也提升为四层。第二供应锚点在recentCrafted('antenna')小于1时四层补antenna，否则两层维持glass。不得改变仓库下限或价格。`;
 if (stableEntry) stableEntry.playerText = `${stableEntry.playerText}(0,0)最终使用明确三段轮转而非marketNeed：recentCrafted('machine_tool')小于1时四层补machine_tool，否则recentCrafted('display')小于1时四层补display，否则四层补chip。这个顺序必须覆盖前一句中央分工，避免display零脉冲饿死machine_tool。`;
 if (flowEntry) flowEntry.playerText = `${flowEntry.playerText}为antenna一批直接消耗2件cable，玩家再公开收购两件cable留仓；把真实warehouseCount('cable')加入cableDemand+1，并在供应锚点cable库存低于该数时追加3000000。不得把仓库cable作为猫库存或自主产量。`;
+if (stableEntry) stableEntry.playerText = `${stableEntry.playerText}(-1,-1)最终不再纯做memory，并优先消除display空窗：recentCrafted('display')小于1时先压低非订单memory旧计划再四层补display，否则recentCrafted('memory')小于1时先压低非订单display旧计划再四层补memory，否则四层补display；两者都属于该专岗允许组，订单计划不可取消。中央display脉冲保持不变，以形成第二个显示器装配通道。`;
+if (stableEntry) stableEntry.playerText = `${stableEntry.playerText}display的外部直接BOM底仓只来自两项公开交易：warehouseCount('glass')=1、warehouseCount('lamp')=1；chip不要求玩家收购，因为完成第30项后其现货可能全部被生产计划预留。(0,0)压低chip外售，并在本地count('chip')小于1时优先四层补chip，随后才执行machine_tool/display/chip周期。第二供应锚点在本地glass低于真实仓库数时四层补glass并压低外售；(-1,1)持续四层补lamp并压低外售。`;
+if (stableEntry) stableEntry.playerText = `${stableEntry.playerText}避免(-1,-1)专用装配猫在memory/display短暂缺料时签入无关的长期原料订单：前30供应链的通用orderCount三百万履约加分不作用于该坐标；已有reason为order的合同仍按开头四层规则不可撤销。该猫在目标暂不可融资时，把ctx.site.resourceItemId作为四层可行等待工作，memory/display目标则各用六层，目标一旦可融资就严格高于等待工作。不得拒绝或取消已经签入的合同。`;
+if (stableEntry) stableEntry.playerText = `${stableEntry.playerText}同样避免(0,0)中心芯片猫在chip/machine_tool短暂缺料时签入gear等无关长期订单：通用orderCount三百万履约加分也不作用于(0,0)，但已有订单合同仍不可撤销。中心为paper、brick、thread各设置两层简单等待候选，chip/machine_tool/display仍保持四层，因而目标可融资时必定高于等待候选；等待候选又高于未加分的无关订单。`;
+if (flowEntry) flowEntry.playerText = `${flowEntry.playerText}把真实warehouseCount('glass')加入glassDemand+1，并在第二供应锚点glass库存低于该数时追加3000000；该仓库品不进入猫库存或自主产量。`;
 const advancedEntry = DEEPSEEK_ACCEPTANCE_CASES.find((candidate) => candidate.id === "advanced-31-35");
 if (advancedEntry) advancedEntry.playerText = `${advancedEntry.playerText}${advancedSupplyInstruction}`;
 
