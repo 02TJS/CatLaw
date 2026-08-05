@@ -1,16 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { RECIPE_BY_OUTPUT } from "./catalog";
 import { createInitialState, itemPrice } from "./engine";
-import { freshLawPolicy } from "./lawProgram";
 import { migrateSaveSnapshot } from "./persistence";
 import { openDemandOrder, publishBountySignal, refreshCatMarket } from "./market";
 import type { CatState, GameState, ItemId } from "./types";
 
 function makeCat(createdIndex: number, x: number, y: number): CatState {
-  const policy = freshLawPolicy();
-  policy.creditBaseCents = 0;
-  policy.creditNetWorthFactor = 0;
-  policy.taxRate = 0;
   return {
     id: `cat-${createdIndex}`,
     createdIndex,
@@ -24,7 +19,6 @@ function makeCat(createdIndex: number, x: number, y: number): CatState {
     decisionTrace: [],
     decisionSerial: 0,
     lastSpeechAt: null,
-    lawPolicy: policy,
   };
 }
 
@@ -200,7 +194,7 @@ describe("reliable quotes and atomic bundle funding", () => {
     });
 
     const migrated = migrateSaveSnapshot(raw);
-    expect(migrated.schemaVersion).toBe(14);
+    expect(migrated.schemaVersion).toBe(15);
     expect(migrated.cats[0].escrowReservedCents).toBe(0);
     expect(migrated.procurementPlans.find((plan) => plan.id === "old-plan")?.status).toBe("cancelled");
     expect(migrated.demandOrders.find((order) => order.id === "open-order")?.status).toBe("cancelled");

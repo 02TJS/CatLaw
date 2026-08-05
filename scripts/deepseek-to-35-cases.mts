@@ -60,7 +60,7 @@ export const DEEPSEEK_ACCEPTANCE_CASES: DeepSeekAcceptanceCase[] = [
     id: "selective-price-to-22",
     purpose: "在工厂价格法之上把连续制作推进到第22项",
     mode: "price-balancing",
-    playerText: "在合法水资源资本化交易完成后新增一条统一价格优化法规：factory 2倍、lamp 1.5倍、magnet 1.5倍、chassis 4.5倍，把water、cable、battery恢复为1倍。底盘溢价用于让其普通金属订单竞争过末端订单；降低线缆和电池机会成本后，灯和磁铁在50%销售税下仍保持正收益。同一法规按公开坐标分工：(0,0)维持factory；(1,-2)的资本化工位比较lamp、magnet、chassis累计真实制作量，其中chassis比较值减4以扣除进入本阶段前的历史产量，每次只对比较值最小的一项调用一次adjust，使三者轮换并保持在静态沙箱上限内。不得直接返回craft/pass/sell动作，不得注入商品、金币、信用、悬赏、订单或物流；必须继续由统一choose流程及正常订单、配方和非亏损校验执行。",
+    playerText: "在合法水资源资本化交易完成后新增一条统一价格与评分法规：factory、lamp、magnet各2倍，把water、cable、battery、chassis恢复为1倍。法规只在magnet或lamp首次发现悬赏仍开放时协调真实候选：保留本猫已有计划；磁铁阶段由(-1,-1)补metal、(1,-1)补battery、中心或(1,1)装配magnet；灯阶段由(-1,-1)按本地glass现货选择glass/lamp、(1,-1)按cable现货选择cable/lamp、(-1,1)按battery现货选择battery/lamp，中心或(1,1)装配lamp。源码返回null，让既有统一选择循环继续处理动作。不得直接返回craft/pass/sell，不得注入商品、金币、信用、悬赏、订单或物流，且必须经过正常配方、融资和非亏损校验。",
     expectedPrices: [
       { itemId: "factory", multiplier: 2 },
       { itemId: "lamp", multiplier: 2 },
@@ -70,7 +70,7 @@ export const DEEPSEEK_ACCEPTANCE_CASES: DeepSeekAcceptanceCase[] = [
       { itemId: "battery", multiplier: 1 },
       { itemId: "chassis", multiplier: 1 },
     ],
-    requiredSourceTerms: ["at(0, 0)", "onResource(\"sand\")", "onResource(\"water\")", "onResource(\"wood\")", "recentCrafted(\"plank\")", "orderCount(\"glass\")", "orderCount(\"battery\")", "adjust"],
+    requiredSourceTerms: ["at(0, 0)", "bounty(\"magnet\")", "bounty(\"lamp\")", "count(\"glass\")", "count(\"cable\")", "count(\"battery\")", "adjust"],
   },
   {
     id: "water-capitalization",
@@ -172,7 +172,25 @@ if (stableEntry) stableEntry.playerText = `${stableEntry.playerText}(-1,-1)最�
 if (stableEntry) stableEntry.playerText = `${stableEntry.playerText}display的外部直接BOM底仓只来自两项公开交易：warehouseCount('glass')=1、warehouseCount('lamp')=1；chip不要求玩家收购，因为完成第30项后其现货可能全部被生产计划预留。(0,0)压低chip外售，并在本地count('chip')小于1时优先四层补chip，随后才执行machine_tool/display/chip周期。第二供应锚点在本地glass低于真实仓库数时四层补glass并压低外售；(-1,1)持续四层补lamp并压低外售。`;
 if (stableEntry) stableEntry.playerText = `${stableEntry.playerText}避免(-1,-1)专用装配猫在memory/display短暂缺料时签入无关的长期原料订单：前30供应链的通用orderCount三百万履约加分不作用于该坐标；已有reason为order的合同仍按开头四层规则不可撤销。该猫在目标暂不可融资时，把ctx.site.resourceItemId作为四层可行等待工作，memory/display目标则各用六层，目标一旦可融资就严格高于等待工作。不得拒绝或取消已经签入的合同。`;
 if (stableEntry) stableEntry.playerText = `${stableEntry.playerText}同样避免(0,0)中心芯片猫在chip/machine_tool短暂缺料时签入gear等无关长期订单：通用orderCount三百万履约加分也不作用于(0,0)，但已有订单合同仍不可撤销。中心为paper、brick、thread各设置两层简单等待候选，chip/machine_tool/display仍保持四层，因而目标可融资时必定高于等待候选；等待候选又高于未加分的无关订单。`;
+if (stableEntry) stableEntry.playerText = `${stableEntry.playerText}修正地图朝向别名的分支顺序：上半区wheel/fuel条件必须排除(0,-1)，metal专岗条件必须同时接受(-1,0)或(0,-1)。这样竖向教学布局的第一供应锚点不会被fuel分支提前捕获；该锚点固定metal，并继续通过真实订单承接cable/gear。`;
+if (stableEntry) stableEntry.playerText = `${stableEntry.playerText}专岗等待与目标使用可证明的分层倍率而不是继续线性加分：中心paper/brick/thread与西侧site资源候选先以multiplier 0归一到1000000，再以multiplier 10追加1000000，得到11000000；chip/machine_tool/display以及memory/display目标在归一后至少再做三次multiplier 10追加，严格高于等待层。这个量级覆盖当前最多32条订单信号的orderCount*250000评分，但仍只排序真实可融资候选，不能创建商品、订单或信用。`;
+if (flowEntry) flowEntry.playerText = `${flowEntry.playerText}玩家公开收购的metal仓库下限最终为2件而非1件：一个离散批次可被wheel/fuel的gear订单锁定，另一个仍可进入memory的整包报价。warehouseCount('metal')必须按真实仓库数量进入metalDemand+2，并在供应锚点本地metal少于该数时补产；仓库品仍不进入猫库存或自主制作统计。`;
+if (stableEntry) stableEntry.playerText = `${stableEntry.playerText}两件metal仓库下限使(0,0)中心的memory整包报价成为有限值；把memory加入中心允许计划组，(-1,-1)仍保留memory兜底但主要负责display，避免让较远路线上的Infinity报价阻断memory稳定性。中心优先级最终以machine_tool断供门控为最高，其后才是本地chip底仓、memory、display与chip循环。`;
+if (flowEntry) flowEntry.playerText = `${flowEntry.playerText}machine_tool还需要gear、tools、metal各一件；metal已有两件公开下限，再由玩家公开收购一件gear和一件tools留仓。把warehouseCount('tools')加入stone工位的toolsDemand+1，把warehouseCount('gear')加入供应锚点的gearDemand+1；对应猫本地库存低于真实仓库数时追加3000000。仓库品只作为公开最低库存信号。`;
+if (flowEntry) flowEntry.playerText = `${flowEntry.playerText}最终gear公开下限为3件：分别覆盖同时稳定循环的factory、wheel、machine_tool三个直接消费者。玩家通过三次真实公开收购建立warehouseCount('gear')=3；供应锚点仍按gearDemand+1+真实仓库数补产，不得把仓库货计入猫库存或自主产量。tools下限仍为1。`;
+if (flowEntry) flowEntry.playerText = `${flowEntry.playerText}由于adjust单次bonus上限为1000000，当供应锚点本地gear少于真实warehouseCount('gear')时，补库脉冲必须先用multiplier 0归一到1000000，再连续两次用multiplier 10追加1000000，得到111000000的有限优先级；达到3件后条件自动失效。普通gearDemand反馈不变。`;
+if (flowEntry) flowEntry.playerText = `${flowEntry.playerText}仓库稳定广播可能被最近512条生产事件挤出可见窗口；在不修改运行时的约束下，玩家完成三次真实gear收购后，本法规把对应最低库存明确写为count('gear')<3，而不再依赖warehouseCount('gear')决定补库脉冲。gearDemand的动态项仍可读取仓库广播，但最低库存条件永久有效。`;
+if (stableEntry) stableEntry.playerText = `${stableEntry.playerText}machine_tool缺口出现时采用需求侧节拍：recentCrafted('machine_tool')小于1期间，负x上半区wheel专岗与(1,-1) factory专岗压低各自非订单旧计划，并以所在地资源的归一化11M评分等待；已有reason为order的合同不得取消。machine_tool最近产量恢复后，两专岗恢复原职责；factory的额外recent脉冲也只能在machine_tool最近产量至少1时生效。这样factory、wheel、machine_tool轮流占用第三件gear。`;
+if (stableEntry) stableEntry.playerText = `${stableEntry.playerText}该machine_tool需求侧节拍必须覆盖所有工位，而不只两个专岗：任何猫若持有reason不为order的factory或wheel旧计划且自身位于资源采集范围，就把旧计划归一为负分，并把本地资源候选归一到11M等待层；这会作废旧计划的未成交gear订单并释放报价库存。订单生产计划和已成交合同保持不变。`;
+if (stableEntry) stableEntry.playerText = `${stableEntry.playerText}最终覆盖中心猫此前所有二值顺序：复杂商品单次采购可能超过recentCrafted的60秒窗口，因此(0,0)不得再用recentCrafted或本地count依次门控machine_tool/chip/memory。改为读取已经声明的need0到need29，按排名选择第一个属于machine_tool、chip、memory的商品，并用目标层的归一化后三次十倍追加；(-1,-1)继续专门稳定display。marketNeed的最近流量与累计制作决胜会在一次复杂计划完成后切换到真正落后的商品。`;
+if (stableEntry) stableEntry.playerText = `${stableEntry.playerText}利用现有过剩专岗补齐严格稳态边缘吞吐：所有y<0且位于正x、同时不是(1,-1)的fuel岗，在recentCrafted('antenna')小于1时临时把antenna提升到目标层，否则维持fuel；所有y>=0且位于负x、同时不是(-1,1)的coolant岗，在recentCrafted('lamp')小于1时临时把lamp提升到目标层，否则维持coolant。原fuel/coolant配方、订单和合同规则不变。`;
+if (stableEntry) stableEntry.playerText = `${stableEntry.playerText}最终撤销上一句基于60秒空窗的二值补位，防止if第一项自我续期。只用同一个need0到need29排名链同时管理三组岗位：(0,0)组为machine_tool/chip/memory，正x上半区非工厂组为fuel/antenna，负x下半区非灯岗组为coolant/lamp。对每只猫只选择排名最靠前且属于本组的一项，以归一化后两次十倍追加得到严格高于等待层的111M分；不属于这三组的既有专岗不变。`;
+if (stableEntry) stableEntry.playerText = `${stableEntry.playerText}同一个最终排名链也撤销此前recentCrafted('machine_tool')小于1时全局暂停factory/wheel的临时门控；复杂机床计划可能超过60秒，该门控会错误地反复压制wheel。中心排名已经能选择有限融资的machine_tool，旧的未承诺计划仍由正常“更高净收益候选”规则替换，不能再按时间窗清退。`;
 if (flowEntry) flowEntry.playerText = `${flowEntry.playerText}把真实warehouseCount('glass')加入glassDemand+1，并在第二供应锚点glass库存低于该数时追加3000000；该仓库品不进入猫库存或自主产量。`;
+if (flowEntry) flowEntry.playerText = `${flowEntry.playerText}本法生效后，玩家将通过公开市场收购一件新生产的chassis留仓，以验证最低库存确有可出售现货。warehouse-stock广播可能被512条生产事件挤出；玩家此前已真实收购两件plank，所以每个onResource('wood')工位在本地count('plank')小于2时补木板，同时独立地在count('chassis')小于1时补底盘，两项都用归一化后两次十倍追加，不设置先后门槛。仓库中的玩家商品绝不进入猫库存或制作统计；两个可融资候选仍由正常净收益排序。`;
+if (flowEntry) flowEntry.playerText = `${flowEntry.playerText}stone资源位在toolsDemand=factory+machine_tool严格大于recentCrafted('tools')时，只为tools追加一层multiplier 1、bonus 1000000的温和缺口分；保留原线性反馈，不把工具归一到终端111M层，避免补料候选压倒整个市场并形成过密嵌套订单。`;
+if (stableEntry) stableEntry.playerText = `${stableEntry.playerText}同理，固定灯岗(-1,1)若recentCrafted('display')严格大于recentCrafted('lamp')，只在原灯评分之上追加一层multiplier 1、bonus 1000000；相等时回到普通灯岗评分。该反馈系数直接来自display配方每次消耗一件lamp。`;
+if (stableEntry) stableEntry.playerText = `${stableEntry.playerText}保留已经通过完整稳定观察的车轮节拍：负x上半区在recentCrafted('machine_tool')小于1时用本地资源11M等待并压低未承诺wheel旧计划，其他时间以归一化后连续三层1M维持wheel。不得把wheel提高到111M，因为高优先级车轮会改变嵌套订单相位并在下一观察期留下长期计划链。`;
 const advancedEntry = DEEPSEEK_ACCEPTANCE_CASES.find((candidate) => candidate.id === "advanced-31-35");
 if (advancedEntry) advancedEntry.playerText = `${advancedEntry.playerText}${advancedSupplyInstruction}`;
 

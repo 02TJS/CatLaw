@@ -70,15 +70,11 @@ describe("0.8.0 building market and all-item bounties", () => {
     expect(state.playerBuildingInventory.factory).toBeUndefined();
   });
 
-  it("settles a tax-free purchase once and repays seller debt before adding cash", () => {
+  it("settles a purchase once and repays seller debt before adding cash", () => {
     const state = createInitialState({ withStarter: false, worldSeed: 84 });
     const seller = state.cats[0];
     seller.inventory.factory = 1;
     seller.debtCents = 500;
-    state.laws.unshift({
-      ...createInitialState({ worldSeed: 84 }).laws[0], id: "test-tax", title: "全额税",
-      sourceCode: "function decide(ctx) { setTax(1); return null; }", program: { version: 2 }, locked: false,
-    });
     syncBuildingOffers(state, (itemId) => itemPrice(state, itemId));
     const offer = state.buildingOffers[0];
     state.treasuryCoins = offer.askCents + 1_000;
@@ -171,20 +167,27 @@ describe("0.8.0 building market and all-item bounties", () => {
     expect(state.buildingOffers[0]).toMatchObject({ sellerCatId: cat.id, itemId: "factory", status: "open" });
   });
 
-  it("places factories beside resources while keeping centers blocked and dismantles back to inventory", () => {
+  it("places every industrial building beside resources while keeping only occupied cells blocked", () => {
     const state = createInitialState({ withStarter: false, worldSeed: 86 });
+    state.resourceNodes = [{ id: "resource-test", itemId: "wood", position: { x: 3, y: 3 } }];
     state.playerBuildingInventory.factory = 2;
+    state.playerBuildingInventory.lab = 1;
+    state.playerBuildingInventory.reactor = 1;
     const catPosition = state.cats[0].position;
     const node = state.resourceNodes[0];
     expect(buildingPlacementFailure(state, "factory", catPosition)).toContain("猫咪");
     expect(buildingPlacementFailure(state, "factory", node.position)).toContain("资源");
-    const harvestTile = resourceHarvestTiles(node).find((position) => !state.cats.some((cat) => cat.position.x === position.x && cat.position.y === position.y))!;
-    expect(buildingPlacementFailure(state, "factory", harvestTile)).toBeNull();
-    expect(buildingPlacementFailure(state, "lab", harvestTile)).toContain("只有工厂");
+    const [factoryTile, labTile, reactorTile] = [{ x: 2, y: 2 }, { x: 3, y: 2 }, { x: 2, y: 3 }];
+    expect(resourceHarvestTiles(node)).toEqual(expect.arrayContaining([factoryTile, labTile, reactorTile]));
+    expect(buildingPlacementFailure(state, "factory", factoryTile)).toBeNull();
+    expect(buildingPlacementFailure(state, "lab", labTile)).toBeNull();
+    expect(buildingPlacementFailure(state, "reactor", reactorTile)).toBeNull();
     expect(buildingPlacementFailure(state, "factory", { x: 99, y: 99 })).toContain("已开拓");
-    const placed = placeOwnedBuilding(state, "factory", harvestTile);
+    const placed = placeOwnedBuilding(state, "factory", factoryTile);
     expect(placed).toMatchObject({ ok: true });
-    expect(buildingPlacementFailure(state, "factory", harvestTile)).toContain("建筑");
+    expect(placeOwnedBuilding(state, "lab", labTile)).toMatchObject({ ok: true });
+    expect(placeOwnedBuilding(state, "reactor", reactorTile)).toMatchObject({ ok: true });
+    expect(buildingPlacementFailure(state, "factory", factoryTile)).toContain("建筑");
     expect(dismantleBuilding(state, placed.building!.id)).toEqual({ ok: true });
     expect(state.playerBuildingInventory.factory).toBe(2);
   });
@@ -209,7 +212,7 @@ describe("0.8.0 building market and all-item bounties", () => {
     legacy.discoveryBounties = legacy.discoveryBounties.slice(0, 15);
     legacy.discoveredItems = ["wood", "cable"];
     const migrated = migrateSaveSnapshot(legacy);
-    expect(migrated.schemaVersion).toBe(14);
+    expect(migrated.schemaVersion).toBe(15);
     expect(migrated.buildings).toEqual([]);
     expect(migrated.playerBuildingInventory.factory).toBe(1);
     expect(migrated.treasuryCoins).toBe(10_900);

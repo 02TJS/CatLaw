@@ -32,6 +32,7 @@ describe("safe law interpreter", () => {
     ["prototype", "function decide(ctx) { return ctx.constructor; }"],
     ["mutation", "function decide(ctx) { ctx.inventory.wood = 999; return null; }"],
     ["dynamic code", "function decide(ctx) { return eval('null'); }"],
+    ["removed tax helper", "function decide(ctx) { setTax(0.5); return null; }"],
   ])("rejects %s access", (_label, source) => {
     expect(validateLawSource(source).ok).toBe(false);
   });

@@ -1,0 +1,71 @@
+name: Release desktop apps
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run package:portable
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cat-workshop-windows-x64
+          path: release/CatWorkshop-*-portable.exe
+          if-no-files-found: error
+
+  macos:
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, arm64]
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Package macOS ${{ matrix.arch }}
+        run: npx electron-builder --mac zip --${{ matrix.arch }} --publish never --config.compression=maximum '--config.artifactName=CatWorkshop-${version}-mac-${arch}.${ext}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cat-workshop-mac-${{ matrix.arch }}
+          path: release/CatWorkshop-*-mac-${{ matrix.arch }}.zip
+          if-no-files-found: error
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [windows, macos]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Generate SHA-256 checksums
+        working-directory: release-assets
+        run: sha256sum CatWorkshop-* > SHA256SUMS.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          body: |
+            Windows and macOS packages include Electron, Chromium, Node.js, and the local game service. Target computers do not need Python, Node.js, or a development environment.
+
+            The macOS archives are unsigned because this repository has no Apple Developer signing/notarization secrets. On first launch, use Finder's Open command if Gatekeeper blocks the app.
+          files: release-assets/*

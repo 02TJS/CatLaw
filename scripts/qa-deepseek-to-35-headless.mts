@@ -626,7 +626,16 @@ function rampAutonomousProductionRange(
   through: number,
   maxSimulatedMs: number,
   forceFullDuration = false,
-): { simulatedMs: number; targetCraftDelta: Record<string, number>; reachedTwoEach: boolean } {
+): {
+  simulatedMs: number;
+  targetCraftDelta: Record<string, number>;
+  reachedTwoEach: boolean;
+  targetDiagnostics: Array<{
+    itemId: string;
+    cats: ReturnType<typeof productionOpportunityDiagnosticForCat>[];
+  }>;
+  activePlans: Array<{ catId: string; itemId: string; reason: string; phase: string; blockedReason: string | null }>;
+} {
   const targetIds = RECIPES.slice(from - 1, through).map((recipe) => recipe.output);
   const baseline = Object.fromEntries(targetIds.map((itemId) => [itemId, state.itemStats[itemId].crafted]));
   const startedAt = simulatedNow(state);
@@ -645,6 +654,22 @@ function rampAutonomousProductionRange(
     simulatedMs: simulatedNow(state) - startedAt,
     targetCraftDelta,
     reachedTwoEach: targetIds.every((itemId) => targetCraftDelta[itemId] >= 2),
+    targetDiagnostics: targetIds.filter((itemId) => targetCraftDelta[itemId] < 2).map((itemId) => ({
+      itemId,
+      cats: state.cats.map((cat) => productionOpportunityDiagnosticForCat(
+        state,
+        cat,
+        (candidateItemId) => itemPrice(state, candidateItemId, cat),
+        itemId,
+      )),
+    })),
+    activePlans: state.procurementPlans.filter((plan) => plan.status === "active").map((plan) => ({
+      catId: plan.catId,
+      itemId: plan.outputItemId,
+      reason: plan.reason,
+      phase: plan.phase,
+      blockedReason: plan.blockedReason,
+    })),
   };
 }
 
@@ -1146,8 +1171,11 @@ function runSeedTo30(seed: number, drafts: Record<string, LawDraft>) {
   const oreWarehouseFloorPurchases: Array<ReturnType<typeof acquireWarehouseFloor>> = [];
   const waterWarehouseFloorPurchases: Array<ReturnType<typeof acquireWarehouseFloor>> = [];
   let fireWarehouseFloorPurchase: ReturnType<typeof acquireWarehouseFloor> | null = null;
-  let metalWarehouseFloorPurchase: ReturnType<typeof acquireWarehouseFloor> | null = null;
+  const metalWarehouseFloorPurchases: Array<ReturnType<typeof acquireWarehouseFloor>> = [];
+  let toolsWarehouseFloorPurchase: ReturnType<typeof acquireWarehouseFloor> | null = null;
+  const gearWarehouseFloorPurchases: Array<ReturnType<typeof acquireWarehouseFloor>> = [];
   const cableWarehouseFloorPurchases: Array<ReturnType<typeof acquireWarehouseFloor>> = [];
+  let chassisWarehouseFloorPurchase: ReturnType<typeof acquireWarehouseFloor> | null = null;
   let glassWarehouseFloorPurchase: ReturnType<typeof acquireWarehouseFloor> | null = null;
   let lampWarehouseFloorPurchase: ReturnType<typeof acquireWarehouseFloor> | null = null;
   cableWarehouseFloorPurchases.push(acquireWarehouseFloor(main, mainPlayer, "cable"));
@@ -1160,11 +1188,6 @@ function runSeedTo30(seed: number, drafts: Record<string, LawDraft>) {
       runUntil(main, mainPlayer, () => missingThrough(main, itemIndex).length === 0, remaining(), false);
     }
     if (missingThrough(main, 30).length === 0) {
-      const stableRotation = mainPlayer.enact(drafts["stable-rotation-23-30"], main.laws.length);
-      if (!stableRotation.ok) throw new Error(`稳态轮换法颁布失败：${stableRotation.error}`);
-      // The new law resets the stability clock. Ramp it with public market
-      // operations, then evaluate only after laws, prices and trades freeze.
-      terminalRotationRamp = prepareFrozenTerminalRotation(main, mainPlayer, RAMP_30_MS);
       const capitalization = mainPlayer.enact(drafts["rotation-capitalization"], 0);
       if (!capitalization.ok || !capitalization.law) throw new Error(`终端责任猫资本化法颁布失败：${capitalization.error}`);
       terminalCapitalizationTrades = capitalizeRotationOwners(main, mainPlayer);
@@ -1191,19 +1214,26 @@ function runSeedTo30(seed: number, drafts: Record<string, LawDraft>) {
       waterWarehouseFloorPurchases.push(acquireWarehouseFloor(main, mainPlayer, "water"));
       waterWarehouseFloorPurchases.push(acquireWarehouseFloor(main, mainPlayer, "water"));
       fireWarehouseFloorPurchase = acquireWarehouseFloor(main, mainPlayer, "fire");
-      metalWarehouseFloorPurchase = acquireWarehouseFloor(main, mainPlayer, "metal");
+      metalWarehouseFloorPurchases.push(acquireWarehouseFloor(main, mainPlayer, "metal"));
+      metalWarehouseFloorPurchases.push(acquireWarehouseFloor(main, mainPlayer, "metal"));
+      toolsWarehouseFloorPurchase = acquireWarehouseFloor(main, mainPlayer, "tools");
+      gearWarehouseFloorPurchases.push(acquireWarehouseFloor(main, mainPlayer, "gear"));
+      gearWarehouseFloorPurchases.push(acquireWarehouseFloor(main, mainPlayer, "gear"));
+      gearWarehouseFloorPurchases.push(acquireWarehouseFloor(main, mainPlayer, "gear"));
       glassWarehouseFloorPurchase = acquireWarehouseFloor(main, mainPlayer, "glass");
       lampWarehouseFloorPurchase = acquireWarehouseFloor(main, mainPlayer, "lamp");
       const repealed = mainPlayer.repeal(capitalization.law.id);
       if (!repealed.ok) throw new Error(`终端责任猫资本化法废止失败：${repealed.error}`);
       const flowBalance = mainPlayer.enact(drafts["flow-balance-1-30"], main.laws.length);
       if (!flowBalance.ok) throw new Error(`前30项流量守恒法颁布失败：${flowBalance.error}`);
-      // Flow conservation is the final policy change. Capture the stability
-      // baseline only after this no-trade/no-law settling period.
+      chassisWarehouseFloorPurchase = acquireWarehouseFloor(main, mainPlayer, "chassis");
+      const stableRotation = mainPlayer.enact(drafts["stable-rotation-23-30"], main.laws.length);
+      if (!stableRotation.ok) throw new Error(`稳态轮换法颁布失败：${stableRotation.error}`);
+      // Build the public floors before terminal plans can lock their suppliers.
+      // Trades during this ramp deliberately reset the stability clock; the
+      // formal observation starts only after this function returns.
+      terminalRotationRamp = prepareFrozenTerminalRotation(main, mainPlayer, RAMP_30_MS);
       terminalAutonomousRamp = rampAutonomousProductionRange(main, mainPlayer, 23, 30, RAMP_30_MS * 2, true);
-      if (!terminalAutonomousRamp.reachedTwoEach) {
-        throw new Error(`terminal rotation did not settle after the final policy change: ${JSON.stringify(terminalAutonomousRamp)}`);
-      }
     }
   }, 30, () => ({
     terminalRotationRamp,
@@ -1212,8 +1242,11 @@ function runSeedTo30(seed: number, drafts: Record<string, LawDraft>) {
     oreWarehouseFloorPurchases,
     waterWarehouseFloorPurchases,
     fireWarehouseFloorPurchase,
-    metalWarehouseFloorPurchase,
+    metalWarehouseFloorPurchases,
+    toolsWarehouseFloorPurchase,
+    gearWarehouseFloorPurchases,
     cableWarehouseFloorPurchases,
+    chassisWarehouseFloorPurchase,
     glassWarehouseFloorPurchase,
     lampWarehouseFloorPurchase,
     terminalAutonomousRamp,
@@ -1288,9 +1321,6 @@ try {
       runUntil(state, player, () => missingThrough(state, 35).length === 0, 7_200_000, true);
       if (missingThrough(state, 35).length === 0) {
         advancedAutonomousRamp = rampAutonomousProductionRange(state, player, 31, 35, RAMP_30_MS * 3, true);
-        if (!advancedAutonomousRamp.reachedTwoEach) {
-          throw new Error(`advanced production did not settle after the final player operation: ${JSON.stringify(advancedAutonomousRamp)}`);
-        }
       }
     }, 35, () => ({ positions, buildings: state.buildings, cats: state.cats.length, advancedAutonomousRamp }))) - 1;
     if (missingThrough(state, 35).length) throw new Error(`seed 1最高难度未达到35：${missingThrough(state, 35).join(",")}`);

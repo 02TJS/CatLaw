@@ -7,7 +7,7 @@ import type { CatState, GameState, ItemId, Position } from "../game/types";
 import { resourceNodesAtPosition } from "../game/world";
 import { itemQualityLevel, itemQualityPalette } from "./itemQuality";
 
-export type MapLensId = "none" | "inventory" | "orders" | "bottlenecks" | "environment" | "wealth" | "law" | "stability" | "coordinates";
+export type MapLensId = "none" | "inventory" | "orders" | "bottlenecks" | "environment" | "wealth" | "activity" | "law" | "stability" | "coordinates";
 
 export interface LensColor {
   id: string;
@@ -54,7 +54,7 @@ export interface MapLensSnapshot {
   orderFloors: Map<string, MapLensOrderFloor>;
   legend: LensColor[];
   metric: null | {
-    unit: "cents";
+    unit: "cents" | "milliseconds";
     min: number;
     median: number;
     max: number;
@@ -69,6 +69,7 @@ export const MAP_LENS_OPTIONS: ReadonlyArray<{ id: Exclude<MapLensId, "none">; l
   { id: "bottlenecks", label: "生产瓶颈" },
   { id: "environment", label: "生产环境" },
   { id: "wealth", label: "财富信用" },
+  { id: "activity", label: "活跃热力" },
   { id: "law", label: "法规影响" },
   { id: "stability", label: "生产稳定" },
   { id: "coordinates", label: "坐标索引" },
@@ -139,6 +140,18 @@ function wealthHeatColor(normalized: number): LensColor {
   const sideLeft = t <= 0.5 ? mixHex("#a54a48", "#a68e41", local) : mixHex("#a68e41", "#31784d", local);
   const border = t <= 0.5 ? mixHex("#8a3938", "#817032", local) : mixHex("#817032", "#23623c", local);
   return color(`wealth-${Math.round(t * 1_000)}`, `${Math.round(t * 100)}%`, top, sideRight, sideLeft, border);
+}
+
+const ACTIVITY_STALLED_MS = 60_000;
+
+function activityHeatColor(normalizedInactivity: number): LensColor {
+  const t = Math.max(0, Math.min(1, normalizedInactivity));
+  const local = t <= 0.5 ? t * 2 : (t - 0.5) * 2;
+  const top = t <= 0.5 ? mixHex("#4eaa73", "#e1c35f", local) : mixHex("#e1c35f", "#dc7069", local);
+  const sideRight = t <= 0.5 ? mixHex("#398657", "#b79d49", local) : mixHex("#b79d49", "#b45552", local);
+  const sideLeft = t <= 0.5 ? mixHex("#31784d", "#a68e41", local) : mixHex("#a68e41", "#a54a48", local);
+  const border = t <= 0.5 ? mixHex("#23623c", "#817032", local) : mixHex("#817032", "#8a3938", local);
+  return color(`activity-${Math.round(t * 1_000)}`, `${Math.round(t * 100)}%`, top, sideRight, sideLeft, border);
 }
 
 function activePlanForCat(state: GameState, catId: string) {
@@ -406,6 +419,44 @@ function wealthSnapshot(state: GameState): Pick<MapLensSnapshot, "catColors" | "
   };
 }
 
+function activitySnapshot(state: GameState): Pick<MapLensSnapshot, "catColors" | "legend" | "metric"> {
+  const lastEffectiveActionAt = new Map<string, number>();
+  for (const entry of state.commandAudit) {
+    if (entry.origin !== "simulation" || entry.kind !== "action-start" || !entry.ok) continue;
+    if (!entry.detail?.startsWith("craft:") && !entry.detail?.startsWith("pass:")) continue;
+    lastEffectiveActionAt.set(entry.target, Math.max(lastEffectiveActionAt.get(entry.target) ?? 0, entry.atMs));
+  }
+
+  const values = new Map(state.cats.map((cat) => {
+    const working = cat.action?.type === "craft" || cat.action?.type === "pass";
+    const lastAt = lastEffectiveActionAt.get(cat.id);
+    const inactiveMs = working ? 0 : lastAt === undefined
+      ? ACTIVITY_STALLED_MS
+      : Math.max(0, state.simTime - lastAt);
+    return [cat.id, inactiveMs] as const;
+  }));
+  const normalized = new Map([...values].map(([catId, inactiveMs]) => [
+    catId,
+    Math.min(1, inactiveMs / ACTIVITY_STALLED_MS),
+  ]));
+  const ordered = [...values.values()].sort((left, right) => left - right);
+  const min = ordered[0] ?? 0;
+  const max = ordered.at(-1) ?? min;
+  const median = ordered.length === 0 ? 0 : ordered[Math.floor((ordered.length - 1) / 2)];
+  return {
+    catColors: new Map(state.cats.map((cat) => [
+      cat.id,
+      activityHeatColor(normalized.get(cat.id) ?? 1),
+    ])),
+    legend: [
+      { ...activityHeatColor(0), label: "正在制作或运输" },
+      { ...activityHeatColor(0.5), label: "约 30 秒未行动" },
+      { ...activityHeatColor(1), label: "60 秒以上未行动" },
+    ],
+    metric: { unit: "milliseconds", min, median, max, values, normalized },
+  };
+}
+
 function lawSnapshot(state: GameState): Pick<MapLensSnapshot, "catColors" | "legend"> {
   const activeLaws = state.laws.filter((law) => law.status === "active");
   const lawColors = new Map(activeLaws.map((law, index) => {
@@ -538,6 +589,7 @@ export function buildMapLensSnapshot(state: GameState, lensId: MapLensId, itemId
   if (lensId === "bottlenecks") return { ...empty, ...bottleneckSnapshot(state, itemId) };
   if (lensId === "environment") return { ...empty, ...environmentSnapshot(state, itemId) };
   if (lensId === "wealth") return { ...empty, ...wealthSnapshot(state) };
+  if (lensId === "activity") return { ...empty, ...activitySnapshot(state) };
   if (lensId === "law") return { ...empty, ...lawSnapshot(state) };
   if (lensId === "coordinates") return { ...empty, ...coordinateSnapshot(state) };
   return { ...empty, ...stabilitySnapshot(state, itemId) };

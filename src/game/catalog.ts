@@ -28,12 +28,9 @@ export const BASE_PRICE_FLOORS: Readonly<Record<string, number>> = Object.freeze
   cable: 36,
   battery: 30,
   chemical: 33,
-  // With the locked 50% starter tax, chassis consumes 10.50 coins of
-  // liquidatable plank + metal and carries 9--11 burden units. 55 is the
-  // smallest integer price whose worst-case gain rate is strictly above the
-  // catalog's 150-cent/unit early-good frontier:
-  //   (0.5 * 55.00 - 10.50) / 11 = 1.545... coins per burden unit.
-  // At 54 the rate is exactly 1.50, so deterministic ties can still starve it.
+  // Chassis consumes 18 coins of liquidatable plank + metal before financing,
+  // transport and coordination costs. The permanent 55-coin floor leaves
+  // enough no-tax headroom for those real costs without relying on a law.
   chassis: 55,
 });
 
@@ -43,10 +40,10 @@ const MINIMUM_RECIPE_MARKUP = 0.12;
  * Deliberate market bottlenecks priced at exact input replacement parity.
  *
  * For factory this is not a fitted number: p_factory = 2 p_brick + p_gear
- * + p_tools + p_glass. With one common sales-tax rate, both sides are scaled
- * by the same after-tax factor. Any global price multiplier also scales both
- * sides equally, so ordinary speculative factory production has exactly zero
- * asset gain while the one-shot discovery bounty can still fund a first unit.
+ * + p_tools + p_glass. With no sales tax, output and inputs are compared
+ * directly. Any global price multiplier also scales both sides equally, so
+ * ordinary speculative factory production has exactly zero asset gain while
+ * the one-shot discovery bounty can still fund a first unit.
  */
 export const INPUT_PARITY_PRICE_IDS = ["factory"] as const;
 

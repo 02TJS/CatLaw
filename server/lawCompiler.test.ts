@@ -41,12 +41,33 @@ describe("unified immutable law compiler", () => {
     expect(draft.validation).toMatchObject({ syntax: true, safety: true });
   });
 
-  it("keeps price and tax inside the same source-program format", async () => {
+  it("keeps price laws and rejects removed tax effects", async () => {
     const price = await compileLaw({ text: "把齿轮价格提高50%", existingLaws: [] });
     const tax = await compileLaw({ text: "征收80%销售税进入国库", existingLaws: [] });
     expect(price.sourceCode).toContain('setPrice("gear", 1.5)');
-    expect(tax.sourceCode).toContain("setTax(0.8)");
+    expect(tax.sourceCode).not.toContain("setTax");
+    expect(tax.warnings.join(" ")).toContain("税收系统已移除");
     expect(price.sourceCode).toContain("return null");
+  });
+
+  it("compiles an additive price request as cents instead of a multiplier", async () => {
+    const draft = await compileLaw({ text: "燃料的价格+3", existingLaws: [] });
+    expect(draft.sourceCode).not.toMatch(/setPrice\s*\(/u);
+    expect(draft.sourceCode).toContain('addPrice("fuel", 300)');
+    expect(draft.sourceCode).toContain("return null");
+    expect(draft.warnings.join(" ")).toContain("价格加法");
+    expect(draft.explanation).toContain("而不是乘以3");
+  });
+
+  it("expands same-era exclusions from catalog tiers, not coordinates", async () => {
+    const draft = await compileLaw({ text: "燃料同一时代的除了燃料都*1.2价格", existingLaws: [] });
+    expect(draft.sourceCode).toContain("setPrice('lamp', 1.2)");
+    expect(draft.sourceCode).toContain("setPrice('machine_tool', 1.2)");
+    expect(draft.sourceCode).not.toContain("setPrice('fuel'");
+    expect(draft.sourceCode).not.toContain("ctx.position");
+    const executableLines = draft.sourceCode.split("\n").filter((line) => !line.trimStart().startsWith("//"));
+    expect(executableLines.filter((line) => /setPrice\(/u.test(line))).toHaveLength(6);
+    expect(draft.validation.safety).toBe(true);
   });
 
   it("compiles scoring without replacing existing laws", async () => {

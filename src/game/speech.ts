@@ -14,11 +14,11 @@ export const DEFAULT_SPEECH_FREQUENCY = 70;
 const ALLOWED_PLACEHOLDERS = new Set(["law", "reason", "action", "item", "direction", "gain"]);
 
 export const DEFAULT_LAW_SPEECH_TEMPLATES: LawSpeechTemplates = [
-  "因{reason}，{action}能赚{gain}喵！",
-  "按{law}，{reason}；{action}赚{gain}喵。",
-  "这次{action}有{gain}收益，因为{reason}喵！",
-  "我算过了：{action}赚{gain}，{reason}喵。",
-  "因为{reason}，所以{action}，能赚{gain}喵！",
+  "因{reason}，按{law}{action}能赚{gain}喵！",
+  "按{law}看，{reason}让我{action}，可得{gain}喵！",
+  "依据{law}，{action}正合适，因{reason}赚{gain}喵！",
+  "我算过{law}：{action}能得{gain}，理由是{reason}喵！",
+  "为了{gain}，我依{law}{action}，因为{reason}喵！",
 ];
 
 export interface SpeechTemplateValidation {
@@ -30,6 +30,19 @@ export function validateSpeechTemplates(input: unknown): SpeechTemplateValidatio
   const messages: string[] = [];
   if (!Array.isArray(input) || input.length !== SPEECH_TEMPLATE_COUNT) {
     return { ok: false, messages: [`决策台词必须恰好有 ${SPEECH_TEMPLATE_COUNT} 句。`] };
+  }
+  const normalizedTemplates = input
+    .filter((raw): raw is string => typeof raw === "string")
+    .map((raw) => raw.trim());
+  if (normalizedTemplates.length === SPEECH_TEMPLATE_COUNT
+    && new Set(normalizedTemplates).size !== SPEECH_TEMPLATE_COUNT) {
+    messages.push("五句决策台词不能重复，必须分别提供不同措辞。");
+  }
+  const templateShapes = normalizedTemplates.map((raw) => raw
+    .replace(/\{(?:law|reason|action|item|direction|gain)\}/gu, "{slot}")
+    .replace(/[\s，。！？；：、,.!?;:]+/gu, ""));
+  if (templateShapes.length === SPEECH_TEMPLATE_COUNT && new Set(templateShapes).size < 4) {
+    messages.push("五句决策台词至少要有四种不同句式，不能只替换标点或重复同一模板。");
   }
   input.forEach((raw, index) => {
     if (typeof raw !== "string") {

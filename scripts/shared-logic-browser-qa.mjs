@@ -10,9 +10,14 @@ const errors = [];
 page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
 page.on("pageerror", (error) => errors.push(error.message));
 
-const sourceCode = `function decide(ctx) {
+const sourceCode = `// decide(ctx)：ctx 表示当前猫本次决策可读取的坐标、库存、钱包、附近工位、订单和运输合同等只读信息。
+function decide(ctx) {
+  // has(item, qty)：item 是稳定商品 ID，qty 是至少需要持有的数量；neighborExists(direction)：direction 是要检查的相邻方向。
   if (has("ore") && neighborExists("east")) return { type: "pass", direction: "east", itemId: "ore" };
+  // nearbyCount(item)：item 是要在附近工位库存中统计的稳定商品 ID。
+  // adjust(action, item, multiplier, bonus)：action 是动作，item 是商品，multiplier 是评分乘数，bonus 是固定加分。
   if (nearbyCount("wood") >= 2) adjust("pass", "wood", 3, 30);
+  // choose()：这个函数无参数，请求共享贪心选择器从全部合法候选中选出最终行动。
   return choose();
 }`;
 
@@ -25,15 +30,24 @@ await page.route("**/api/laws/compile", async (route) => {
       title: "矿石直送与木材评分",
       playerText: "混合逻辑测试",
       summary: "矿石满足条件时直接东传，否则可在中途提高木材传递候选评分。",
+      explanation: "每只猫行动时先检查自己是否至少有一件矿石，以及东边是否有相邻猫；两项都满足就尝试把矿石向东传。否则它查看附近工位的木材数量，达到两件时把传递木材的候选评分乘以三并增加三十分。最后仍由共享选择器比较合法行动，不能绕过运输合同、库存和盈利校验。",
       sourceCode,
       astHash: "browser-worker-will-rehash",
       examples: [],
       warnings: [],
+      speechTemplates: [
+        "按{law}，因{reason}，{action}能赚{gain}喵！",
+        "照{law}算，{reason}；{action}赚{gain}喵。",
+        "{law}说明了：{action}有{gain}，因为{reason}喵！",
+        "我按{law}算过，{action}赚{gain}，{reason}喵。",
+        "因为{reason}，依{law}做{action}，能赚{gain}喵！",
+      ],
       program: { version: 2 },
       compileAudit: {
         requestId: "browser-fixture",
         model: "deepseek-v4-flash",
         attempts: 1,
+        callCount: 3,
         startedAt: new Date(0).toISOString(),
         durationMs: 1,
         promptSha256: "fixture",

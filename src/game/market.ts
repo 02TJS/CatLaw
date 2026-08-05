@@ -28,6 +28,7 @@ import type {
 import { recordProductionPlan } from "./productionHistory";
 import { positionKey } from "./world";
 import { recordWarehousePurchase } from "./warehouse";
+import { ephemeralLawPolicy } from "./ephemeralLawPolicy";
 
 // Broadcasts are immediate. This interval only wakes idle cats for a periodic
 // market review, so one normal action duration is sufficient.
@@ -156,7 +157,7 @@ export function publishBountySignal(state: GameState, itemId: ItemId, status: "o
     subjectId: `bounty:${itemId}`,
     itemId,
     sourceCatId: source.id,
-    amountCents: bounty.amountCents,
+    amountCents: effectiveBountyAmountCents(state, itemId, source),
     reason: status === "closed" ? "首次发现悬赏已经结案" : null,
   });
 }
@@ -228,7 +229,26 @@ export function bountyBroadcastsForCat(state: GameState, _catId: string): Market
     if (broadcast.kind !== "bounty-open" && broadcast.kind !== "bounty-closed") continue;
     if (!latestByItem.has(broadcast.itemId)) latestByItem.set(broadcast.itemId, broadcast);
   }
-  return [...latestByItem.values()].filter((entry) => entry.kind === "bounty-open");
+  const cat = state.cats.find((entry) => entry.id === _catId) ?? state.cats[0];
+  return [...latestByItem.values()]
+    .filter((entry) => entry.kind === "bounty-open")
+    .map((entry) => ({
+      ...entry,
+      amountCents: effectiveBountyAmountCents(state, entry.itemId, cat),
+    }));
+}
+
+/**
+ * Discovery bounties keep their immutable catalog baseline in GameState. A
+ * law may only provide a temporary multiplier through the runtime overlay.
+ */
+export function effectiveBountyAmountCents(state: GameState, itemId: ItemId, cat = state.cats[0]): number {
+  const bounty = state.discoveryBounties.find((entry) => entry.itemId === itemId);
+  if (!bounty) return 0;
+  const policy = ephemeralLawPolicy(state, cat);
+  if (policy.bountyMultiplierSet !== true) return Math.max(0, Math.round(bounty.amountCents));
+  const defaultMultiplier = Math.max(1, difficultyProfile(state.difficulty).bountyMultiplier);
+  return Math.max(0, Math.round(bounty.amountCents * policy.bountyMultiplier / defaultMultiplier));
 }
 
 export function buildingOfferBroadcastsForCat(state: GameState, _catId: string): MarketBroadcast[] {
@@ -246,23 +266,14 @@ export function buildingOfferReservedQuantity(state: GameState, catId: string, i
     && offer.sellerCatId === catId && offer.itemId === itemId).length;
 }
 
-export function activeTaxRate(state: GameState): number {
-  return state.cats[0]?.lawPolicy?.taxRate ?? 0;
+export function externalNetCents(_state: GameState, itemId: ItemId, priceOf: (itemId: ItemId) => number): number {
+  return Math.max(0, priceOf(itemId));
 }
 
-export function externalNetCents(state: GameState, itemId: ItemId, priceOf: (itemId: ItemId) => number): number {
-  const gross = priceOf(itemId);
-  const rate = activeTaxRate(state);
-  const tax = rate > 0 ? Math.min(gross, Math.ceil(gross * rate)) : 0;
-  return Math.max(0, gross - tax);
-}
-
-/** Net liquidation value at a cat's current site, including landmark sale bonus and tax. */
+/** Net liquidation value at a cat's current site, including landmark sale bonus. */
 export function externalNetCentsAt(state: GameState, itemId: ItemId, priceOf: (itemId: ItemId) => number, cat: CatState): number {
   const gross = Math.ceil(priceOf(itemId) * (1 + landmarkEffectsAt(state, cat.position).saleValueBonus));
-  const rate = cat.lawPolicy?.taxRate ?? activeTaxRate(state);
-  const tax = rate > 0 ? Math.min(gross, Math.ceil(gross * rate)) : 0;
-  return Math.max(0, gross - tax);
+  return Math.max(0, gross);
 }
 
 export function netWorthCents(state: GameState, cat: CatState, priceOf: (itemId: ItemId) => number): number {
@@ -278,9 +289,10 @@ export function netWorthCents(state: GameState, cat: CatState, priceOf: (itemId:
 }
 
 export function creditLimitCents(state: GameState, cat: CatState, priceOf: (itemId: ItemId) => number): number {
-  return (cat.lawPolicy?.creditBaseCents ?? 0)
+  const policy = ephemeralLawPolicy(state, cat);
+  return policy.creditBaseCents
     + landmarkEffectsAt(state, cat.position).creditBonusCents
-    + Math.round(Math.max(0, netWorthCents(state, cat, priceOf)) * (cat.lawPolicy?.creditNetWorthFactor ?? 0));
+    + Math.round(Math.max(0, netWorthCents(state, cat, priceOf)) * policy.creditNetWorthFactor);
 }
 
 export function creditAvailableCents(state: GameState, cat: CatState, priceOf: (itemId: ItemId) => number): number {
@@ -734,9 +746,13 @@ function createPlan(
   reason: ProcurementPlan["reason"],
   createdByBehaviorLawId: string,
   priceOf: (itemId: ItemId) => number,
+  bountyCents = 0,
 ): ProcurementPlan | null {
   const recipe = RECIPE_BY_OUTPUT.get(outputItemId);
   if (!recipe || !state.unlockedRecipes.includes(recipe.id) || siteFailure(state, cat, recipe)) return null;
+  // One workstation may finance exactly one production plan. Side work is an
+  // action-level choice and must never create a second reservation bundle.
+  if (planForCat(state, cat.id)) return null;
   if (funding.reservationCents > buyingPowerCents(state, cat, priceOf)) return null;
   if (terminalOrderId) {
     const terminal = state.demandOrders.find((order) => order.id === terminalOrderId && order.status === "open");
@@ -796,6 +812,7 @@ function createPlan(
     recipeId: recipe.id,
     terminalOrderId,
     expectedRevenueCents: funding.terminalRevenueCents,
+    bountyCents: reason === "bounty" ? Math.max(0, Math.round(bountyCents)) : 0,
     createdAt: state.simTime,
     createdByBehaviorLawId,
     status: "active",
@@ -832,6 +849,16 @@ function createPlan(
     const supplier = state.cats.find((entry) => entry.id === quote.sellerCatId);
     if (!supplier || state.procurementPlans.some((entry) => entry.status === "active"
       && entry.terminalOrderId === orders[index].id)) return rollback();
+    const existingSupplierPlan = planForCat(state, supplier.id);
+    if (existingSupplierPlan) {
+      // One atomic basket may reserve several sequential units from the same
+      // supplier. Only the first unit becomes its active plan; after delivery,
+      // the still-open committed order creates the next plan normally.
+      const belongsToThisBasket = Boolean(existingSupplierPlan.terminalOrderId
+        && orders.some((order) => order.id === existingSupplierPlan.terminalOrderId));
+      if (belongsToThisBasket && existingSupplierPlan.outputItemId === quote.itemId) continue;
+      return rollback();
+    }
     const supplierPlan = createPlan(
       state,
       supplier,
@@ -841,6 +868,7 @@ function createPlan(
       "order",
       createdByBehaviorLawId,
       priceOf,
+      0,
     );
     if (!supplierPlan) return rollback();
   }
@@ -1064,7 +1092,7 @@ export function productionOpportunityDiagnosticForCat(
     ? evaluateProductionOpportunity(state, cat, recipe, priceOf, {
       reason: "bounty",
       terminalOrderId: null,
-      bountyCents: bounty.amountCents,
+      bountyCents: effectiveBountyAmountCents(state, itemId, cat),
     })
     : null;
   const terminalRevenue = bountyOpportunity?.expectedRevenueCents ?? inventoryOpportunity?.expectedRevenueCents;
@@ -1209,7 +1237,7 @@ export function productionOpportunitiesForCat(
     const bountyOpportunity = evaluateProductionOpportunity(state, cat, recipe, priceOf, {
       reason: "bounty",
       terminalOrderId: null,
-      bountyCents: bounty.amountCents,
+      bountyCents: effectiveBountyAmountCents(state, recipe.output, cat),
     });
     if (bountyOpportunity) opportunities.push(bountyOpportunity);
   }
@@ -1262,7 +1290,11 @@ export function canFinanceDirectCraft(
   priceOf: (itemId: ItemId) => number,
 ): boolean {
   const active = planForCat(state, cat.id);
-  if (active) return active.recipeId === recipeId;
+  if (active) {
+    if (active.recipeId === recipeId) return true;
+    const recipe = RECIPE_BY_ID.get(recipeId);
+    return Boolean(recipe && sideWorkCraftFailure(state, cat, recipe, priceOf) === null);
+  }
   return directCraftFundingCandidate(state, cat, recipeId, priceOf) !== null;
 }
 
@@ -1279,7 +1311,11 @@ export function ensureDirectCraftPlan(
   createdByBehaviorLawId: string,
 ): boolean {
   const active = planForCat(state, cat.id);
-  if (active) return active.recipeId === recipeId;
+  if (active) {
+    if (active.recipeId === recipeId) return true;
+    const recipe = RECIPE_BY_ID.get(recipeId);
+    return Boolean(recipe && sideWorkCraftFailure(state, cat, recipe, priceOf) === null);
+  }
   const candidate = directCraftFundingCandidate(state, cat, recipeId, priceOf);
   if (!candidate) return false;
   const { opportunity, funding } = candidate;
@@ -1293,6 +1329,7 @@ export function ensureDirectCraftPlan(
     opportunity.reason,
     createdByBehaviorLawId,
     priceOf,
+    opportunity.bountyCents,
   );
   if (created) return true;
   if (opportunity.reason === "bounty") {
@@ -1331,6 +1368,7 @@ function tryCreateBestProductionPlanForCat(
       opportunity.reason,
       createdByBehaviorLawId,
       priceOf,
+      opportunity.bountyCents,
     );
     if (plan) return true;
     if (opportunity.reason === "bounty") {
@@ -1408,6 +1446,34 @@ export function unreservedOwnedQuantity(state: GameState, cat: CatState, itemId:
   return Math.max(0, (cat.inventory[itemId] ?? 0) - activePlanProtectedQuantity(state, cat.id, itemId)
     - buildingOfferReservedQuantity(state, cat.id, itemId)
     - promisedOrderOutputQuantity(state, cat.id, itemId));
+}
+
+/**
+ * A cat blocked on one funded plan may still perform profitable local work,
+ * provided the side job neither consumes nor duplicates the plan's protected
+ * inputs. It uses only stock that remains after every hard reservation.
+ */
+export function sideWorkCraftFailure(
+  state: GameState,
+  cat: CatState,
+  recipe: NonNullable<ReturnType<typeof RECIPE_BY_ID.get>>,
+  priceOf: (itemId: ItemId) => number,
+): string | null {
+  const activePlan = planForCat(state, cat.id);
+  if (!activePlan) return "没有可并行保留的主计划";
+  if (activePlan.recipeId === recipe.id) return "该制作属于主计划";
+  const activeRecipe = RECIPE_BY_ID.get(activePlan.recipeId);
+  if (activeRecipe && effectiveRecipeInputs(activeRecipe, state.difficulty)
+    .some((input) => input.itemId === recipe.output)) {
+    return "副业不能重复制造已经锁定采购的计划原料";
+  }
+  const missing = effectiveRecipeInputs(recipe, state.difficulty)
+    .find((input) => unreservedOwnedQuantity(state, cat, input.itemId) < input.quantity);
+  if (missing) return `副业可用库存不足 ${missing.itemId}×${missing.quantity}`;
+  const action = { type: "craft", recipeId: recipe.id } as const;
+  return expectedActionGainCents(state, cat, action, priceOf) < 0
+    ? "副业预计降低自身净资产"
+    : null;
 }
 
 /**
@@ -1694,10 +1760,10 @@ export function refreshCatMarket(
 }
 
 export function completeProcurementPlan(state: GameState, catId: string, itemId: ItemId): number {
-  const plan = state.procurementPlans.find((entry) => entry.catId === catId && entry.outputItemId === itemId && entry.status === "active");
-  if (plan) {
-    plan.status = "completed";
-    for (const order of state.demandOrders.filter((entry) => entry.planId === plan.id && entry.status === "open")) {
+  const activePlan = state.procurementPlans.find((entry) => entry.catId === catId && entry.outputItemId === itemId && entry.status === "active");
+  if (activePlan) {
+    activePlan.status = "completed";
+    for (const order of state.demandOrders.filter((entry) => entry.planId === activePlan.id && entry.status === "open")) {
       cancelDemandOrder(state, order.id, "生产计划已经完成");
     }
   }
@@ -1710,7 +1776,10 @@ export function completeProcurementPlan(state: GameState, catId: string, itemId:
     cancelPlan(state, obsolete, "首次发现悬赏已经由其他生产者完成");
   }
   recordSystemLawHit(state, "starter-law-discovery-bounty");
-  return bounty.amountCents;
+  const completedPlan = state.procurementPlans.find((entry) => entry.catId === catId
+    && entry.outputItemId === itemId && entry.reason === "bounty"
+    && entry.status === "completed");
+  return completedPlan?.bountyCents ?? effectiveBountyAmountCents(state, itemId, state.cats.find((cat) => cat.id === catId));
 }
 
 export function claimDiscoveryBounty(state: GameState, catId: string, itemId: ItemId): boolean {
@@ -1720,8 +1789,326 @@ export function claimDiscoveryBounty(state: GameState, catId: string, itemId: It
   return bounty.claimedByCatId === catId;
 }
 
+export interface MarketRepairSummary {
+  repairedContractIds: string[];
+  cancelledOrderIds: string[];
+  cancelledPlanIds: string[];
+  affectedCatIds: string[];
+  recoveredCargo: Array<{ contractId: string; itemId: ItemId; recipient: string }>;
+  refundedEscrowCents: number;
+}
+
+function emptyMarketRepairSummary(): MarketRepairSummary {
+  return {
+    repairedContractIds: [],
+    cancelledOrderIds: [],
+    cancelledPlanIds: [],
+    affectedCatIds: [],
+    recoveredCargo: [],
+    refundedEscrowCents: 0,
+  };
+}
+
+function routeFailure(state: GameState, routeCatIds: readonly string[], expectedStart: string, expectedEnd: string): string | null {
+  if (routeCatIds.length < 1) return "运输路线为空";
+  if (routeCatIds[0] !== expectedStart) return "运输路线起点与卖方不一致";
+  if (routeCatIds.at(-1) !== expectedEnd) return "运输路线终点与目的地不一致";
+  if (new Set(routeCatIds).size !== routeCatIds.length) return "运输路线形成循环";
+  const routeCats = routeCatIds.map((catId) => state.cats.find((cat) => cat.id === catId));
+  if (routeCats.some((cat) => !cat)) return "运输路线引用了已不存在的猫";
+  for (let index = 0; index < routeCats.length - 1; index += 1) {
+    if (!directionBetween(routeCats[index]!, routeCats[index + 1]!)) return "运输路线包含不相邻工位";
+  }
+  return null;
+}
+
+function shipmentContractFailure(state: GameState, contract: ShipmentContract): string | null {
+  const order = state.demandOrders.find((entry) => entry.id === contract.orderId);
+  if (!order || order.status !== "contracted") return "合同没有对应的已成交订单";
+  if (order.itemId !== contract.itemId || order.destinationCatId !== contract.destinationCatId) return "合同与订单内容不一致";
+  if (contract.buyerKind !== order.buyerKind || contract.buyerCatId !== order.buyerCatId) return "合同买方与订单不一致";
+  if (contract.buyerKind === "cat" && !state.cats.some((cat) => cat.id === contract.buyerCatId)) return "合同买方已不存在";
+  const routeError = routeFailure(state, contract.routeCatIds, contract.sellerCatId, contract.destinationCatId);
+  if (routeError) return routeError;
+  if (!Number.isInteger(contract.currentLeg) || contract.currentLeg < 0 || contract.currentLeg >= contract.routeCatIds.length - 1) {
+    return "合同当前运输段无效";
+  }
+  if (contract.routeCatIds[contract.currentLeg] !== contract.custodianCatId) return "合同托管猫与当前运输段不一致";
+  if (!Number.isFinite(contract.escrowCents) || contract.escrowCents < 0) return "合同保证金无效";
+  return null;
+}
+
+function markPlanCancelled(summary: MarketRepairSummary, plan: ProcurementPlan, reason: string, state: GameState): void {
+  if (plan.status !== "active") return;
+  summary.cancelledPlanIds.push(plan.id);
+  summary.affectedCatIds.push(plan.catId);
+  cancelPlan(state, plan, reason);
+}
+
+function closeContractOrderAfterFailure(
+  state: GameState,
+  order: DemandOrder | undefined,
+  reason: string,
+  summary: MarketRepairSummary,
+): void {
+  if (!order || order.status === "cancelled") return;
+  order.status = "cancelled";
+  order.closedAt = state.simTime;
+  order.closeReason = reason;
+  summary.cancelledOrderIds.push(order.id);
+  pushLifecycle(state, order, "cancelled", reason, order.destinationCatId);
+}
+
+function recoverContractCargo(
+  state: GameState,
+  contract: ShipmentContract,
+  summary: MarketRepairSummary,
+): void {
+  const seller = state.cats.find((cat) => cat.id === contract.sellerCatId);
+  const buyer = contract.buyerKind === "cat"
+    ? state.cats.find((cat) => cat.id === contract.buyerCatId)
+    : undefined;
+  const custodian = state.cats.find((cat) => cat.id === contract.custodianCatId);
+
+  // Before the first completed hop the seller has not been paid, so the item
+  // remains the seller's property. Afterwards it belongs to the funded buyer.
+  if (contract.currentLeg === 0 && seller) {
+    seller.inventory[contract.itemId] = (seller.inventory[contract.itemId] ?? 0) + 1;
+    summary.recoveredCargo.push({ contractId: contract.id, itemId: contract.itemId, recipient: seller.id });
+    summary.affectedCatIds.push(seller.id);
+    return;
+  }
+  if (contract.buyerKind === "treasury") {
+    state.playerBuildingInventory[contract.itemId] = (state.playerBuildingInventory[contract.itemId] ?? 0) + 1;
+    publishWarehouseBroadcast(state, custodian?.id ?? seller?.id ?? state.cats[0]?.id ?? "", contract.itemId);
+    summary.recoveredCargo.push({ contractId: contract.id, itemId: contract.itemId, recipient: "treasury-warehouse" });
+    return;
+  }
+  const recipient = buyer ?? custodian ?? seller ?? state.cats[0];
+  if (!recipient) return;
+  recipient.inventory[contract.itemId] = (recipient.inventory[contract.itemId] ?? 0) + 1;
+  summary.recoveredCargo.push({ contractId: contract.id, itemId: contract.itemId, recipient: recipient.id });
+  summary.affectedCatIds.push(recipient.id);
+}
+
+function unwindBrokenContract(
+  state: GameState,
+  contract: ShipmentContract,
+  reason: string,
+  summary: MarketRepairSummary,
+): void {
+  recoverContractCargo(state, contract, summary);
+  const refund = Math.max(0, Math.floor(contract.escrowCents));
+  if (refund > 0) {
+    if (contract.buyerKind === "treasury") {
+      state.treasuryCoins += refund;
+    } else {
+      const buyer = state.cats.find((cat) => cat.id === contract.buyerCatId);
+      if (buyer) {
+        applyPrivateIncome(buyer, refund);
+        summary.affectedCatIds.push(buyer.id);
+      } else {
+        state.treasuryCoins += refund;
+      }
+    }
+  }
+  summary.refundedEscrowCents += refund;
+  contract.escrowCents = 0;
+
+  for (const cat of state.cats) {
+    if (cat.action?.contractId !== contract.id) continue;
+    cat.action = null;
+    cat.lastDecision = `运输合同异常解约：${reason}`;
+    summary.affectedCatIds.push(cat.id);
+  }
+
+  const order = state.demandOrders.find((entry) => entry.id === contract.orderId);
+  closeContractOrderAfterFailure(state, order, `运输合同异常解约：${reason}`, summary);
+  if (order?.planId) {
+    const buyerPlan = state.procurementPlans.find((plan) => plan.id === order.planId);
+    if (buyerPlan) markPlanCancelled(summary, buyerPlan, `原料合同失效：${reason}`, state);
+  }
+  for (const supplierPlan of state.procurementPlans.filter((plan) => plan.terminalOrderId === contract.orderId)) {
+    markPlanCancelled(summary, supplierPlan, `下游合同失效：${reason}`, state);
+  }
+  state.buildingOrders = state.buildingOrders.filter((orderEntry) => orderEntry.contractId !== contract.id);
+  summary.repairedContractIds.push(contract.id);
+}
+
+function openOrderQuoteFailure(state: GameState, order: DemandOrder): string | null {
+  if (order.buyerKind === "cat" && !state.cats.some((cat) => cat.id === order.buyerCatId)) return "订单买方已不存在";
+  if (!state.cats.some((cat) => cat.id === order.destinationCatId)) return "订单目的地已不存在";
+  if (!order.committedSellerCatId) return null;
+  if (order.quotedSellerCents === undefined || !order.quotedRouteCatIds) return "订单可靠报价不完整";
+  return routeFailure(state, order.quotedRouteCatIds, order.committedSellerCatId, order.destinationCatId);
+}
+
+function clearBrokenOpenQuote(state: GameState, order: DemandOrder, reason: string, summary: MarketRepairSummary): void {
+  const ownerPlan = order.planId ? state.procurementPlans.find((plan) => plan.id === order.planId) : undefined;
+  if (ownerPlan?.status === "active") {
+    markPlanCancelled(summary, ownerPlan, `整包订单报价失效：${reason}`, state);
+    return;
+  }
+  for (const supplierPlan of state.procurementPlans.filter((plan) => plan.status === "active" && plan.terminalOrderId === order.id)) {
+    markPlanCancelled(summary, supplierPlan, `承诺订单报价失效：${reason}`, state);
+  }
+  order.committedSellerCatId = null;
+  order.quotedSellerCents = undefined;
+  order.quotedRouteCatIds = undefined;
+  order.quotedFeesByCatId = undefined;
+  order.quoteFinancingReserveCents = undefined;
+  order.quoteRevision = undefined;
+  publishMarketBroadcast(state, {
+    kind: "demand-open",
+    subjectId: order.id,
+    itemId: order.itemId,
+    sourceCatId: order.destinationCatId,
+    amountCents: order.maxDeliveredCents,
+    reason: `旧报价已清除：${reason}`,
+  });
+  state.dirtyDecisions = true;
+}
+
+function cancelInvalidActivePlans(state: GameState, summary: MarketRepairSummary): void {
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const plan of state.procurementPlans.filter((entry) => entry.status === "active")) {
+      const ownerExists = state.cats.some((cat) => cat.id === plan.catId);
+      const bundleOrders = (plan.bundleOrderIds ?? []).map((id) => state.demandOrders.find((order) => order.id === id));
+      const terminal = plan.terminalOrderId
+        ? state.demandOrders.find((order) => order.id === plan.terminalOrderId)
+        : undefined;
+      const contractedWithoutCargo = bundleOrders.some((order) => order?.status === "contracted"
+        && !state.shipmentContracts.some((contract) => contract.orderId === order.id));
+      const reason = !ownerExists
+        ? "生产计划工位已不存在"
+        : bundleOrders.some((order) => !order || order.status === "cancelled")
+          ? "生产计划引用的原料订单已失效"
+          : contractedWithoutCargo
+            ? "已成交原料订单缺少托管货物"
+            : plan.terminalOrderId && (!terminal || terminal.status !== "open")
+              ? "生产计划的下游订单已失效"
+              : null;
+      if (!reason) continue;
+      markPlanCancelled(summary, plan, reason, state);
+      changed = true;
+    }
+  }
+}
+
+function cancelPlanCycles(state: GameState, summary: MarketRepairSummary): void {
+  const activePlans = state.procurementPlans.filter((plan) => plan.status === "active");
+  const supplierPlanByOrder = new Map(activePlans
+    .filter((plan) => plan.terminalOrderId)
+    .map((plan) => [plan.terminalOrderId!, plan]));
+  const edges = new Map(activePlans.map((plan) => [plan.id, (plan.bundleOrderIds ?? [])
+    .map((orderId) => supplierPlanByOrder.get(orderId)?.id)
+    .filter((id): id is string => Boolean(id))]));
+  const visited = new Set<string>();
+  const stack: string[] = [];
+  const inStack = new Set<string>();
+  const cyclicIds = new Set<string>();
+  const visit = (planId: string): void => {
+    if (inStack.has(planId)) {
+      const start = stack.indexOf(planId);
+      for (const id of stack.slice(Math.max(0, start))) cyclicIds.add(id);
+      return;
+    }
+    if (visited.has(planId)) return;
+    visited.add(planId);
+    inStack.add(planId);
+    stack.push(planId);
+    for (const next of edges.get(planId) ?? []) visit(next);
+    stack.pop();
+    inStack.delete(planId);
+  };
+  for (const plan of activePlans) visit(plan.id);
+  for (const plan of activePlans.filter((entry) => cyclicIds.has(entry.id))) {
+    markPlanCancelled(summary, plan, "生产采购计划形成循环等待，已释放订单并重新决策", state);
+  }
+}
+
+function cancelDuplicateActivePlans(state: GameState, summary: MarketRepairSummary): void {
+  const plansByCat = new Map<string, ProcurementPlan[]>();
+  for (const plan of state.procurementPlans.filter((entry) => entry.status === "active")) {
+    const plans = plansByCat.get(plan.catId) ?? [];
+    plans.push(plan);
+    plansByCat.set(plan.catId, plans);
+  }
+  for (const plans of plansByCat.values()) {
+    if (plans.length < 2) continue;
+    plans.sort((left, right) => left.createdAt - right.createdAt || stableIdCompare(left.id, right.id));
+    for (const duplicate of plans.slice(1)) {
+      markPlanCancelled(summary, duplicate, `同一工位已有更早的活动计划 ${plans[0].id}，重复账单已释放`, state);
+    }
+  }
+}
+
+/**
+ * Repair persisted/runtime market references without minting or deleting cargo.
+ * Broken contracts are an exceptional technical failure: remaining escrow is
+ * returned, the single contract-held item is restored to its legal owner, and
+ * dependent plans are cancelled so ordinary law decisions can quote again.
+ */
+export function repairBrokenMarketReferences(state: GameState): MarketRepairSummary {
+  const summary = emptyMarketRepairSummary();
+  const brokenContracts = state.shipmentContracts
+    .filter((contract) => contract.status !== "delivered")
+    .map((contract) => ({ contract, reason: shipmentContractFailure(state, contract) }))
+    .filter((entry): entry is { contract: ShipmentContract; reason: string } => Boolean(entry.reason));
+  for (const { contract, reason } of brokenContracts) unwindBrokenContract(state, contract, reason, summary);
+  if (brokenContracts.length > 0) {
+    const repairedIds = new Set(brokenContracts.map((entry) => entry.contract.id));
+    state.shipmentContracts = state.shipmentContracts.filter((contract) => !repairedIds.has(contract.id));
+  }
+
+  for (const order of state.demandOrders.filter((entry) => entry.status === "open")) {
+    const failure = openOrderQuoteFailure(state, order);
+    if (!failure) continue;
+    if ((order.buyerKind === "cat" && !state.cats.some((cat) => cat.id === order.buyerCatId))
+      || !state.cats.some((cat) => cat.id === order.destinationCatId)) {
+      cancelDemandOrder(state, order.id, failure);
+      summary.cancelledOrderIds.push(order.id);
+      continue;
+    }
+    clearBrokenOpenQuote(state, order, failure, summary);
+  }
+
+  cancelInvalidActivePlans(state, summary);
+  cancelDuplicateActivePlans(state, summary);
+  cancelPlanCycles(state, summary);
+  cancelInvalidActivePlans(state, summary);
+  if (summary.repairedContractIds.length > 0 || summary.cancelledOrderIds.length > 0 || summary.cancelledPlanIds.length > 0) {
+    state.dirtyDecisions = true;
+  }
+  summary.repairedContractIds = [...new Set(summary.repairedContractIds)];
+  summary.cancelledOrderIds = [...new Set(summary.cancelledOrderIds)];
+  summary.cancelledPlanIds = [...new Set(summary.cancelledPlanIds)];
+  summary.affectedCatIds = [...new Set(summary.affectedCatIds)].filter((catId) => state.cats.some((cat) => cat.id === catId));
+  return summary;
+}
+
+export function cancelContractsReferencingCat(state: GameState, catId: string): MarketRepairSummary {
+  const summary = emptyMarketRepairSummary();
+  const affected = state.shipmentContracts.filter((contract) => contract.status !== "delivered" && (
+    contract.routeCatIds.includes(catId)
+    || contract.sellerCatId === catId
+    || contract.buyerCatId === catId
+    || contract.destinationCatId === catId
+    || contract.custodianCatId === catId
+  ));
+  for (const contract of affected) unwindBrokenContract(state, contract, `工位 ${catId} 已被移除`, summary);
+  const affectedIds = new Set(affected.map((contract) => contract.id));
+  state.shipmentContracts = state.shipmentContracts.filter((contract) => !affectedIds.has(contract.id));
+  summary.affectedCatIds = [...new Set(summary.affectedCatIds)];
+  if (affected.length > 0) state.dirtyDecisions = true;
+  return summary;
+}
+
 export function readyContractForCat(state: GameState, catId: string): ShipmentContract | undefined {
   return state.shipmentContracts.filter((contract) => contract.status !== "delivered"
+    && shipmentContractFailure(state, contract) === null
     && contract.routeCatIds[contract.currentLeg] === catId
     && contract.custodianCatId === catId)
     .sort((a, b) => a.acceptedAt - b.acceptedAt || stableIdCompare(a.id, b.id))[0];
@@ -1787,6 +2174,10 @@ export function planForCatPublic(state: GameState, catId: string): ProcurementPl
 export function settleContractLeg(state: GameState, contractId: string): { delivered: boolean; recipientCatId: string | null; itemId: ItemId } | null {
   const contract = state.shipmentContracts.find((entry) => entry.id === contractId && entry.status !== "delivered");
   if (!contract) return null;
+  if (shipmentContractFailure(state, contract)) {
+    repairBrokenMarketReferences(state);
+    return null;
+  }
   const senderId = contract.routeCatIds[contract.currentLeg];
   const sender = state.cats.find((cat) => cat.id === senderId);
   if (sender) {

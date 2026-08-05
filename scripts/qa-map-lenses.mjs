@@ -12,14 +12,14 @@ page.on("console", (message) => {
 });
 page.on("pageerror", (error) => errors.push(error.message));
 
-await page.goto("http://127.0.0.1:5173", { waitUntil: "networkidle" });
+await page.goto(process.env.QA_URL ?? "http://127.0.0.1:5173", { waitUntil: "networkidle" });
 await page.waitForSelector("[data-testid='game-canvas']");
 await page.evaluate(() => window.advanceTime?.(125_000));
 if (await page.getByTestId("map-lens-palette").isVisible().catch(() => false)) throw new Error("Lens options should start closed");
 await page.getByTestId("map-lens-button").click();
 await page.getByTestId("map-lens-palette").waitFor();
 const visibleLensChoices = await page.getByTestId("map-lens-palette").locator("button").allTextContents();
-if (visibleLensChoices.length !== 8) throw new Error(`Expected 8 visible lens choices, got ${visibleLensChoices.length}`);
+if (visibleLensChoices.length !== 10) throw new Error(`Expected ordinary plus 9 lens choices, got ${visibleLensChoices.length}`);
 
 // Dual-role supply/demand is a market-state fixture, not a guaranteed exact
 // tick on every random new-save seed. Allow a bounded deterministic settling
@@ -35,7 +35,7 @@ for (let attempt = 0; attempt < 8; attempt += 1) {
 const settledLensState = JSON.parse(await page.evaluate(() => window.render_game_to_text?.() ?? "{}"));
 if (settledLensState.world?.mapLens?.id === "orders") await page.getByTestId("map-lens-orders").click();
 
-const lenses = ["orders", "bottlenecks", "environment", "wealth", "law", "stability", "coordinates"];
+const lenses = ["inventory", "orders", "bottlenecks", "environment", "wealth", "activity", "law", "stability", "coordinates"];
 const states = [];
 for (const lens of lenses) {
   await page.getByTestId(`map-lens-${lens}`).click();
@@ -80,6 +80,17 @@ for (const lens of lenses) {
       }
     }
   }
+  if (lens === "activity") {
+    const metric = state.world?.mapLens?.activityHeat;
+    if (!metric || metric.cats?.length < 11) throw new Error("Activity lens is missing per-cat inactivity values");
+    if (metric.unit !== "milliseconds" || metric.stalledAfterMs !== 60_000) {
+      throw new Error("Activity lens does not expose its fixed 60-second scale");
+    }
+    if (!metric.cats.every((entry) => entry.inactiveMs >= 0
+      && entry.normalizedInactivity >= 0 && entry.normalizedInactivity <= 1)) {
+      throw new Error("Activity heat values escaped their valid ranges");
+    }
+  }
   const legend = await page.getByTestId("map-lens-legend").innerText();
   states.push({
     lens,
@@ -89,6 +100,7 @@ for (const lens of lenses) {
     activeContracts: state.market?.activeContracts ?? [],
     orderParticipants: state.world?.mapLens?.orderParticipants ?? [],
     wealthNormalization: state.world?.mapLens?.wealthNormalization ?? null,
+    activityHeat: state.world?.mapLens?.activityHeat ?? null,
   });
   await page.screenshot({ path: path.join(outputDir, `${lens}.png`) });
 }

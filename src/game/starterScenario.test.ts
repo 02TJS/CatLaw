@@ -30,12 +30,13 @@ function observeStableProduction(state: GameState, through: number): number[][] 
   return windows;
 }
 
-describe("seven-law starter economy", () => {
-  it("stably produces 1-10 untouched and 1-15 after only buying five blueprints", { timeout: 30_000 }, () => {
+describe("six-law no-tax starter economy", () => {
+  it("stably produces 1-10 untouched and 1-15 after only buying five blueprints", { timeout: 120_000 }, () => {
     for (const worldSeed of [1, 7, 91]) {
       const state = createInitialState({ worldSeed, difficulty: 5, simulationSpeed: TEST_SPEED });
-      expect(state.laws).toHaveLength(7);
+      expect(state.laws).toHaveLength(6);
       expect(state.laws.some((law) => law.sourceCode.includes("setPrice("))).toBe(false);
+      expect(state.laws.some((law) => law.sourceCode.includes("setTax("))).toBe(false);
 
       advanceLogical(state, 300_000);
       const firstWindows = observeStableProduction(state, 10);

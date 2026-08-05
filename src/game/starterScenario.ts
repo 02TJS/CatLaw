@@ -6,7 +6,6 @@ import {
   STARTER_RESOURCE_SUPPLY_SOURCE,
   STARTER_WORKSHOP_CYCLE_SOURCE,
 } from "./lawInterpreter";
-import { freshLawPolicy } from "./lawProgram";
 import type { CatState, DifficultyLevel, LawSpeechTemplates, LawVersion, Position, ResourceNode } from "./types";
 import { generateStarterWorld } from "./world";
 
@@ -24,7 +23,6 @@ function cat(position: Position, createdIndex: number): CatState {
     decisionTrace: [],
     decisionSerial: 0,
     lastSpeechAt: null,
-    lawPolicy: freshLawPolicy(),
   };
 }
 
@@ -82,9 +80,9 @@ export function createStarterScenario(
       law("starter-law-resource-supply", "所在地资源续供法",
         "猫在资源采集范围内时，按该位置实际资源与最近产量动态补产。",
         "不列举商品；只把当前工位可采资源传给统一评分器。", STARTER_RESOURCE_SUPPLY_SOURCE),
-      law("starter-law-foundation-cycle", "已融资计划履约法",
-        "猫优先完成自己已经整包融资的生产计划。",
-        "目标商品直接读取本猫计划；法规不知道也不包含配方表。", STARTER_FOUNDATION_CYCLE_SOURCE),
+      law("starter-law-foundation-cycle", "单计划优先履约法",
+        "每只猫最多锁定一个生产计划；计划可执行时优先完成，等待原料时继续处理不占用计划物资的盈利副业。",
+        "目标商品只读取本猫唯一计划并获得最高优先级；副业不会建立第二计划，也不能消耗计划保留物。", STARTER_FOUNDATION_CYCLE_SOURCE),
       law("starter-law-workshop-cycle", "全市场短缺轮换法",
         "全体猫用同一市场摘要优先尝试最近产出最少的已解锁商品。",
         "法规只调整可行候选的排序；可靠报价、利润和信用门槛仍不可绕过。", STARTER_WORKSHOP_CYCLE_SOURCE),
@@ -96,10 +94,6 @@ export function createStarterScenario(
         "首次制作任意一种商品都可领取一次发现悬赏。",
         `65项商品均按基础售价的${profile.bountyMultiplier}倍悬赏；开工时锁定，完工支付。`,
         `function decide(ctx) {\n  setBounty(${profile.bountyMultiplier});\n  return null;\n}`, true),
-      law("starter-law-sales-tax", "工坊五成销售税",
-        "对每笔销售征收50%的税，税款进入国库。",
-        "售价确定后征收50%销售税，其余收入归卖方猫咪。",
-        `function decide(ctx) {\n  setTax(0.5);\n  return null;\n}`),
     ],
   };
 }

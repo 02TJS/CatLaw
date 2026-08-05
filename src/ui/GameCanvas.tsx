@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import catSpriteUrl from "../assets/cat-workshop-sprite.png?url";
-import { ITEM_BY_ID } from "../game/catalog";
+import { DEPLOYABLE_BUILDING_IDS, ITEM_BY_ID } from "../game/catalog";
 import type { GameController } from "../game/controller";
 import { buildingPlacementFailure, formatMoney, landmarkPlacementFailure } from "../game/engine";
 import { LANDMARK_BY_ID } from "../game/landmarks";
@@ -73,7 +73,7 @@ const SPEECH_CONTROL_SELECTORS = [
   ".pet-drawer",
   ".pet-commerce-feedback",
   ".pet-quick-stats",
-  ".pet-add-cat-menu",
+  ".pet-tile-action-menu",
 ] as const;
 
 function collectSpeechControlObstacles(
@@ -128,10 +128,11 @@ type SceneEntry =
   | { kind: "landmark"; position: Position; layer: number; order: number; landmark: DeployedLandmark }
   | { kind: "actor"; position: Position; layer: number; order: number; cat: CatState };
 
-interface AddCatMenu {
+interface TileActionMenu {
   tile: Position;
   x: number;
   y: number;
+  verticalAlign: "above" | "below";
 }
 
 export function GameCanvas({
@@ -157,20 +158,20 @@ export function GameCanvas({
   const renderScratch = useRef<RenderScratch>(createRenderScratch());
   const renderOptions = useRef({ selectedCatId, expansionMode, placingBuildingItemId, placingLandmarkId, speechScale, mapLensId, mapLensItemId });
   renderOptions.current = { selectedCatId, expansionMode, placingBuildingItemId, placingLandmarkId, speechScale, mapLensId, mapLensItemId };
-  const [addCatMenu, setAddCatMenu] = useState<AddCatMenu | null>(null);
+  const [tileActionMenu, setTileActionMenu] = useState<TileActionMenu | null>(null);
 
   useEffect(() => {
     camera.current.zoom = DEFAULT_CAMERA.zoom * mapScale;
   }, [mapScale]);
 
   useEffect(() => {
-    const dismissAddCatMenu = (event: PointerEvent) => {
+    const dismissTileActionMenu = (event: PointerEvent) => {
       const target = event.target;
-      if (target instanceof Element && target.closest("[data-testid='add-cat-menu']")) return;
-      setAddCatMenu(null);
+      if (target instanceof Element && target.closest("[data-testid='tile-action-menu']")) return;
+      setTileActionMenu(null);
     };
-    window.addEventListener("pointerdown", dismissAddCatMenu, true);
-    return () => window.removeEventListener("pointerdown", dismissAddCatMenu, true);
+    window.addEventListener("pointerdown", dismissTileActionMenu, true);
+    return () => window.removeEventListener("pointerdown", dismissTileActionMenu, true);
   }, []);
 
   useEffect(() => {
@@ -303,6 +304,16 @@ export function GameCanvas({
     && !controller.state.landmarks.some((landmark) => landmark.position.x === tile.x && landmark.position.y === tile.y)
     && !controller.state.cats.some((cat) => cat.position.x === tile.x && cat.position.y === tile.y);
 
+  const ownedBuildingOptionsAt = (tile: Position) => DEPLOYABLE_BUILDING_IDS
+    .filter((itemId) => (controller.state.playerBuildingInventory[itemId] ?? 0) > 0)
+    .map((itemId) => ({
+      itemId,
+      quantity: controller.state.playerBuildingInventory[itemId] ?? 0,
+      failure: buildingPlacementFailure(controller.state, itemId, tile),
+    }));
+
+  const contextBuildingOptions = tileActionMenu ? ownedBuildingOptionsAt(tileActionMenu.tile) : [];
+
   return (
     <>
     <canvas
@@ -311,20 +322,28 @@ export function GameCanvas({
       data-testid="game-canvas"
       data-map-scale={mapScale}
       tabIndex={0}
-      aria-label={window.catWorkshopDesktop ? "等距猫咪工坊。普通模式左键拖动桌宠、滚轮缩放整体；地图模式改为平移和缩放地图。右键合法空地打开新增猫咪按钮。" : "等距猫咪工坊。左键拖拽平移，滚轮缩放地图，右键合法空地打开新增猫咪按钮。"}
+      aria-label={window.catWorkshopDesktop ? "等距猫咪工坊。普通模式左键拖动桌宠、滚轮缩放整体；地图模式改为平移和缩放地图。右键地块打开新增猫咪与已有建筑菜单。" : "等距猫咪工坊。左键拖拽平移，滚轮缩放地图，右键地块打开新增猫咪与已有建筑菜单。"}
       onContextMenu={(event) => {
         event.preventDefault();
         const tile = pointToTile(event.clientX, event.clientY);
         hoveredTile.current = tile;
-        if (!canOfferAddCatAt(tile)) {
-          setAddCatMenu(null);
+        if (placingBuildingItemId || placingLandmarkId || expansionMode) {
+          setTileActionMenu(null);
+          return;
+        }
+        const canAddCat = canOfferAddCatAt(tile);
+        const buildingOptions = ownedBuildingOptionsAt(tile);
+        if (!canAddCat && !buildingOptions.some((option) => !option.failure)) {
+          setTileActionMenu(null);
           return;
         }
         const rect = canvasRef.current!.getBoundingClientRect();
-        setAddCatMenu({
+        const localY = event.clientY - rect.top;
+        setTileActionMenu({
           tile,
-          x: Math.max(64, Math.min(rect.width - 64, event.clientX - rect.left)),
-          y: Math.max(12, Math.min(rect.height - 48, event.clientY - rect.top)),
+          x: Math.max(112, Math.min(rect.width - 112, event.clientX - rect.left)),
+          y: Math.max(12, Math.min(rect.height - 12, localY)),
+          verticalAlign: localY > rect.height * 0.55 ? "above" : "below",
         });
       }}
       onPointerDown={(event) => {
@@ -381,15 +400,41 @@ export function GameCanvas({
         onMapScaleChange(nextScale);
       }}
     />
-    {addCatMenu && <button
-      className="pet-add-cat-menu"
-      data-testid="add-cat-menu"
-      style={{ left: addCatMenu.x, top: addCatMenu.y }}
-      onClick={() => {
-        addCatAt(addCatMenu.tile);
-        setAddCatMenu(null);
-      }}
-    >＋ 新增猫咪</button>}
+    {tileActionMenu && <div
+      className={`pet-tile-action-menu ${tileActionMenu.verticalAlign}`}
+      data-testid="tile-action-menu"
+      role="menu"
+      aria-label={`地块 ${tileActionMenu.tile.x}, ${tileActionMenu.tile.y} 操作`}
+      style={{ left: tileActionMenu.x, top: tileActionMenu.y }}
+    >
+      <small>({tileActionMenu.tile.x}, {tileActionMenu.tile.y})</small>
+      {canOfferAddCatAt(tileActionMenu.tile) && <button
+        className="add-cat-action"
+        data-testid="add-cat-menu"
+        role="menuitem"
+        onClick={() => {
+          addCatAt(tileActionMenu.tile);
+          setTileActionMenu(null);
+        }}
+      >＋ 新增猫咪</button>}
+      {contextBuildingOptions.map(({ itemId, quantity, failure }) => {
+        const item = ITEM_BY_ID.get(itemId);
+        return <button
+          key={itemId}
+          className="place-building-action"
+          data-testid={`context-place-building-${itemId}`}
+          data-placement-valid={failure ? "false" : "true"}
+          role="menuitem"
+          disabled={Boolean(failure)}
+          title={failure ?? `在此搭建${item?.name ?? itemId}`}
+          onClick={() => {
+            const result = controller.placeBuilding(itemId, tileActionMenu.tile);
+            onBuildingPlacementResult({ itemId, position: { ...tileActionMenu.tile }, ...result });
+            if (result.ok) setTileActionMenu(null);
+          }}
+        ><span>{item?.emoji}</span><b>搭建{item?.name ?? itemId}</b><i>×{quantity}</i></button>;
+      })}
+    </div>}
     </>
   );
 }
@@ -1645,8 +1690,7 @@ function drawFloatingEvents(
     const speaking = events.some((entry) => entry.catId === event.catId && speechEventIsVisible(entry, simTime));
     const x = center.x + (speaking ? 48 : 0);
     const y = center.y - (speaking ? 48 : 82) - stackIndex * 17 - rise;
-    const tax = event.text.includes("税");
-    const color = event.kind === "sale" ? (tax ? "#c47b18" : "#d37c25") : "#32905a";
+    const color = event.kind === "sale" ? "#d37c25" : "#32905a";
 
     context.save();
     context.globalAlpha = fade;

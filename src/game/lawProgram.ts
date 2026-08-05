@@ -26,19 +26,21 @@ export interface SharedLawLoopResult {
 
 export const DEFAULT_LAW_POLICY: Readonly<LawRuntimePolicy> = Object.freeze({
   priceMultipliers: Object.freeze({}) as Record<string, number>,
-  taxRate: 0,
+  priceAdditionsCents: Object.freeze({}) as Record<string, number>,
   creditBaseCents: 0,
   creditNetWorthFactor: 0,
   bountyMultiplier: 1,
+  bountyMultiplierSet: false,
 });
 
 export function freshLawPolicy(): LawRuntimePolicy {
   return {
     priceMultipliers: {},
-    taxRate: 0,
+    priceAdditionsCents: {},
     creditBaseCents: 0,
     creditNetWorthFactor: 0,
     bountyMultiplier: 1,
+    bountyMultiplierSet: false,
   };
 }
 
@@ -76,7 +78,7 @@ function canonicalSharedBehaviorSource(): string {
 
 /**
  * The sole lawbook loop used by the simulation. Every active source program
- * passes through this exact function; there is no price/tax/credit side path.
+ * passes through this exact function; there is no price/credit side path.
  */
 export function runSharedLawLoop(
   laws: readonly LawVersion[],
@@ -138,8 +140,7 @@ export function decisionCapabilities(sourceCode: string): string[] {
   if (/\btype\s*:\s*["'](?:craft|pass)["']/.test(sourceCode)) capabilities.push("direct-action");
   if (/\badjust\s*\(/.test(sourceCode)) capabilities.push("score-adjustment");
   if (/\b(?:choose|earnCoins|weighted)\s*\(/.test(sourceCode)) capabilities.push("selector");
-  if (/\bsetPrice\s*\(/.test(sourceCode)) capabilities.push("price");
-  if (/\bsetTax\s*\(/.test(sourceCode)) capabilities.push("tax");
+  if (/\b(?:setPrice|addPrice)\s*\(/.test(sourceCode)) capabilities.push("price");
   if (/\bsetCredit\s*\(/.test(sourceCode)) capabilities.push("credit");
   if (/\bsetBounty\s*\(/.test(sourceCode)) capabilities.push("bounty");
   return capabilities;
@@ -165,8 +166,6 @@ export function appendLegacyEffects(sourceCode: string, input: unknown): string 
   for (const raw of (input as { effects: Array<Record<string, unknown>> }).effects) {
     if (raw.kind === "price" && typeof raw.itemId === "string" && Number.isFinite(raw.multiplier)) {
       statements.push(`setPrice(${JSON.stringify(raw.itemId)}, ${Number(raw.multiplier)});`);
-    } else if (raw.kind === "tax" && Number.isFinite(raw.rate)) {
-      statements.push(`setTax(${Number(raw.rate)});`);
     } else if (raw.kind === "credit" && Number.isFinite(raw.baseCents) && Number.isFinite(raw.netWorthFactor)) {
       statements.push(`setCredit(${Number(raw.baseCents)}, ${Number(raw.netWorthFactor)});`);
     } else if (raw.kind === "discovery-bounty" && Number.isFinite(raw.multiplier)) {

@@ -129,7 +129,7 @@ describe("0.11.0 player landmarks", () => {
     expect(actionSpeedReductionAt(state, { x: 0, y: 0 }, "craft")).toBeCloseTo(0.28);
   });
 
-  it("locks accelerated duration while player warehouse sales ignore landmarks and tax", () => {
+  it("locks accelerated duration while player warehouse sales ignore landmarks", () => {
     const state = blank();
     state.landmarks.push({ id: "p", landmarkId: "founders_plaza", position: { x: 2, y: 0 }, deployedAt: 0 });
     state.cats[0].inventory.wood = 2;
@@ -146,7 +146,6 @@ describe("0.11.0 player landmarks", () => {
     const sale = blank();
     sale.playerBuildingInventory.wood = 1;
     sale.landmarks.push({ id: "m", landmarkId: "market_center", position: { x: 1, y: 0 }, deployedAt: 0 });
-    sale.laws = [{ ...behaviorLaw("function decide(ctx) { setTax(0.5); return null; }"), id: "tax", program: { version: 2 } }];
     const treasuryBefore = sale.treasuryCoins;
     expect(sellWarehouseItem(sale, "wood")).toMatchObject({ ok: true, revenueCents: warehouseSellPrice("wood") });
     expect(sale.totalSales).toBe(warehouseSellPrice("wood"));
@@ -176,7 +175,7 @@ describe("0.11.0 player landmarks", () => {
     legacy.treasuryCoins = 12_345;
     legacy.playerBuildingInventory = { wood: 9 };
     const migrated = migrateSaveSnapshot(legacy);
-    expect(migrated.schemaVersion).toBe(14);
+    expect(migrated.schemaVersion).toBe(15);
     expect(migrated.landmarks).toEqual([]);
     expect(migrated.unlockedLandmarkIds).toEqual([]);
     expect(migrated.nextLandmarkIndex).toBe(0);

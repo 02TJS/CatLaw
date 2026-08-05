@@ -29,6 +29,39 @@ describe("Civilization-style map lenses", () => {
     expect(snapshot.catColors.get(state.cats[0].id)?.top).not.toBe(snapshot.catColors.get(state.cats[1].id)?.top);
   });
 
+  it("uses a fixed green-to-red activity scale based on effective actions", () => {
+    const state = createInitialState({ worldSeed: 12345 });
+    state.simTime = 90_000;
+    const [active, cooling, stalled] = state.cats;
+    active.action = {
+      type: "craft",
+      recipeId: "make_wood",
+      itemId: "wood",
+      startedAt: 89_000,
+      endsAt: 94_000,
+      reserved: {},
+      lawId: "starter-law-foundation-cycle",
+    };
+    state.commandAudit.push(
+      { sequence: 1, atMs: 60_000, origin: "simulation", kind: "action-start", target: cooling.id, ok: true, detail: "pass:wood" },
+      { sequence: 2, atMs: 25_000, origin: "simulation", kind: "action-start", target: stalled.id, ok: true, detail: "craft:stone" },
+      { sequence: 3, atMs: 89_500, origin: "simulation", kind: "action-start", target: state.cats[3].id, ok: true, detail: "wait" },
+    );
+
+    const snapshot = buildMapLensSnapshot(state, "activity", null);
+    expect(snapshot.metric?.unit).toBe("milliseconds");
+    expect(snapshot.metric?.values.get(active.id)).toBe(0);
+    expect(snapshot.metric?.normalized.get(active.id)).toBe(0);
+    expect(snapshot.metric?.values.get(cooling.id)).toBe(30_000);
+    expect(snapshot.metric?.normalized.get(cooling.id)).toBe(0.5);
+    expect(snapshot.metric?.values.get(stalled.id)).toBe(65_000);
+    expect(snapshot.metric?.normalized.get(stalled.id)).toBe(1);
+    expect(snapshot.catColors.get(active.id)?.top).toBe(snapshot.legend[0].top);
+    expect(snapshot.catColors.get(cooling.id)?.top).toBe(snapshot.legend[1].top);
+    expect(snapshot.catColors.get(stalled.id)?.top).toBe(snapshot.legend[2].top);
+    expect(snapshot.metric?.values.get(state.cats[3].id)).toBe(60_000);
+  });
+
   it("uses resource coverage colors for the production environment lens", () => {
     const state = createInitialState({ worldSeed: 12345 });
     const snapshot = buildMapLensSnapshot(state, "environment", "wood");

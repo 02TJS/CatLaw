@@ -85,10 +85,13 @@ export type LawSpeechTemplates = [string, string, string, string, string];
 
 export interface LawRuntimePolicy {
   priceMultipliers: Record<ItemId | "*", number>;
-  taxRate: number;
+  /** Temporary flat price adjustments, in cents, evaluated for one cat snapshot. */
+  priceAdditionsCents: Record<ItemId | "*", number>;
   creditBaseCents: number;
   creditNetWorthFactor: number;
   bountyMultiplier: number;
+  /** False means no active law has supplied a bounty override. */
+  bountyMultiplierSet?: boolean;
 }
 
 export interface LawVersion {
@@ -96,6 +99,8 @@ export interface LawVersion {
   title: string;
   playerText: string;
   summary: string;
+  /** Full plain-language explanation generated from the validated immutable source. */
+  explanation?: string;
   sourceCode: string;
   astHash: string;
   examples: LawExample[];
@@ -146,6 +151,8 @@ export interface ActionCommand {
   lawId: string;
   contractId?: string;
   expectedGainCents?: number;
+  /** Value captured when this action started; law overlays never rewrite it. */
+  outputValueCents?: number;
   /** Human-readable explanation captured from the winning local candidate. */
   decisionReason?: string;
   /** Landmark speed reduction locked when the action starts. */
@@ -168,8 +175,6 @@ export interface CatState {
   decisionSerial?: number;
   /** Simulation/UI time of the last emitted speech bubble. */
   lastSpeechAt?: number | null;
-  /** Last policy produced by the real shared law loop for this cat. */
-  lawPolicy?: LawRuntimePolicy;
 }
 
 export interface ResourceNode {
@@ -251,6 +256,8 @@ export interface ProcurementPlan {
   recipeId: string;
   terminalOrderId: string | null;
   expectedRevenueCents: number;
+  /** Discovery reward locked when this plan claimed the bounty. */
+  bountyCents?: number;
   createdAt: number;
   /** The one shared behavior law that authorized creation of this plan. */
   createdByBehaviorLawId?: string;
@@ -435,7 +442,7 @@ export interface FloatingEvent {
 }
 
 export interface GameState {
-  schemaVersion: 14;
+  schemaVersion: 15;
   difficulty: DifficultyLevel;
   catalogVersion: string;
   worldSeed: number;
@@ -523,6 +530,8 @@ export interface LawDraft {
   title: string;
   playerText: string;
   summary: string;
+  /** Full plain-language explanation generated in a dedicated model call. */
+  explanation?: string;
   sourceCode: string;
   astHash: string;
   examples: LawExample[];
@@ -533,12 +542,21 @@ export interface LawDraft {
     requestId: string;
     model: string;
     attempts: number;
+    callCount?: number;
     startedAt: string;
     durationMs: number;
     promptSha256: string;
     responseSha256: string;
     usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
     sharedBehaviorHash: string;
+    calls?: Array<{
+      stage: "program" | "speech" | "explanation";
+      startedAt: string;
+      durationMs: number;
+      promptSha256: string;
+      responseSha256: string;
+      usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+    }>;
   };
   validation: {
     syntax: boolean;

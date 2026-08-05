@@ -17,6 +17,7 @@ import { DEFAULT_DIFFICULTY, difficultyProfile, effectiveRecipeInputs, normalize
 import { createStarterScenario } from "./starterScenario";
 import { executeLawSource, MAX_LAW_EXECUTION_STEPS } from "./lawInterpreter";
 import { freshLawPolicy, runSharedLawLoop, SHARED_BEHAVIOR_HASH } from "./lawProgram";
+import { clearEphemeralLawPolicy, ephemeralLawPolicy, invalidateEphemeralLawPolicies, setEphemeralLawPolicy } from "./ephemeralLawPolicy";
 import { chooseAdjustedLocalDecision, localVisibleCats, planLocalLogistics, type LocalScoreAdjustment } from "./localPlanner";
 import {
   DEFAULT_SPEECH_FREQUENCY,
@@ -52,6 +53,7 @@ import {
   broadcastsForCat,
   buildingOfferBroadcastsForCat,
   buyBuildingOffer as purchaseBuildingOffer,
+  cancelContractsReferencingCat,
   cancelDemandOrder,
   canFinanceDirectCraft,
   claimDiscoveryBounty,
@@ -72,8 +74,10 @@ import {
   publishProductionBroadcast,
   publishWarehouseBroadcast,
   readyContractForCat,
+  repairBrokenMarketReferences,
   refreshCatMarket,
   settleContractLeg,
+  sideWorkCraftFailure,
   signalsForCat,
   unreservedOwnedQuantity,
   unofferedOwnedQuantity,
@@ -153,12 +157,11 @@ export function createInitialState(options: { withStarter?: boolean; worldSeed?:
     decisionTrace: [],
     decisionSerial: 0,
     lastSpeechAt: null,
-    lawPolicy: freshLawPolicy(),
   }];
   const laws = starter?.laws ?? [];
   const resourceNodes = structuredClone(starterWorld.resourceNodes);
   const state: GameState = {
-    schemaVersion: 14,
+    schemaVersion: 15,
     difficulty,
     catalogVersion: CATALOG_VERSION,
     worldSeed,
@@ -328,6 +331,9 @@ export function removeCat(state: GameState, catId: string): CatRemovalResult {
     ))
     .map((contract) => contract.id));
   const affectedOrderIds = new Set<string>();
+  for (const contract of state.shipmentContracts) {
+    if (affectedContractIds.has(contract.id)) affectedOrderIds.add(contract.orderId);
+  }
   const catPlanIds = new Set(state.procurementPlans.filter((plan) => plan.catId === catId).map((plan) => plan.id));
 
   // Cancel every open demand involving this cat. cancelDemandOrder releases
@@ -339,26 +345,9 @@ export function removeCat(state: GameState, catId: string): CatRemovalResult {
     }
   }
 
-  // Unwind in-flight escrow. A refund to a surviving buyer is ordinary
-  // private income (and therefore repays that buyer's loan first). If the
-  // deleted cat was the buyer, the refund becomes part of its liquidation.
-  for (const contract of state.shipmentContracts.filter((entry) => affectedContractIds.has(entry.id))) {
-    affectedOrderIds.add(contract.orderId);
-    const refund = Math.max(0, Math.floor(contract.escrowCents));
-    if (refund > 0) {
-      if (contract.buyerKind === "cat") {
-        const buyer = state.cats.find((entry) => entry.id === contract.buyerCatId);
-        if (buyer && buyer.id !== catId) applyPrivateIncome(buyer, refund);
-        else if (buyer?.id === catId) cat.coins += refund;
-      } else {
-        state.treasuryCoins += refund;
-      }
-    }
-    // Contract cargo is held by the contract, not regular cat inventory.
-    for (const holder of state.cats) {
-      if (holder.action?.contractId === contract.id) holder.action = null;
-    }
-  }
+  // Contract cargo is not ordinary inventory. Unwind it through the market's
+  // single asset-conserving path before this cat is liquidated.
+  const contractRepair = cancelContractsReferencingCat(state, catId);
 
   const liquidatedCents = cat.coins + Object.entries(cat.inventory).reduce((sum, [itemId, quantity]) => (
     sum + Math.max(0, quantity) * externalNetCentsAt(state, itemId, (id) => itemPrice(state, id), cat)
@@ -386,6 +375,11 @@ export function removeCat(state: GameState, catId: string): CatRemovalResult {
   });
   state.logisticsStatus = state.logisticsStatus.filter((entry) => !entry.catIds.includes(catId));
   state.cats = state.cats.filter((entry) => entry.id !== catId);
+  const postRemovalRepair = repairBrokenMarketReferences(state);
+  for (const affectedId of new Set([...contractRepair.affectedCatIds, ...postRemovalRepair.affectedCatIds])) {
+    const affected = state.cats.find((entry) => entry.id === affectedId);
+    if (affected && !affected.action) scheduleInternalWait(state, affected, "异常运输合同已解约，等待重新报价");
+  }
   state.dirtyDecisions = true;
   const survivor = state.cats[0];
   if (survivor) addFloating(state, survivor.id, `鐚挭娓呯畻 ${treasuryDeltaCents >= 0 ? "+" : "-"}${formatMoney(Math.abs(treasuryDeltaCents))}`, "sale");
@@ -519,10 +513,16 @@ function validateAction(state: GameState, cat: CatState, action: Exclude<CatActi
     const bountyLedger = state.discoveryBounties.find((bounty) => bounty.itemId === entry.output && !bounty.paid);
     const servesBounty = heardBounty && Boolean(bountyLedger
       && (bountyLedger.claimedByCatId === null || bountyLedger.claimedByCatId === cat.id));
-    if (!servesPlan) return "没有完成整包融资的盈利生产计划";
-    const missing = effectiveRecipeInputs(entry, state.difficulty).find((input) => (
+    const sideWorkFailure = plan && plan.recipeId !== entry.id
+      ? sideWorkCraftFailure(state, cat, entry, (itemId) => itemPrice(state, itemId, cat))
+      : null;
+    if (!servesPlan) {
+      if (!plan) return "没有完成整包融资的盈利生产计划";
+      if (sideWorkFailure) return sideWorkFailure;
+    }
+    const missing = servesPlan ? effectiveRecipeInputs(entry, state.difficulty).find((input) => (
       !plan || availableInputQuantityForPlan(state, cat, plan, input.itemId) < input.quantity
-    ));
+    )) : undefined;
     if (missing) return `缺少 ${missing.itemId}×${missing.quantity}`;
     return expectedActionGainCents(state, cat, action, (itemId) => itemPrice(state, itemId, cat)) < 0
       ? "预计降低自身净资产"
@@ -553,7 +553,10 @@ function validateLawProposedAction(
   const siteFailure = recipeSiteFailure(state, cat, recipe);
   if (siteFailure) return siteFailure;
   const active = planForCatPublic(state, cat.id);
-  if (active) return active.recipeId === recipe.id ? null : `已有生产计划 ${active.outputItemId}`;
+  if (active) {
+    if (active.recipeId === recipe.id) return null;
+    return sideWorkCraftFailure(state, cat, recipe, (itemId) => itemPrice(state, itemId, cat));
+  }
   return canFinanceDirectCraft(state, cat, recipe.id, (itemId) => itemPrice(state, itemId, cat))
     ? null
     : "无法为直接制作取得完整原料包融资证明";
@@ -623,6 +626,9 @@ function beginAction(
   const speedReduction = actionSpeedReductionAt(state, cat.position, action.type);
   const baseDuration = Math.max(2_000, ACTION_DURATION_MS * (1 - speedReduction));
   const expectedGainCents = expectedActionGainCents(state, cat, action, (id) => itemPrice(state, id, cat));
+  const outputValueCents = action.type === "craft"
+    ? itemPrice(state, itemId, cat)
+    : undefined;
   cat.action = {
     type: action.type,
     recipeId: action.type === "craft" ? action.recipeId : undefined,
@@ -634,6 +640,7 @@ function beginAction(
     lawId,
     contractId: contract?.id,
     expectedGainCents,
+    outputValueCents,
     decisionReason,
     speedReduction,
   };
@@ -770,7 +777,6 @@ export function buildingPlacementFailure(state: GameState, itemId: ItemId, posit
   if (state.cats.some((cat) => cat.position.x === position.x && cat.position.y === position.y)) return "该格已有猫咪工位";
   if (buildingAt(state, position)) return "该格已有建筑";
   if (resourceAt(state, position)) return "资源中心不能放建筑";
-  if (itemId !== "factory" && resourceItemsAt(state, position).length > 0) return "只有工厂可以放在资源采集格";
   return null;
 }
 
@@ -1119,6 +1125,10 @@ function resolveBuildingOrders(state: GameState): void {
 }
 
 export function decideIdleCats(state: GameState, eligibleCatIds?: ReadonlySet<string>): void {
+  const marketRepair = repairBrokenMarketReferences(state);
+  const repairedEligibility = eligibleCatIds
+    ? new Set([...eligibleCatIds, ...marketRepair.affectedCatIds])
+    : undefined;
   const broadcastCutoff = state.simTime - 60_000 / state.simulationSpeed;
   state.marketBroadcasts = state.marketBroadcasts.filter((broadcast) => (
     broadcast.kind !== "production-event" || broadcast.publishedAt >= broadcastCutoff
@@ -1128,7 +1138,7 @@ export function decideIdleCats(state: GameState, eligibleCatIds?: ReadonlySet<st
   const landmarkIndex = createLandmarkSpatialIndex(state);
   const spatialMap = catMap(state);
   const eligible = [...state.cats]
-    .filter((cat) => !cat.action && (!eligibleCatIds || eligibleCatIds.has(cat.id)))
+    .filter((cat) => !cat.action && (!repairedEligibility || repairedEligibility.has(cat.id)))
     .sort((a, b) => a.createdIndex - b.createdIndex);
   if (eligible.length === 0) return;
 
@@ -1165,9 +1175,13 @@ export function decideIdleCats(state: GameState, eligibleCatIds?: ReadonlySet<st
   };
   const policies = new Map<string, Policy>();
 
-  // This is the only law authority. Action, scoring, price, tax, credit and
+  // This is the only law authority. Action, scoring, price, credit and
   // bounty instructions are all emitted by the same real shared for-loop.
   for (const cat of eligible) {
+    // A cat's overlay is valid only until that cat receives its next snapshot.
+    // Other cats may still have locked values for plans/contracts that are
+    // being settled in this same simulation step.
+    clearEphemeralLawPolicy(state, cat.id);
     const observation = buildObservation(
       state,
       cat,
@@ -1225,10 +1239,12 @@ export function decideIdleCats(state: GameState, eligibleCatIds?: ReadonlySet<st
           runtimePolicy.priceMultipliers[itemId] = Math.max(0.1, Math.min(10, multiplier));
           policyTouched = true;
         },
-        setTax: (rate) => {
-          if (claimedPolicyKeys.has("tax") || !Number.isFinite(rate)) return;
-          claimedPolicyKeys.add("tax");
-          runtimePolicy.taxRate = Math.max(0, Math.min(1, rate));
+        addPrice: (itemId, cents) => {
+          if ((itemId !== "*" && !ITEM_BY_ID.has(itemId)) || !Number.isFinite(cents)) return;
+          const key = `price-addition:${itemId}`;
+          if (claimedPolicyKeys.has(key)) return;
+          claimedPolicyKeys.add(key);
+          runtimePolicy.priceAdditionsCents[itemId] = Math.max(-1_000_000, Math.min(1_000_000, Math.round(cents)));
           policyTouched = true;
         },
         setCredit: (baseCents, netWorthFactor) => {
@@ -1242,6 +1258,7 @@ export function decideIdleCats(state: GameState, eligibleCatIds?: ReadonlySet<st
           if (claimedPolicyKeys.has("bounty") || !Number.isFinite(multiplier)) return;
           claimedPolicyKeys.add("bounty");
           runtimePolicy.bountyMultiplier = Math.max(0, Math.min(10, multiplier));
+          runtimePolicy.bountyMultiplierSet = true;
           policyTouched = true;
         },
       });
@@ -1253,13 +1270,8 @@ export function decideIdleCats(state: GameState, eligibleCatIds?: ReadonlySet<st
         policyTouched,
       };
     }, (action) => validateLawProposedAction(state, cat, action, spatialMap));
-    cat.lawPolicy = runtimePolicy;
+    setEphemeralLawPolicy(state, cat.id, runtimePolicy);
     policies.set(cat.id, policy as Policy);
-  }
-  const bountyMultiplier = state.cats[0]?.lawPolicy?.bountyMultiplier ?? difficultyProfile(state.difficulty).bountyMultiplier;
-  for (const bounty of state.discoveryBounties) {
-    if (bounty.paid || bounty.claimedByCatId) continue;
-    bounty.amountCents = Math.round((CATALOG_ANALYSIS.basePrices[bounty.itemId] ?? 1) * 100 * bountyMultiplier);
   }
 
   const plannerAuthorizedCatIds = new Set<string>();
@@ -1339,10 +1351,14 @@ export function sharedBehaviorHash(): string {
 
 export function itemPrice(state: GameState, itemId: ItemId, cat: CatState | undefined = state.cats[0]): number {
   const base = CATALOG_ANALYSIS.basePrices[itemId] ?? 1;
-  const multiplier = cat?.lawPolicy?.priceMultipliers[itemId]
-    ?? cat?.lawPolicy?.priceMultipliers["*"]
+  const policy = ephemeralLawPolicy(state, cat);
+  const multiplier = policy.priceMultipliers[itemId]
+    ?? policy.priceMultipliers["*"]
     ?? 1;
-  return Math.max(1, Math.ceil(base * 100 * multiplier));
+  const additionCents = policy.priceAdditionsCents[itemId]
+    ?? policy.priceAdditionsCents["*"]
+    ?? 0;
+  return Math.max(1, Math.ceil(base * 100 * multiplier + additionCents));
 }
 
 export function formatMoney(cents: number): string {
@@ -1392,7 +1408,7 @@ function resolveAction(state: GameState, cat: CatState, map: Map<string, CatStat
   const definition = ITEM_BY_ID.get(command.itemId)!;
   if (command.type === "craft") {
     const firstCraft = state.itemStats[command.itemId].crafted === 0;
-    const craftValueCents = itemPrice(state, command.itemId, cat);
+    const craftValueCents = command.outputValueCents ?? itemPrice(state, command.itemId, cat);
     give(cat.inventory, command.itemId, 1);
     state.itemStats[command.itemId].crafted += 1;
     state.totalProductionValueCents += craftValueCents;
@@ -1420,8 +1436,9 @@ function resolveAction(state: GameState, cat: CatState, map: Map<string, CatStat
       discover(state, command.itemId);
       if (result.recipientCatId) addFloating(state, result.recipientCatId, result.delivered ? `+1 ${definition.emoji}` : `${definition.emoji} 托运中`, "gain");
     } else {
-      for (const [itemId, quantity] of Object.entries(command.reserved)) give(cat.inventory, itemId, quantity);
-      cat.lastDecision = "运输合同异常，物品已退回";
+      // Contract cargo lives in ShipmentContract, never in command.reserved.
+      // The market repair path has already restored it to the legal owner.
+      cat.lastDecision = "运输合同异常，货物与剩余保证金已完成守恒解约";
     }
   }
 }
@@ -1567,6 +1584,7 @@ export function enactLaw(state: GameState, draft: LawDraft, insertionIndex = 0):
     title: draft.title,
     playerText: draft.playerText,
     summary: draft.summary,
+    explanation: draft.explanation?.trim() || draft.summary,
     sourceCode: draft.sourceCode,
     astHash: draft.astHash,
     examples: draft.examples,
@@ -1583,6 +1601,8 @@ export function enactLaw(state: GameState, draft: LawDraft, insertionIndex = 0):
   state.lawHistory.push(structuredClone(law));
   compactLawHistory(state);
   state.lawbookRevision += 1;
+  invalidateEphemeralLawPolicies(state);
+  state.dirtyDecisions = true;
   return { ok: true, law };
 }
 
@@ -1594,6 +1614,8 @@ export function reorderLaw(state: GameState, lawId: string, delta: -1 | 1): bool
   const [law] = state.laws.splice(index, 1);
   state.laws.splice(target, 0, law);
   state.lawbookRevision += 1;
+  invalidateEphemeralLawPolicies(state);
+  state.dirtyDecisions = true;
   return true;
 }
 
@@ -1608,6 +1630,8 @@ export function repealLaw(state: GameState, lawId: string): { ok: boolean; error
   state.lawHistory.push(structuredClone(law));
   compactLawHistory(state);
   state.lawbookRevision += 1;
+  invalidateEphemeralLawPolicies(state);
+  state.dirtyDecisions = true;
   return { ok: true };
 }
 

@@ -7,6 +7,7 @@ import {
   contractActionForCat,
   expectedActionGainCents,
   planForCatPublic,
+  sideWorkCraftFailure,
   signalsForCat,
   unreservedOwnedQuantity,
   unofferedOwnedQuantity,
@@ -167,20 +168,21 @@ function chooseLocalAction(
       const distance = itemDependencyDistance(recipe.output, targetItemId);
       return distance >= 0 && (best < 0 || distance < best) ? distance : best;
     }, -1);
-    // A funded procurement plan owns exactly one production job. Missing
-    // ingredients must arrive through its committed orders; the buyer may not
-    // silently recurse through the recipe tree and make every part itself.
+    // A funded plan remains the only reservation bundle. While it waits for
+    // delivery, the cat may use genuinely spare stock for a non-loss side job.
     const producingForPlan = activePlan?.recipeId === recipeId;
     const producingForOrder = false;
     const bountyAvailable = false;
-    if (!producingForPlan && !producingForOrder && !bountyAvailable) continue;
+    const sideWork = Boolean(activePlan && !producingForPlan
+      && sideWorkCraftFailure(state, cat, recipe, priceOf) === null);
+    if (!producingForPlan && !producingForOrder && !bountyAvailable && !sideWork) continue;
     if (activePlan?.recipeId !== recipeId && effectiveRecipeInputs(recipe, state.difficulty).some((input) => protectedInputs.has(input.itemId))) continue;
     if (recipe.inputs.length === 0
       && activePlan?.recipeId !== recipeId
       && !producingForOrder
       && unreservedOwnedQuantity(state, cat, recipe.output) >= 1) continue;
-    if (!effectiveRecipeInputs(recipe, state.difficulty).every((input) => (
-      !activePlan || availableInputQuantityForPlan(state, cat, activePlan, input.itemId) >= input.quantity
+    if (producingForPlan && !effectiveRecipeInputs(recipe, state.difficulty).every((input) => (
+      availableInputQuantityForPlan(state, cat, activePlan!, input.itemId) >= input.quantity
     ))) continue;
     const action: Exclude<CatAction, null> = { type: "craft", recipeId };
     const gain = expectedActionGainCents(state, cat, action, priceOf);
@@ -193,8 +195,16 @@ function chooseLocalAction(
           ? 80_000 - planDistance * 1_000
           : producingForOrder
             ? 50_000 - orderDistance * 1_000
-            : 0),
-      reason: activePlan?.recipeId === recipeId ? "执行盈利生产计划" : producingForOrder ? "响应全局订单广播" : "预计不会降低净资产",
+            : sideWork
+              ? 1_000
+              : 0),
+      reason: activePlan?.recipeId === recipeId
+        ? "优先完成唯一生产计划"
+        : producingForOrder
+          ? "响应全局订单广播"
+          : sideWork
+            ? "主计划等待原料，使用未保留库存继续盈利副业"
+            : "预计不会降低净资产",
       targetItemId: recipe.output,
       kind: activePlan?.reason === "bounty" ? "bounty" : "profit",
       influences: new Map(),

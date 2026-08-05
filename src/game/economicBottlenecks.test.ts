@@ -136,16 +136,16 @@ describe("soft economic progression bottlenecks", () => {
 
     await advanceGameCooperatively(state, 120);
     const priceOnly = craftedCounts(state, 22, 26);
-    // A first craft is only a discovery, not stable production. Reliable
-    // schema-14 quotes can now produce all five once under price-only laws;
-    // the behavior law below must be judged by continued output, not by the
-    // obsolete assertion that at least one item remains completely absent.
-    expect(priceOnly.every((count) => count > 0)).toBe(true);
+    // Pure output-price changes are intentionally insufficient to coordinate
+    // every downstream chain. At least one item must remain absent until the
+    // shared logistics regulation starts prioritizing real order shortages.
+    expect(priceOnly.some((count) => count === 0)).toBe(true);
 
     const enacted = enactLaw(state, logisticsDraft());
     expect(enacted.ok).toBe(true);
     await advanceGameCooperatively(state, 120);
     const coordinated = craftedCounts(state, 22, 26);
+    expect(coordinated.every((count) => count > 0)).toBe(true);
     expect(coordinated.every((count, index) => count >= priceOnly[index])).toBe(true);
     expect(coordinated.some((count, index) => count > priceOnly[index])).toBe(true);
     expect(enacted.law?.hitCount).toBeGreaterThan(0);

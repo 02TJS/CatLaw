@@ -35,7 +35,7 @@ describe("spatial logistics and buildings", () => {
     state.cats[0].inventory.wood = 1;
     const order = openDemandOrder(state, {
       buyerKind: "cat", buyerCatId: "cat-2", destinationCatId: "cat-2", itemId: "wood",
-      maxDeliveredCents: 200, reservedCents: 200, planId: null,
+      maxDeliveredCents: 300, reservedCents: 300, planId: null,
     }, (itemId) => itemPrice(state, itemId))!;
     propagateOrderSignals(state);
     propagateOrderSignals(state);
@@ -47,7 +47,7 @@ describe("spatial logistics and buildings", () => {
     expect(state.cats[0].action).toMatchObject({ type: "pass", itemId: "wood", direction: "east" });
     const speech = state.floatingEvents.find((event) => event.kind === "speech" && event.catId === "cat-0");
     expect(speech?.text).toContain("把🪵木材运到东边的2号猫");
-    expect(speech?.text).toContain("1.01金币");
+    expect(speech?.text).toContain("2.01金币");
     expect(speech?.text).toContain("履行有偿运输合同");
     expect(speech?.text).toContain("喵");
     advanceGame(state, 5_000);
@@ -97,6 +97,20 @@ describe("spatial logistics and buildings", () => {
     expect(recipeSiteFailure(state, testCat(15, -6, -10), reactorRecipe)).toContain("反应堆3格内");
   });
 
+  it("combines resource collection with every overlapping building requirement", () => {
+    const state = createInitialState({ withStarter: false, difficulty: 3, worldSeed: 31 });
+    state.resourceNodes = [{ id: "wood", itemId: "wood", position: { x: 0, y: 0 } }];
+    state.buildings = [
+      { id: "factory", itemId: "factory", position: { x: 1, y: 0 }, deployedAt: 0 },
+      { id: "machine", itemId: "machine_tool", position: { x: 0, y: 1 }, deployedAt: 0 },
+    ];
+    const overlapWorker = testCat(16, 1, 1);
+    expect(recipeSiteFailure(state, overlapWorker, RECIPE_BY_OUTPUT.get("wood")!)).toBeNull();
+    expect(recipeSiteFailure(state, overlapWorker, RECIPE_BY_OUTPUT.get("vehicle")!)).toBeNull();
+    state.buildings = state.buildings.filter((building) => building.itemId !== "machine_tool");
+    expect(recipeSiteFailure(state, overlapWorker, RECIPE_BY_OUTPUT.get("vehicle")!)).toContain("机床2格内");
+  });
+
   it("places an owned ground building, then dismantles it back into the player inventory", () => {
     const state = createInitialState({ withStarter: false, worldSeed: 44 });
     state.resourceNodes = [];
@@ -110,13 +124,16 @@ describe("spatial logistics and buildings", () => {
     expect(state.playerBuildingInventory.factory).toBe(1);
   });
 
-  it("lets factories use resource-adjacent harvest cells but rejects centers and unknown goods", () => {
+  it("lets every industrial building use resource-adjacent cells but rejects centers and unknown goods", () => {
     const state = createInitialState({ worldSeed: 45 });
     const node = state.resourceNodes[0];
     expect(buildingPlacementFailure(state, "factory", node.position)).toContain("资源");
     const harvestTile = resourceHarvestTiles(node).find((position) => !state.cats.some((cat) => cat.position.x === position.x && cat.position.y === position.y))!;
     expect(buildingPlacementFailure(state, "factory", harvestTile)).toBeNull();
-    expect(buildingPlacementFailure(state, "reactor", harvestTile)).toContain("只有工厂");
+    expect(buildingPlacementFailure(state, "machine_tool", harvestTile)).toBeNull();
+    expect(buildingPlacementFailure(state, "antenna", harvestTile)).toBeNull();
+    expect(buildingPlacementFailure(state, "lab", harvestTile)).toBeNull();
+    expect(buildingPlacementFailure(state, "reactor", harvestTile)).toBeNull();
     expect(buildingPlacementFailure(state, "wood", { x: 4, y: 4 })).toContain("不能放置");
   });
 });

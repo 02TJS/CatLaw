@@ -695,7 +695,7 @@ export function App() {
           }} data-testid="expand-mode-button"><span>🗺️</span>{expansionMode ? "完成" : "地图与开拓"}</button>
           <button
             className={mapLensPaletteOpen || mapLensId !== "none" ? "active" : ""}
-            title="打开地图滤镜：订单供需、生产瓶颈、生产环境、财富信用、法规影响、生产稳定与坐标索引"
+            title="打开地图滤镜：订单供需、生产瓶颈、生产环境、财富信用、活跃热力、法规影响、生产稳定与坐标索引"
             aria-label="打开地图滤镜选项"
             onClick={() => {
               setPlacingBuildingItemId(null);
@@ -943,7 +943,7 @@ function renderGameToText(
       speechFrequencyPercent: state.speechFrequency,
       speechBubbleAvoidsControls: [
         "dragRegion", "headlineStats", "mainCommerce", "windowControls", "dock",
-        "filterPalette", "legend", "drawer", "commerceFeedback", "quickStats", "addCatMenu",
+        "filterPalette", "legend", "drawer", "commerceFeedback", "quickStats", "tileActionMenu",
       ],
     },
     speedShortcuts: { "1": "1x", "2": "2x", "3": "4x", "4": "8x", p: "pause" },
@@ -994,7 +994,6 @@ function renderGameToText(
       bountyPlanningAuthority: "悬赏是公开法规数据；只有共享 behavior 函数调用 earnCoins/choose/weighted 后才能认领并创建计划",
       fallback: null,
     },
-    activeTaxRate: state.cats[0]?.lawPolicy?.taxRate ?? 0,
     discoveredItems: state.discoveredItems,
     unlockedRecipes: state.unlockedRecipes,
     world: {
@@ -1020,6 +1019,16 @@ function renderGameToText(
             catId: cat.id,
             value: activeMapLens.metric?.values.get(cat.id) ?? 0,
             normalized: activeMapLens.metric?.normalized.get(cat.id) ?? 0.5,
+          })),
+        } : null,
+        activityHeat: mapInteractionMode && mapLensId === "activity" && activeMapLens?.metric ? {
+          unit: activeMapLens.metric.unit,
+          activeMeaning: "当前正在制作或运输",
+          stalledAfterMs: 60_000,
+          cats: state.cats.map((cat) => ({
+            catId: cat.id,
+            inactiveMs: activeMapLens.metric?.values.get(cat.id) ?? 60_000,
+            normalizedInactivity: activeMapLens.metric?.normalized.get(cat.id) ?? 1,
           })),
         } : null,
         stationInventoryMarkers: (mapInteractionMode && mapLensId === "inventory")
@@ -1081,7 +1090,7 @@ function renderGameToText(
         purchasedSource: state.playerWarehousePurchases,
         lockedItemIds: state.lockedWarehouseItemIds,
         fixedSellPricesCents: Object.fromEntries(ITEMS.map((item) => [item.id, warehouseSellPrice(item.id)])),
-        sellPriceRule: "catalog base price × 2; unaffected by laws, tax, difficulty, or landmarks",
+        sellPriceRule: "catalog base price × 2; unaffected by laws, difficulty, or landmarks",
         distinctItems: ITEMS.filter((item) => (state.playerBuildingInventory[item.id] ?? 0) > 0).length,
         totalItems: Object.values(state.playerBuildingInventory).reduce((sum, quantity) => sum + quantity, 0),
         purchasable: ITEMS.map((item) => warehouseQuote(state, item.id)).filter((quote) => quote.availableQuantity > 0),
@@ -1092,7 +1101,7 @@ function renderGameToText(
       buildingPlacement: {
         itemId: placingBuildingItemId,
         lastAttempt: placementFeedback,
-        blockedTileRules: ["locked parcel", "cat", "building", "resource center", "resource harvest tile"],
+        blockedTileRules: ["locked parcel", "cat", "building", "landmark", "resource center"],
       },
       landmarkEngineering: {
         blueprints: LANDMARK_DEFINITIONS.map((definition) => ({
@@ -1191,7 +1200,7 @@ function renderGameToText(
         ? event.duration
         : Math.max(0, Math.round(event.createdAt + event.duration - state.simTime)),
     })),
-    laws: state.laws.map((law, priority) => ({ priority, id: law.id, title: law.title, capabilities: lawProgramSummary(law.program, law.sourceCode), immutable: true, astHash: law.astHash, status: law.status, hits: law.hitCount, speechTemplates: safeSpeechTemplates(law.speechTemplates) })),
+    laws: state.laws.map((law, priority) => ({ priority, id: law.id, title: law.title, explanation: law.explanation ?? law.summary, capabilities: lawProgramSummary(law.program, law.sourceCode), immutable: true, astHash: law.astHash, status: law.status, hits: law.hitCount, speechTemplates: safeSpeechTemplates(law.speechTemplates) })),
     lawbookRevision: state.lawbookRevision,
     commandAudit: state.commandAudit.slice(-100),
     prices: Object.fromEntries(state.discoveredItems.map((id) => [id, itemPrice(state, id)])),

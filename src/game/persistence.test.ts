@@ -5,6 +5,25 @@ import { migrateSaveSnapshot } from "./persistence";
 import { BASE_RESOURCE_ITEM_IDS, parcelForPosition } from "./world";
 
 describe("schema 10 unified-law and recent-production migration", () => {
+  it("removes every active and historical tax law when schema 14 is loaded", () => {
+    const raw: any = structuredClone(createInitialState({ worldSeed: 15 }));
+    raw.schemaVersion = 14;
+    const taxSource = "function decide(ctx) { setTax(0.8); return null; }";
+    const mixedSource = "function decide(ctx) { setPrice('wood', 2); setTax(0.2); return null; }";
+    const base = structuredClone(raw.laws[0]);
+    raw.laws.unshift(
+      { ...base, id: "player-tax", sourceCode: taxSource, astHash: hashSource(taxSource), locked: false },
+      { ...base, id: "player-mixed-tax", sourceCode: mixedSource, astHash: hashSource(mixedSource), locked: false },
+      { ...base, id: "starter-law-sales-tax", sourceCode: taxSource, astHash: hashSource(taxSource) },
+    );
+    raw.lawHistory = structuredClone(raw.laws);
+
+    const migrated = migrateSaveSnapshot(raw);
+    expect(migrated.schemaVersion).toBe(15);
+    expect(migrated.laws.some((law) => law.id.includes("tax") || law.sourceCode.includes("setTax"))).toBe(false);
+    expect(migrated.lawHistory.some((law) => law.id.includes("tax") || law.sourceCode.includes("setTax"))).toBe(false);
+  });
+
   it("preserves stored production value and accepts legacy valueless events", () => {
     const raw: any = structuredClone(createInitialState({ worldSeed: 1 }));
     raw.simTime = 10_000;
@@ -29,7 +48,7 @@ describe("schema 10 unified-law and recent-production migration", () => {
     expect(migrateSaveSnapshot(legacy).speechFrequency).toBe(0);
   });
 
-  it("atomically replaces incomplete schema 11 starter laws with the seven-law baseline", () => {
+  it("atomically replaces incomplete schema 11 starter laws with the six-law no-tax baseline", () => {
     const raw: any = structuredClone(createInitialState({ worldSeed: 1 }));
     raw.schemaVersion = 11;
     const playerSource = "function decide(ctx) { setPrice('glass', 1.2); return null; }";
@@ -54,18 +73,17 @@ describe("schema 10 unified-law and recent-production migration", () => {
       obsoleteLaw,
       raw.laws.find((law: any) => law.id === "starter-law-private-credit"),
       raw.laws.find((law: any) => law.id === "starter-law-discovery-bounty"),
-      raw.laws.find((law: any) => law.id === "starter-law-sales-tax"),
       playerLaw,
     ];
     raw.lawHistory = structuredClone(raw.laws);
 
     const migrated = migrateSaveSnapshot(raw);
     const expectedStarterIds = createInitialState({ worldSeed: 1 }).laws.map((law) => law.id);
-    expect(migrated.schemaVersion).toBe(14);
+    expect(migrated.schemaVersion).toBe(15);
     expect(migrated.laws.every((law) => law.speechTemplates?.length === 5)).toBe(true);
     expect(migrated.laws[0]).toMatchObject({ id: "player-glass-law", sourceCode: playerSource });
     expect(migrated.laws.filter((law) => law.id.startsWith("starter-law-")).map((law) => law.id)).toEqual(expectedStarterIds);
-    expect(migrated.laws).toHaveLength(8);
+    expect(migrated.laws).toHaveLength(7);
     expect(migrated.laws.some((law) => law.id === "starter-law-resource-stock")).toBe(false);
     expect(migrated.lawHistory).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: "starter-law-resource-stock", sourceCode: obsoleteSource }),
@@ -108,7 +126,7 @@ describe("schema 10 unified-law and recent-production migration", () => {
     delete legacy.logisticsStatus;
 
     const migrated = migrateSaveSnapshot(legacy, 999);
-    expect(migrated.schemaVersion).toBe(14);
+    expect(migrated.schemaVersion).toBe(15);
     expect(migrated.difficulty).toBe(2);
     expect(migrated.treasuryCoins).toBe(32_100);
     expect(migrated.cats).toHaveLength(original.cats.length);
@@ -141,7 +159,7 @@ describe("schema 10 unified-law and recent-production migration", () => {
       position: { ...cat.position },
     }));
     const migrated = migrateSaveSnapshot(schema2);
-    expect(migrated.schemaVersion).toBe(14);
+    expect(migrated.schemaVersion).toBe(15);
     expect(migrated.cats.map((cat) => cat.position)).toEqual(schema2.cats.map((cat: any) => cat.position));
     expect(migrated.resourceNodes.every((node) => !migrated.cats.some((cat) => node.position.x === cat.position.x
       && node.position.y === cat.position.y))).toBe(true);

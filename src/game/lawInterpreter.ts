@@ -6,7 +6,7 @@ import type { CatAction, CatObservation, DecisionResult, Direction } from "./typ
 type AstNode = { type: string; [key: string]: unknown };
 
 const BANNED_PROPERTIES = new Set(["__proto__", "prototype", "constructor"]);
-const HELPER_NAMES = new Set(["count", "has", "warehouseCount", "crafted", "recentCrafted", "marketNeed", "neighborExists", "neighborCount", "nearbyCount", "nearbyCatCount", "onResource", "nearBuilding", "canCraft", "at", "cash", "debt", "netWorth", "bestBid", "orderCount", "bounty", "buildingAsk", "broadcastCount", "carrying", "earnCoins", "weighted", "adjust", "choose", "setPrice", "setTax", "setCredit", "setBounty"]);
+const HELPER_NAMES = new Set(["count", "has", "warehouseCount", "crafted", "recentCrafted", "marketNeed", "neighborExists", "neighborCount", "nearbyCount", "nearbyCatCount", "onResource", "nearBuilding", "canCraft", "at", "cash", "debt", "netWorth", "bestBid", "orderCount", "bounty", "buildingAsk", "broadcastCount", "carrying", "earnCoins", "weighted", "adjust", "choose", "setPrice", "addPrice", "setCredit", "setBounty"]);
 export const MAX_CACHED_LAW_ASTS = 128;
 const cache = new BoundedLruCache<string, { source: string; body: AstNode }>(MAX_CACHED_LAW_ASTS);
 
@@ -132,7 +132,7 @@ export interface LawRuntimeHelpers {
   recentCrafted?: (itemId: string) => number;
   marketNeed?: (rank: number) => string;
   setPrice?: (itemId: string, multiplier: number) => void;
-  setTax?: (rate: number) => void;
+  addPrice?: (itemId: string, cents: number) => void;
   setCredit?: (baseCents: number, netWorthFactor: number) => void;
   setBounty?: (multiplier: number) => void;
 }
@@ -215,8 +215,8 @@ export function executeLawSource(source: string, observation: CatObservation, st
       runtime.setPrice?.(String(itemId), Number(multiplier));
       return null;
     },
-    setTax: (rate = 0) => {
-      runtime.setTax?.(Number(rate));
+    addPrice: (itemId = "*", cents = 0) => {
+      runtime.addPrice?.(String(itemId), Number(cents));
       return null;
     },
     setCredit: (baseCents = 0, netWorthFactor = 0) => {
@@ -526,7 +526,7 @@ export const STARTER_RESOURCE_SUPPLY_SOURCE = mergeStarterLawSources(
 export const STARTER_FOUNDATION_CYCLE_SOURCE = mergeStarterLawSources(
   `function decide(ctx) {
     const item = ctx.ownPlan ? ctx.ownPlan.outputItemId : "";
-    if (item) adjust("craft", item, 4, 900000);
+    if (item) adjust("craft", item, 8, 3000000);
     return null;
   }`,
 );

@@ -100,17 +100,6 @@ describe("0.8.0 spatial market acceptance", () => {
     expect(baseline.cats[0].action?.type).toBe("wait");
     const baselineQuote = catStockPurchaseQuote(baseline, baseline.cats[0].id);
 
-    const taxed = structuredClone(baseline);
-    taxed.cats.forEach((entry) => {
-      if (entry.action) entry.inventory[entry.action.itemId] = (entry.inventory[entry.action.itemId] ?? 0) + 1;
-      entry.action = null;
-    });
-    taxed.laws = [passiveLaw({ id: "tax", sourceCode: "function decide(ctx) { setTax(0.99); return null; }", program: { version: 2 } })];
-    taxed.dirtyDecisions = true;
-    decideIdleCats(taxed);
-    expect(taxed.cats[0].action?.type).toBe("wait");
-    expect(catStockPurchaseQuote(taxed, taxed.cats[0].id).totalCostCents).toBe(baselineQuote.totalCostCents);
-
     const priced = structuredClone(baseline);
     priced.cats.forEach((entry) => {
       if (entry.action) entry.inventory[entry.action.itemId] = (entry.inventory[entry.action.itemId] ?? 0) + 1;

@@ -74,8 +74,8 @@ function orderWood(state: GameState, destinationCatId = "cat-0") {
     buyerCatId: destinationCatId,
     destinationCatId,
     itemId: "wood",
-    maxDeliveredCents: 200,
-    reservedCents: 200,
+    maxDeliveredCents: 300,
+    reservedCents: 300,
     planId: null,
   }, price(state));
 }
@@ -299,12 +299,12 @@ describe("self-interested broadcast market", () => {
     orderWood(state);
     propagateOrderSignals(state);
     acceptProfitableOrders(state, price(state));
-    expect(state.cats[0].debtCents).toBe(104);
+    expect(state.cats[0].debtCents).toBe(206);
     expect(state.laws.find((law) => law.id === "starter-law-private-credit")?.hitCount).toBe(1);
     applyPrivateIncome(state.cats[0], 60);
-    expect(state.cats[0]).toMatchObject({ debtCents: 44, coins: 0 });
-    applyPrivateIncome(state.cats[0], 50);
-    expect(state.cats[0]).toMatchObject({ debtCents: 0, coins: 6 });
+    expect(state.cats[0]).toMatchObject({ debtCents: 146, coins: 0 });
+    applyPrivateIncome(state.cats[0], 150);
+    expect(state.cats[0]).toMatchObject({ debtCents: 0, coins: 4 });
   });
 
   it("keeps in-transit cargo out of carrier inventory and pays each completed leg", () => {

@@ -227,7 +227,7 @@ describe("0.12.0 player warehouse trading", () => {
       lawId: "legacy",
     };
     const migrated = migrateSaveSnapshot(legacy);
-    expect(migrated.schemaVersion).toBe(14);
+    expect(migrated.schemaVersion).toBe(15);
     expect(migrated.lockedWarehouseItemIds).toEqual([]);
     expect(migrated.playerWarehousePurchases).toEqual({});
     expect(migrated.cats[0].action?.type).toBe("wait");

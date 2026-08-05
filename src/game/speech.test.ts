@@ -28,6 +28,16 @@ describe("regulation-driven cat speech", () => {
     expect(validateSpeechTemplates(DEFAULT_LAW_SPEECH_TEMPLATES.map((line, index) => index ? line : "{reason}，所以{action}喵。")).ok).toBe(false);
   });
 
+  it("rejects five copies or punctuation-only variants", () => {
+    const copies = DEFAULT_LAW_SPEECH_TEMPLATES.map(() => DEFAULT_LAW_SPEECH_TEMPLATES[0]);
+    const punctuationOnly = DEFAULT_LAW_SPEECH_TEMPLATES.map((_line, index) =>
+      `按{law}，因{reason}，{action}能赚{gain}${index % 2 ? "喵。" : "喵！"}`);
+    expect(validateSpeechTemplates(copies)).toMatchObject({ ok: false });
+    expect(validateSpeechTemplates(punctuationOnly)).toMatchObject({ ok: false });
+    expect(validateSpeechTemplates(copies).messages.join(" ")).toContain("不能重复");
+    expect(validateSpeechTemplates(punctuationOnly).messages.join(" ")).toContain("至少要有四种不同句式");
+  });
+
   it("fills only the whitelisted runtime placeholders", () => {
     expect(fillSpeechTemplate("根据{law}，{reason}，{action}能赚{gain}喵！", {
       law: "《木材法》",
@@ -159,6 +169,21 @@ describe("regulation-driven cat speech", () => {
     }
     const seller = state.cats[0];
     seller.inventory.wood = 1;
+    state.demandOrders.push({
+      id: "order-speech",
+      buyerKind: "cat",
+      buyerCatId: receiver.id,
+      destinationCatId: receiver.id,
+      itemId: "wood",
+      maxDeliveredCents: 1_234,
+      reservedCents: 1_234,
+      planId: null,
+      createdAt: 0,
+      status: "contracted",
+      closedAt: 0,
+      closeReason: `由 ${seller.id} 成交`,
+      committedSellerCatId: seller.id,
+    });
     state.shipmentContracts.push({
       id: "contract-speech",
       orderId: "order-speech",

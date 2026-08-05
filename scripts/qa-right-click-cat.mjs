@@ -12,6 +12,20 @@ page.on("console", (message) => { if (message.type() === "error") errors.push(me
 page.on("pageerror", (error) => errors.push(String(error)));
 
 await page.goto("http://127.0.0.1:5173", { waitUntil: "networkidle" });
+await page.waitForFunction(() => window.__CAT_WORKSHOP__ && typeof window.advanceTime === "function");
+await page.evaluate(() => {
+  const clone = globalThis.structuredClone;
+  globalThis.structuredClone = (value) => value;
+  try {
+    const state = window.__CAT_WORKSHOP__.state();
+    state.paused = true;
+    state.playerBuildingInventory.factory = 1;
+    state.playerBuildingInventory.lab = 1;
+  } finally {
+    globalThis.structuredClone = clone;
+  }
+  window.advanceTime(1);
+});
 const canvas = page.getByTestId("game-canvas");
 await canvas.waitFor();
 
@@ -29,13 +43,20 @@ const pointForTile = async ({ x, y }) => {
 
 const initial = await readState();
 if (initial.cats.length !== 11) throw new Error(`expected 11 starter cats, got ${initial.cats.length}`);
+if (initial.world.buildingPlacement.blockedTileRules.includes("resource harvest tile")) {
+  throw new Error("text state still reports resource harvest tiles as blocked for industrial buildings");
+}
 const initiallySelectedCatId = initial.cats.find((cat) => cat.selected)?.id ?? null;
 
 const resourceCenter = initial.world.resourceNodes[0].position;
-const emptyTile = Array.from({ length: 9 * 9 }, (_, index) => ({
+const resourceHarvestTile = initial.world.resourceNodes[0].harvestTiles.find((tile) => (
+  !initial.cats.some((cat) => cat.position.x === tile.x && cat.position.y === tile.y)
+));
+if (!resourceHarvestTile) throw new Error("could not find an empty resource harvest tile");
+const emptyTiles = Array.from({ length: 9 * 9 }, (_, index) => ({
   x: (index % 9) - 4,
   y: Math.floor(index / 9) - 4,
-})).find((tile) => {
+})).filter((tile) => {
   const occupied = initial.cats.some((cat) => cat.position.x === tile.x && cat.position.y === tile.y);
   const blocked = initial.world.resourceNodes.some((node) => {
     if (node.position.x === tile.x && node.position.y === tile.y) return true;
@@ -43,7 +64,8 @@ const emptyTile = Array.from({ length: 9 * 9 }, (_, index) => ({
   });
   return !occupied && !blocked;
 });
-if (!emptyTile) throw new Error("could not find a legal empty tile");
+const [buildingTile, emptyTile] = emptyTiles;
+if (!buildingTile || !emptyTile) throw new Error("could not find two legal empty tiles");
 const emptyPoint = await pointForTile(emptyTile);
 await page.mouse.click(emptyPoint.x, emptyPoint.y, { button: "left" });
 await page.waitForTimeout(80);
@@ -62,6 +84,48 @@ await page.waitForTimeout(80);
 const afterResourceCenter = await readState();
 if (afterResourceCenter.cats.length !== 11) throw new Error("right click must not add a cat on a resource center");
 if (await page.getByTestId("add-cat-menu").count() !== 0) throw new Error("resource center must not expose the add-cat confirmation");
+if (await page.getByTestId("tile-action-menu").count() !== 0) throw new Error("resource center must not expose unusable building actions");
+
+const resourceHarvestPoint = await pointForTile(resourceHarvestTile);
+await page.mouse.click(resourceHarvestPoint.x, resourceHarvestPoint.y, { button: "right" });
+await page.waitForTimeout(120);
+const harvestFactoryAction = page.getByTestId("context-place-building-factory");
+const harvestLabAction = page.getByTestId("context-place-building-lab");
+if (await harvestFactoryAction.count() !== 1 || await harvestLabAction.count() !== 1) {
+  throw new Error("resource harvest tile did not list every owned industrial building");
+}
+if (await harvestFactoryAction.isDisabled() || await harvestLabAction.isDisabled()) {
+  throw new Error("resource harvest tile unexpectedly disabled an industrial building");
+}
+await page.evaluate(() => document.documentElement.classList.add("desktop-shell"));
+await page.screenshot({ path: path.join(output, "right-click-resource-building-menu.png"), omitBackground: true });
+await harvestLabAction.click();
+await page.waitForTimeout(160);
+const afterHarvestLab = await readState();
+const placedLab = afterHarvestLab.world.buildings.find((building) => building.itemId === "lab"
+  && building.position.x === resourceHarvestTile.x && building.position.y === resourceHarvestTile.y);
+if (!placedLab) throw new Error("right-click lab action did not build on the resource harvest tile");
+
+const buildingPoint = await pointForTile(buildingTile);
+await page.mouse.click(buildingPoint.x, buildingPoint.y, { button: "right" });
+await page.waitForTimeout(120);
+if (await page.getByTestId("tile-action-menu").count() !== 1) throw new Error("owned buildings did not open the tile action menu");
+if (await page.getByTestId("add-cat-menu").count() !== 1) throw new Error("ordinary tile menu lost the add-cat action");
+const factoryAction = page.getByTestId("context-place-building-factory");
+if (await factoryAction.count() !== 1) throw new Error("tile action menu did not list the remaining owned factory");
+if (await factoryAction.isDisabled()) throw new Error("ordinary empty tile unexpectedly disabled a building action");
+await page.evaluate(() => document.documentElement.classList.add("desktop-shell"));
+await page.screenshot({ path: path.join(output, "right-click-building-menu.png"), omitBackground: true });
+await factoryAction.click();
+await page.waitForTimeout(160);
+const afterFactory = await readState();
+const placedFactory = afterFactory.world.buildings.find((building) => building.itemId === "factory"
+  && building.position.x === buildingTile.x && building.position.y === buildingTile.y);
+if (!placedFactory) throw new Error(`right-click factory action did not build on the target tile: ${JSON.stringify(afterFactory.world.buildings)}`);
+if ((afterFactory.world.warehouse.inventory.factory ?? 0) !== 0 || (afterFactory.world.warehouse.inventory.lab ?? 0) !== 0) {
+  throw new Error(`right-click building did not consume exactly one selected building: ${JSON.stringify(afterFactory.world.warehouse.inventory)}`);
+}
+if (await page.getByTestId("tile-action-menu").count() !== 0) throw new Error("successful building placement did not close the tile action menu");
 
 await page.mouse.click(emptyPoint.x, emptyPoint.y, { button: "right" });
 await page.waitForTimeout(120);
@@ -94,6 +158,9 @@ const result = {
   afterLeftClick: afterLeft.cats.length,
   afterSpace: afterSpace.cats.length,
   afterResourceCenterRightClick: afterResourceCenter.cats.length,
+  placedLabOnResourceHarvestTile: { id: placedLab.id, position: placedLab.position },
+  placedFactory: { id: placedFactory.id, position: placedFactory.position },
+  remainingBuildings: afterFactory.world.warehouse.inventory,
   afterValidRightClick: afterRight.cats.length,
   afterConfirmedAdd: afterConfirm.cats.length,
   initiallySelectedCatId,

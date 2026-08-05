@@ -133,19 +133,32 @@ const flowBalance = `function decide(ctx) {
     const fireDemand = recentCrafted("glass") + recentCrafted("metal") + recentCrafted("fuel");
     adjust("craft", "wood", 1, (woodDemand + 1 - recentCrafted("wood")) * 900000);
     adjust("craft", "plank", 1, (plankDemand + 1 + warehouseCount("plank") - recentCrafted("plank")) * 900000);
-    if (warehouseCount("plank") > 0 && count("plank") < warehouseCount("plank")) {
-      adjust("craft", "plank", 1, 3000000);
-    }
     adjust("craft", "fire", 1, (fireDemand + 2 + warehouseCount("fire") - recentCrafted("fire")) * 900000);
     if (warehouseCount("fire") > 0 && count("fire") < warehouseCount("fire")) {
       adjust("craft", "fire", 1, 3000000);
+    }
+    if (count("plank") < 2) {
+      adjust("craft", "plank", 0, 1000000);
+      adjust("craft", "plank", 10, 1000000);
+      adjust("craft", "plank", 10, 1000000);
+    }
+    if (count("chassis") < 1) {
+      adjust("craft", "chassis", 0, 1000000);
+      adjust("craft", "chassis", 10, 1000000);
+      adjust("craft", "chassis", 10, 1000000);
     }
   }
   if (onResource("stone")) {
     const brickDemand = recentCrafted("factory") * 2;
     const toolsDemand = recentCrafted("factory") + recentCrafted("machine_tool");
     adjust("craft", "brick", 1, (brickDemand + 1 - recentCrafted("brick")) * 900000);
-    adjust("craft", "tools", 1, (toolsDemand + 1 - recentCrafted("tools")) * 900000);
+    adjust("craft", "tools", 1, (toolsDemand + 1 + warehouseCount("tools") - recentCrafted("tools")) * 900000);
+    if (toolsDemand > recentCrafted("tools")) {
+      adjust("craft", "tools", 1, 1000000);
+    }
+    if (warehouseCount("tools") > 0 && count("tools") < warehouseCount("tools")) {
+      adjust("craft", "tools", 1, 3000000);
+    }
   }
   if (onResource("sand")) {
     const sandDemand = recentCrafted("glass") * 2 + recentCrafted("chip");
@@ -181,7 +194,12 @@ const flowBalance = `function decide(ctx) {
     if (warehouseCount("cable") > 0 && count("cable") < warehouseCount("cable")) {
       adjust("craft", "cable", 1, 3000000);
     }
-    adjust("craft", "gear", 1, (gearDemand + 1 - recentCrafted("gear")) * 900000);
+    adjust("craft", "gear", 1, (gearDemand + 1 + warehouseCount("gear") - recentCrafted("gear")) * 900000);
+    if (count("gear") < 3) {
+      adjust("craft", "gear", 0, 1000000);
+      adjust("craft", "gear", 10, 1000000);
+      adjust("craft", "gear", 10, 1000000);
+    }
   }
   if (at(1, 0) || at(0, 1)) {
     const glassDemand = recentCrafted("factory") + recentCrafted("lamp") + recentCrafted("display");
@@ -219,6 +237,19 @@ ${indent}  adjust("craft", need${rank}, 0, 1000000);
 ${indent}  adjust("craft", need${rank}, 1, 1000000);
 ${indent}}`;
   }).join("\n");
+}
+
+function rankedRoleHighSelection(rankCount: number, indent = "  "): string {
+  const ranks = Array.from({ length: rankCount }, (_, index) => index);
+  return ranks.map((rank, index) => `${indent}${index === 0 ? "if" : "else if"} (
+${indent}  (centerRole && (need${rank} === role0 || need${rank} === role1 || need${rank} === role2)) ||
+${indent}  (fuelRole && (need${rank} === role3 || need${rank} === role4)) ||
+${indent}  (coolantRole && (need${rank} === role5 || need${rank} === role6))
+${indent}) {
+${indent}  adjust("craft", need${rank}, 0, 1000000);
+${indent}  adjust("craft", need${rank}, 10, 1000000);
+${indent}  adjust("craft", need${rank}, 10, 1000000);
+${indent}}`).join("\n");
 }
 
 function rankedNeedAliasSelection(aliases: readonly string[], rankCount: number, indent = "    "): string {
@@ -281,22 +312,35 @@ const stableRotation = `function decide(ctx) {
     adjust("craft", own, 1, 1000000);
   }
 ${marketNeedDeclarations(30, "  ")}
+  const centerRole = at(0, 0);
+  const fuelRole = ctx.position.y < 0 && ctx.position.x > 0 && !at(1, -1);
+  const coolantRole = ctx.position.y >= 0 && ctx.position.x < 0 && !at(-1, 1);
+  const role0 = "machine_tool";
+  const role1 = "chip";
+  const role2 = "memory";
+  const role3 = "fuel";
+  const role4 = "antenna";
+  const role5 = "coolant";
+  const role6 = "lamp";
   if (!at(-1, -1) && !at(0, 0)) {
 ${boostOrderedItems(terminalSupplyItems, "    ", 1, 3000000)}
   }
   if (recentCrafted("chassis") < 1) adjust("craft", "chassis", 1, 900000);
-  if (ctx.position.y < 0 && !at(1, -1) && !at(-1, -1)) {
+  if (ctx.position.y < 0 && !at(1, -1) && !at(-1, -1) && !at(0, -1)) {
 ${clearForeignPlan(["wheel", "fuel"])}
     if (ctx.position.x < 0) {
-      adjust("craft", "wheel", 0, 1000000);
-      adjust("craft", "wheel", 1, 1000000);
-      adjust("craft", "wheel", 1, 1000000);
-      adjust("craft", "wheel", 1, 1000000);
+      if (recentCrafted("machine_tool") < 1 && ctx.site && ctx.site.resourceItemId) {
+        if (!committed && own === "wheel") adjust("craft", "wheel", 0, -1000000);
+        adjust("craft", ctx.site.resourceItemId, 0, 1000000);
+        adjust("craft", ctx.site.resourceItemId, 10, 1000000);
+      } else {
+        adjust("craft", "wheel", 0, 1000000);
+        adjust("craft", "wheel", 1, 1000000);
+        adjust("craft", "wheel", 1, 1000000);
+        adjust("craft", "wheel", 1, 1000000);
+      }
     } else {
-      adjust("craft", "fuel", 0, 1000000);
-      adjust("craft", "fuel", 1, 1000000);
-      adjust("craft", "fuel", 1, 1000000);
-      adjust("craft", "fuel", 1, 1000000);
+      adjust("craft", "fuel", 0, -1000000);
     }
   } else if (ctx.position.y >= 0 && !at(0, 0) && !at(1, 1) && !at(-1, 0) && !at(1, 0) && !at(0, 1)) {
 ${clearForeignPlan(["coolant", "antenna", "lamp"])}
@@ -306,11 +350,11 @@ ${clearForeignPlan(["coolant", "antenna", "lamp"])}
       adjust("craft", "lamp", 1, 1000000);
       adjust("craft", "lamp", 1, 1000000);
       adjust("craft", "lamp", 1, 1000000);
+      if (recentCrafted("display") > recentCrafted("lamp")) {
+        adjust("craft", "lamp", 1, 1000000);
+      }
     } else if (ctx.position.x < 0) {
-      adjust("craft", "coolant", 0, 1000000);
-      adjust("craft", "coolant", 1, 1000000);
-      adjust("craft", "coolant", 1, 1000000);
-      adjust("craft", "coolant", 1, 1000000);
+      adjust("craft", "coolant", 0, -1000000);
     } else {
       adjust("craft", "antenna", 0, 1000000);
       adjust("craft", "antenna", 1, 1000000);
@@ -318,78 +362,64 @@ ${clearForeignPlan(["coolant", "antenna", "lamp"])}
       adjust("craft", "antenna", 1, 1000000);
     }
   } else if (at(0, 0)) {
-${clearForeignPlan(["machine_tool", "chip", "display", "radio", "robot", "vehicle"])}
+${clearForeignPlan(["machine_tool", "chip", "memory", "display", "radio", "robot", "vehicle"])}
     adjust("sell", "chip", 0, -1000000);
     adjust("craft", "paper", 0, 1000000);
-    adjust("craft", "paper", 1, 1000000);
+    adjust("craft", "paper", 10, 1000000);
     adjust("craft", "brick", 0, 1000000);
-    adjust("craft", "brick", 1, 1000000);
+    adjust("craft", "brick", 10, 1000000);
     adjust("craft", "thread", 0, 1000000);
-    adjust("craft", "thread", 1, 1000000);
-    if (count("chip") < 1) {
-      adjust("craft", "chip", 0, 1000000);
-      adjust("craft", "chip", 1, 1000000);
-      adjust("craft", "chip", 1, 1000000);
-      adjust("craft", "chip", 1, 1000000);
-    } else if (recentCrafted("machine_tool") < 1) {
-      adjust("craft", "machine_tool", 0, 1000000);
-      adjust("craft", "machine_tool", 1, 1000000);
-      adjust("craft", "machine_tool", 1, 1000000);
-      adjust("craft", "machine_tool", 1, 1000000);
-    } else if (recentCrafted("display") < 1) {
-      adjust("craft", "display", 0, 1000000);
-      adjust("craft", "display", 1, 1000000);
-      adjust("craft", "display", 1, 1000000);
-      adjust("craft", "display", 1, 1000000);
-    } else {
-      adjust("craft", "chip", 0, 1000000);
-      adjust("craft", "chip", 1, 1000000);
-      adjust("craft", "chip", 1, 1000000);
-      adjust("craft", "chip", 1, 1000000);
-    }
+    adjust("craft", "thread", 10, 1000000);
+    adjust("craft", "machine_tool", 0, -1000000);
   } else if (at(-1, -1)) {
 ${clearForeignPlan(["memory", "display", "controller", "fabricator"])}
     if (ctx.site && ctx.site.resourceItemId) {
       adjust("craft", ctx.site.resourceItemId, 0, 1000000);
-      adjust("craft", ctx.site.resourceItemId, 1, 1000000);
-      adjust("craft", ctx.site.resourceItemId, 1, 1000000);
-      adjust("craft", ctx.site.resourceItemId, 1, 1000000);
+      adjust("craft", ctx.site.resourceItemId, 10, 1000000);
+      adjust("craft", ctx.site.resourceItemId, 10, 1000000);
+      adjust("craft", ctx.site.resourceItemId, 10, 1000000);
     }
     if (recentCrafted("display") < 1) {
       if (!committed && own === "memory") adjust("craft", "memory", 0, -1000000);
       adjust("craft", "display", 0, 1000000);
-      adjust("craft", "display", 1, 1000000);
-      adjust("craft", "display", 1, 1000000);
-      adjust("craft", "display", 1, 1000000);
-      adjust("craft", "display", 1, 1000000);
-      adjust("craft", "display", 1, 1000000);
+      adjust("craft", "display", 10, 1000000);
+      adjust("craft", "display", 10, 1000000);
+      adjust("craft", "display", 10, 1000000);
+      adjust("craft", "display", 10, 1000000);
+      adjust("craft", "display", 10, 1000000);
     } else if (recentCrafted("memory") < 1) {
       if (!committed && own === "display") adjust("craft", "display", 0, -1000000);
       adjust("craft", "memory", 0, 1000000);
-      adjust("craft", "memory", 1, 1000000);
-      adjust("craft", "memory", 1, 1000000);
-      adjust("craft", "memory", 1, 1000000);
-      adjust("craft", "memory", 1, 1000000);
-      adjust("craft", "memory", 1, 1000000);
+      adjust("craft", "memory", 10, 1000000);
+      adjust("craft", "memory", 10, 1000000);
+      adjust("craft", "memory", 10, 1000000);
+      adjust("craft", "memory", 10, 1000000);
+      adjust("craft", "memory", 10, 1000000);
     } else {
       adjust("craft", "display", 0, 1000000);
-      adjust("craft", "display", 1, 1000000);
-      adjust("craft", "display", 1, 1000000);
-      adjust("craft", "display", 1, 1000000);
-      adjust("craft", "display", 1, 1000000);
-      adjust("craft", "display", 1, 1000000);
+      adjust("craft", "display", 10, 1000000);
+      adjust("craft", "display", 10, 1000000);
+      adjust("craft", "display", 10, 1000000);
+      adjust("craft", "display", 10, 1000000);
+      adjust("craft", "display", 10, 1000000);
     }
   } else if (at(1, -1)) {
 ${clearForeignPlan(["factory"])}
-    adjust("craft", "factory", 0, 1000000);
-    adjust("craft", "factory", 1, 1000000);
+    if (recentCrafted("machine_tool") < 1 && ctx.site && ctx.site.resourceItemId) {
+      if (!committed && own === "factory") adjust("craft", "factory", 0, -1000000);
+      adjust("craft", ctx.site.resourceItemId, 0, 1000000);
+      adjust("craft", ctx.site.resourceItemId, 10, 1000000);
+    } else {
+      adjust("craft", "factory", 0, 1000000);
+      adjust("craft", "factory", 1, 1000000);
+    }
   } else if (at(1, 1)) {
 ${clearForeignPlan(["magnet"])}
     adjust("craft", "magnet", 0, 1000000);
     adjust("craft", "magnet", 1, 1000000);
     adjust("craft", "magnet", 1, 1000000);
     adjust("craft", "magnet", 1, 1000000);
-  } else if (at(-1, 0)) {
+  } else if (at(-1, 0) || at(0, -1)) {
 ${clearForeignPlan(["metal"])}
     adjust("craft", "metal", 0, 1000000);
     adjust("craft", "metal", 1, 1000000);
@@ -411,12 +441,13 @@ ${clearForeignPlan(["glass", "antenna"])}
       adjust("craft", "glass", 1, 1000000);
     }
   }
-  if (recentCrafted("factory") < 1 && at(1, -1)) {
+  if (recentCrafted("factory") < 1 && recentCrafted("machine_tool") >= 1 && at(1, -1)) {
     adjust("craft", "factory", 1, 1000000);
     adjust("craft", "factory", 1, 1000000);
     adjust("craft", "factory", 1, 1000000);
     adjust("craft", "factory", 1, 1000000);
   }
+${rankedRoleHighSelection(30)}
   return choose();
 }`;
 

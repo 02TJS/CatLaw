@@ -3,8 +3,8 @@ import { CATALOG_VERSION, INTRO_RECIPE_IDS, ITEMS, RECIPE_BY_ID } from "./catalo
 import { compactGameStateHistory, createInitialState, scheduleInternalWait } from "./engine";
 import { LEGACY_SAVE_DIFFICULTY, normalizeDifficulty } from "./difficulty";
 import { validateLawSource } from "./lawInterpreter";
-import { appendLegacyEffects, freshLawPolicy, normalizeProgram } from "./lawProgram";
-import { ensureMarketBroadcasts } from "./market";
+import { appendLegacyEffects, normalizeProgram } from "./lawProgram";
+import { ensureMarketBroadcasts, repairBrokenMarketReferences } from "./market";
 import { normalizeSpeechFrequency, safeSpeechTemplates } from "./speech";
 import { createStarterScenario } from "./starterScenario";
 import type { GameState, ItemStats, LawProgram, LawVersion, Position, ResourceNode } from "./types";
@@ -24,10 +24,29 @@ async function database() {
   });
 }
 
-export async function saveGame(state: GameState): Promise<void> {
-  const snapshot = structuredClone(state);
+/**
+ * Create the only shape that may cross the persistence boundary.
+ *
+ * Law source and history are durable rules, but every evaluated law effect is
+ * process-local. The explicit deletion also cleans up saves made by versions
+ * that accidentally attached a legacy `lawPolicy` property to a cat.
+ */
+export function serializeGameState(state: GameState): GameState {
+  const snapshot = structuredClone(state) as GameState & {
+    cats: Array<GameState["cats"][number] & { lawPolicy?: unknown }>;
+  };
+  snapshot.cats = snapshot.cats.map((cat) => {
+    const persistedCat = { ...cat } as typeof cat & { lawPolicy?: unknown };
+    delete persistedCat.lawPolicy;
+    return persistedCat;
+  });
   snapshot.floatingEvents = [];
   compactGameStateHistory(snapshot);
+  return snapshot;
+}
+
+export async function saveGame(state: GameState): Promise<void> {
+  const snapshot = serializeGameState(state);
   const db = await database();
   try {
     await db.put(STORE_NAME, snapshot, SAVE_KEY);
@@ -97,7 +116,7 @@ export async function loadGame(fallbackSeed?: number): Promise<GameState> {
 }
 
 export function migrateSaveSnapshot(raw: any, fallbackSeed?: number): GameState {
-  if (!raw || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14].includes(raw.schemaVersion ?? 0) || !Array.isArray(raw.cats)) return createInitialState({ worldSeed: fallbackSeed });
+  if (!raw || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].includes(raw.schemaVersion ?? 0) || !Array.isArray(raw.cats)) return createInitialState({ worldSeed: fallbackSeed });
   const legacy = raw.schemaVersion === 1;
   const needsResourceRegionMigration = raw.schemaVersion < 3;
   const needsMarketMigration = raw.schemaVersion < 4;
@@ -108,7 +127,7 @@ export function migrateSaveSnapshot(raw: any, fallbackSeed?: number): GameState 
   const worldSeed = normalizeWorldSeed(raw.worldSeed ?? (legacy ? legacySeed(raw) : fallbackSeed ?? 0));
   const fallback = createInitialState({ worldSeed, difficulty: needsDifficultyMigration ? LEGACY_SAVE_DIFFICULTY : normalizeDifficulty(raw.difficulty) });
   const state = { ...fallback, ...structuredClone(raw) } as GameState;
-  state.schemaVersion = 14;
+  state.schemaVersion = 15;
   state.difficulty = needsDifficultyMigration
     ? LEGACY_SAVE_DIFFICULTY
     : normalizeDifficulty(raw.difficulty, fallback.difficulty);
@@ -123,20 +142,22 @@ export function migrateSaveSnapshot(raw: any, fallbackSeed?: number): GameState 
   state.commandAudit = Array.isArray(raw.commandAudit) ? raw.commandAudit.slice(-2_000) : [];
   state.treasuryCoins = Number.isFinite(state.treasuryCoins) ? state.treasuryCoins * (needsMarketMigration ? 100 : 1) : 0;
   state.totalSales = Number.isFinite(state.totalSales) ? state.totalSales * (needsMarketMigration ? 100 : 1) : 0;
-  state.cats = state.cats.map((cat, index) => ({
-    ...cat,
-    id: cat.id || `cat-${index}`,
-    createdIndex: Number.isFinite(cat.createdIndex) ? cat.createdIndex : index,
-    coins: Number.isFinite(cat.coins) ? cat.coins * (needsMarketMigration ? 100 : 1) : 0,
-    debtCents: Number.isFinite(cat.debtCents) ? cat.debtCents : 0,
-    escrowReservedCents: Number.isFinite(cat.escrowReservedCents) ? cat.escrowReservedCents : 0,
-    inventory: cat.inventory ?? {},
-    action: cat.action ?? null,
-    decisionTrace: cat.decisionTrace ?? [],
-    decisionSerial: Number.isInteger(cat.decisionSerial) && Number(cat.decisionSerial) >= 0 ? Number(cat.decisionSerial) : 0,
-    lastSpeechAt: Number.isFinite(cat.lastSpeechAt) ? cat.lastSpeechAt : null,
-    lawPolicy: cat.lawPolicy ?? freshLawPolicy(),
-  }));
+  state.cats = state.cats.map((cat, index) => {
+    const { lawPolicy: _legacyEphemeralPolicy, ...persistedCat } = cat as typeof cat & { lawPolicy?: unknown };
+    return {
+      ...persistedCat,
+      id: cat.id || `cat-${index}`,
+      createdIndex: Number.isFinite(cat.createdIndex) ? cat.createdIndex : index,
+      coins: Number.isFinite(cat.coins) ? cat.coins * (needsMarketMigration ? 100 : 1) : 0,
+      debtCents: Number.isFinite(cat.debtCents) ? cat.debtCents : 0,
+      escrowReservedCents: Number.isFinite(cat.escrowReservedCents) ? cat.escrowReservedCents : 0,
+      inventory: cat.inventory ?? {},
+      action: cat.action ?? null,
+      decisionTrace: cat.decisionTrace ?? [],
+      decisionSerial: Number.isInteger(cat.decisionSerial) && Number(cat.decisionSerial) >= 0 ? Number(cat.decisionSerial) : 0,
+      lastSpeechAt: Number.isFinite(cat.lastSpeechAt) ? cat.lastSpeechAt : null,
+    };
+  });
   for (const cat of state.cats) {
     const legacyAction = cat.action as ({ type?: string; reserved?: Record<string, number> } | null);
     if (legacyAction?.type !== "sell") continue;
@@ -245,12 +266,17 @@ export function migrateSaveSnapshot(raw: any, fallbackSeed?: number): GameState 
     ...(state.unlockedRecipes ?? []).filter((id) => RECIPE_BY_ID.has(id)),
   ])];
   if (needsReliableMarketMigration) migrateReliableMarket(state);
+  repairBrokenMarketReferences(state);
   ensureMarketBroadcasts(state);
   const starter = createStarterScenario(state.worldSeed, state.difficulty).laws;
   const starterLaws = new Map(starter.map((law) => [law.id, law]));
   const migrateLaw = (law: any, replaceStarter = true): LawVersion | null => {
     // Integer-cent settlement is an engine invariant in schema 9, not a law.
     if (law?.id === "starter-law-cent-settlement") return null;
+    const legacyEffects = Array.isArray(law?.program?.effects) ? law.program.effects : [];
+    if (law?.id === "starter-law-sales-tax"
+      || /\bsetTax\s*\(/u.test(String(law?.sourceCode ?? ""))
+      || legacyEffects.some((effect: any) => effect?.kind === "tax")) return null;
     const replacement = replaceStarter ? starterLaws.get(law?.id) : undefined;
     if (replacement) {
       return {
@@ -269,6 +295,7 @@ export function migrateSaveSnapshot(raw: any, fallbackSeed?: number): GameState 
       title: String(law?.title ?? "迁移法规"),
       playerText: String(law?.playerText ?? ""),
       summary: String(law?.summary ?? ""),
+      explanation: String(law?.explanation ?? law?.summary ?? ""),
       sourceCode,
       astHash: checked.hash,
       program,
