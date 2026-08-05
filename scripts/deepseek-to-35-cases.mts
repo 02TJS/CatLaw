@@ -164,6 +164,10 @@ if (flowEntry) flowEntry.playerText = `${flowEntry.playerText}fire的流量目�
 if (flowEntry) flowEntry.playerText = `${flowEntry.playerText}cable的流量目标使用cableDemand+1-recentCrafted('cable')，只保留一个离散边界批次。其他流量项不变。`;
 if (stableEntry) stableEntry.playerText = `${stableEntry.playerText}最终终端分工不得再调用marketNeed：上半区专用工位按x<0固定wheel、否则固定fuel；下半区(-1,1)固定lamp，其余x<0固定coolant、否则固定antenna。五类各先用multiplier 0重置再连续三次追加1000000，并清退专用工位上不属于本组的旧非订单计划。reason为order的计划仍按前述四层评分优先。`;
 if (flowEntry) flowEntry.playerText = `${flowEntry.playerText}玩家若分别公开收购一件water和一件fire留在仓库，则warehouseCount('water')与warehouseCount('fire')也是对应资源猫的最低库存信号：分别加入waterDemand+1与fireDemand+2的目标，并在本猫对应库存低于仓库数量时追加3000000。购入品不进入猫库存，也不得计入自主制作。`;
+if (flowEntry) flowEntry.playerText = `${flowEntry.playerText}最终公开库存信号为water两件、fire一件、metal一件；water的2来自一批coolant直接消耗2件water。把warehouseCount('metal')也加入metalDemand+2的目标，并在供应锚点metal库存低于该真实仓库数时追加3000000。所有仓库品仍不得进入猫库存或自主产量。`;
+if (stableEntry) stableEntry.playerText = `${stableEntry.playerText}为消除共享轮换的相位空窗，(-1,-1)最终固定memory并用一层重置加三层追加；(0,0)在recentCrafted('display')小于1时先以同样四层补display，否则才在machine_tool/chip间轮换；(1,1)的magnet也提升为四层。第二供应锚点在recentCrafted('antenna')小于1时四层补antenna，否则两层维持glass。不得改变仓库下限或价格。`;
+if (stableEntry) stableEntry.playerText = `${stableEntry.playerText}(0,0)最终使用明确三段轮转而非marketNeed：recentCrafted('machine_tool')小于1时四层补machine_tool，否则recentCrafted('display')小于1时四层补display，否则四层补chip。这个顺序必须覆盖前一句中央分工，避免display零脉冲饿死machine_tool。`;
+if (flowEntry) flowEntry.playerText = `${flowEntry.playerText}为antenna一批直接消耗2件cable，玩家再公开收购两件cable留仓；把真实warehouseCount('cable')加入cableDemand+1，并在供应锚点cable库存低于该数时追加3000000。不得把仓库cable作为猫库存或自主产量。`;
 const advancedEntry = DEEPSEEK_ACCEPTANCE_CASES.find((candidate) => candidate.id === "advanced-31-35");
 if (advancedEntry) advancedEntry.playerText = `${advancedEntry.playerText}${advancedSupplyInstruction}`;
 

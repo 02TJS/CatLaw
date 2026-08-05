@@ -173,8 +173,14 @@ const flowBalance = `function decide(ctx) {
     const metalDemand = recentCrafted("gear") * 2 + recentCrafted("cable") + recentCrafted("battery") + recentCrafted("chassis") + recentCrafted("magnet") + recentCrafted("coolant") + recentCrafted("antenna") + recentCrafted("machine_tool") + recentCrafted("memory");
     const cableDemand = recentCrafted("lamp") + recentCrafted("antenna") * 2 + recentCrafted("chip");
     const gearDemand = recentCrafted("factory") + recentCrafted("wheel") + recentCrafted("machine_tool");
-    adjust("craft", "metal", 1, (metalDemand + 2 - recentCrafted("metal")) * 900000);
-    adjust("craft", "cable", 1, (cableDemand + 1 - recentCrafted("cable")) * 900000);
+    adjust("craft", "metal", 1, (metalDemand + 2 + warehouseCount("metal") - recentCrafted("metal")) * 900000);
+    if (warehouseCount("metal") > 0 && count("metal") < warehouseCount("metal")) {
+      adjust("craft", "metal", 1, 3000000);
+    }
+    adjust("craft", "cable", 1, (cableDemand + 1 + warehouseCount("cable") - recentCrafted("cable")) * 900000);
+    if (warehouseCount("cable") > 0 && count("cable") < warehouseCount("cable")) {
+      adjust("craft", "cable", 1, 3000000);
+    }
     adjust("craft", "gear", 1, (gearDemand + 1 - recentCrafted("gear")) * 900000);
   }
   if (at(1, 0) || at(0, 1)) {
@@ -306,11 +312,29 @@ ${clearForeignPlan(["coolant", "antenna", "lamp"])}
       adjust("craft", "antenna", 1, 1000000);
     }
   } else if (at(0, 0)) {
-${clearForeignPlan(["machine_tool", "chip", "radio", "robot", "vehicle"])}
-${rankedNeedSelection(["machine_tool", "chip"], 30)}
+${clearForeignPlan(["machine_tool", "chip", "display", "radio", "robot", "vehicle"])}
+    if (recentCrafted("machine_tool") < 1) {
+      adjust("craft", "machine_tool", 0, 1000000);
+      adjust("craft", "machine_tool", 1, 1000000);
+      adjust("craft", "machine_tool", 1, 1000000);
+      adjust("craft", "machine_tool", 1, 1000000);
+    } else if (recentCrafted("display") < 1) {
+      adjust("craft", "display", 0, 1000000);
+      adjust("craft", "display", 1, 1000000);
+      adjust("craft", "display", 1, 1000000);
+      adjust("craft", "display", 1, 1000000);
+    } else {
+      adjust("craft", "chip", 0, 1000000);
+      adjust("craft", "chip", 1, 1000000);
+      adjust("craft", "chip", 1, 1000000);
+      adjust("craft", "chip", 1, 1000000);
+    }
   } else if (at(-1, -1)) {
-${clearForeignPlan(["memory", "display", "controller", "fabricator"])}
-${rankedNeedSelection(["memory", "display"], 30)}
+${clearForeignPlan(["memory", "controller", "fabricator"])}
+    adjust("craft", "memory", 0, 1000000);
+    adjust("craft", "memory", 1, 1000000);
+    adjust("craft", "memory", 1, 1000000);
+    adjust("craft", "memory", 1, 1000000);
   } else if (at(1, -1)) {
 ${clearForeignPlan(["factory"])}
     adjust("craft", "factory", 0, 1000000);
@@ -319,14 +343,23 @@ ${clearForeignPlan(["factory"])}
 ${clearForeignPlan(["magnet"])}
     adjust("craft", "magnet", 0, 1000000);
     adjust("craft", "magnet", 1, 1000000);
+    adjust("craft", "magnet", 1, 1000000);
+    adjust("craft", "magnet", 1, 1000000);
   } else if (at(-1, 0)) {
 ${clearForeignPlan(["metal"])}
     adjust("craft", "metal", 0, 1000000);
     adjust("craft", "metal", 1, 1000000);
   } else if (at(1, 0) || at(0, 1)) {
-${clearForeignPlan(["glass"])}
-    adjust("craft", "glass", 0, 1000000);
-    adjust("craft", "glass", 1, 1000000);
+${clearForeignPlan(["glass", "antenna"])}
+    if (recentCrafted("antenna") < 1) {
+      adjust("craft", "antenna", 0, 1000000);
+      adjust("craft", "antenna", 1, 1000000);
+      adjust("craft", "antenna", 1, 1000000);
+      adjust("craft", "antenna", 1, 1000000);
+    } else {
+      adjust("craft", "glass", 0, 1000000);
+      adjust("craft", "glass", 1, 1000000);
+    }
   }
   if (recentCrafted("factory") < 1 && at(1, -1)) {
     adjust("craft", "factory", 1, 1000000);

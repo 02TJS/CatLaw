@@ -1144,8 +1144,10 @@ function runSeedTo30(seed: number, drafts: Record<string, LawDraft>) {
   let terminalCapitalizationTrades: ReturnType<typeof capitalizeRotationOwners> = [];
   let warehouseFloorPurchase: ReturnType<typeof acquireWarehouseFloor> | null = null;
   const oreWarehouseFloorPurchases: Array<ReturnType<typeof acquireWarehouseFloor>> = [];
-  let waterWarehouseFloorPurchase: ReturnType<typeof acquireWarehouseFloor> | null = null;
+  const waterWarehouseFloorPurchases: Array<ReturnType<typeof acquireWarehouseFloor>> = [];
   let fireWarehouseFloorPurchase: ReturnType<typeof acquireWarehouseFloor> | null = null;
+  let metalWarehouseFloorPurchase: ReturnType<typeof acquireWarehouseFloor> | null = null;
+  const cableWarehouseFloorPurchases: Array<ReturnType<typeof acquireWarehouseFloor>> = [];
   const item30StageIndex = stages.push(stage(main, seed, "物流法规完成并稳定制作22—30", () => {
     const deadline = simulatedNow(main) + LOGISTICS_LIMIT_MS;
     for (let itemIndex = 23; itemIndex <= 30 && simulatedNow(main) < deadline; itemIndex += 1) {
@@ -1181,8 +1183,12 @@ function runSeedTo30(seed: number, drafts: Record<string, LawDraft>) {
       warehouseFloorPurchase = acquireWarehouseFloor(main, mainPlayer, "plank");
       oreWarehouseFloorPurchases.push(acquireWarehouseFloor(main, mainPlayer, "ore"));
       oreWarehouseFloorPurchases.push(acquireWarehouseFloor(main, mainPlayer, "ore"));
-      waterWarehouseFloorPurchase = acquireWarehouseFloor(main, mainPlayer, "water");
+      waterWarehouseFloorPurchases.push(acquireWarehouseFloor(main, mainPlayer, "water"));
+      waterWarehouseFloorPurchases.push(acquireWarehouseFloor(main, mainPlayer, "water"));
       fireWarehouseFloorPurchase = acquireWarehouseFloor(main, mainPlayer, "fire");
+      metalWarehouseFloorPurchase = acquireWarehouseFloor(main, mainPlayer, "metal");
+      cableWarehouseFloorPurchases.push(acquireWarehouseFloor(main, mainPlayer, "cable"));
+      cableWarehouseFloorPurchases.push(acquireWarehouseFloor(main, mainPlayer, "cable"));
       const repealed = mainPlayer.repeal(capitalization.law.id);
       if (!repealed.ok) throw new Error(`终端责任猫资本化法废止失败：${repealed.error}`);
       const flowBalance = mainPlayer.enact(drafts["flow-balance-1-30"], main.laws.length);
@@ -1199,8 +1205,10 @@ function runSeedTo30(seed: number, drafts: Record<string, LawDraft>) {
     terminalCapitalizationTrades,
     warehouseFloorPurchase,
     oreWarehouseFloorPurchases,
-    waterWarehouseFloorPurchase,
+    waterWarehouseFloorPurchases,
     fireWarehouseFloorPurchase,
+    metalWarehouseFloorPurchase,
+    cableWarehouseFloorPurchases,
     terminalAutonomousRamp,
   }))) - 1;
   const missingAfterLogistics = missingThrough(main, 30);

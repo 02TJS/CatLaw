@@ -1,6 +1,6 @@
 {
   "name": "cat-law-workshop",
-  "version": "0.14.26",
+  "version": "0.14.27",
   "private": true,
   "type": "module",
   "main": "desktop/main.cjs",
@@ -11,6 +11,7 @@
     "build": "npm run build:web && npm run build:server",
     "package:win": "npm run package:local",
     "package:local": "npm run build && electron-builder --win --x64 --dir --config.electronDist=electron-runtime-43.2.0",
+    "package:portable": "npm run build && electron-builder --win portable --x64 --config.electronDist=electron-runtime-43.2.0 --config.compression=maximum --config.artifactName=CatWorkshop-${version}-portable.${ext}",
     "start": "tsx server/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",

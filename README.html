@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>猫咪工坊 0.14.26 · 自适应桌宠控件</title>
+  <title>猫咪工坊 0.14.27 · 交易触发成就回顾</title>
   <style>
     :root { color-scheme: light; --ink:#172033; --muted:#667085; --paper:#fff; --card:#f8faf9; --line:#dfe4e1; --accent:#c58b1b; --green:#3f8f5d; }
     * { box-sizing: border-box; }
@@ -28,7 +28,7 @@
 </head>
 <body>
 <main>
-  <span class="badge">0.14.26 · 自适应桌宠控件</span>
+  <span class="badge">0.14.27 · 交易触发成就回顾</span>
   <h1>🐾 猫咪工坊</h1>
   <p class="lead">一款逻辑法驱动的空间自动化制造沙盒。每只猫都短视且利己：基础只观察两格内工位，却能署名发布全局即时广播；玩家既可通过自然语言修改共享决策逻辑，也可把仓库商品建成覆盖周边工位的地标。</p>
 
@@ -121,7 +121,7 @@
   <div class="grid">
     <div class="card"><strong>首次制作成就</strong>65 种商品各自拥有一次首次制作成就。弹窗显示商品 emoji、名称与对应品质色，并持久保存已解锁和已确认状态。</div>
     <div class="card"><strong>产值双里程碑</strong>最近逻辑一分钟的“产值/分”和完工时锁定价格累计的“总产值”分别拥有递进档位；主界面同时显示实时产值/分和累计总产值。</div>
-    <div class="card"><strong>高级优先确认队列</strong>同时积累的成就按等级从高到低逐条弹出，每项都由“我知道了！”明确结束。批量交易提示先显示，结束后成就队列自动接替，不互相遮挡。</div>
+    <div class="card"><strong>只在主交易后集中回顾</strong>制作、产值/分和总产值成就平时只在后台累计，不会自行遮挡工坊。只有成功点击“一键购买”或“购买并转售”后才开启回顾；先完整显示批量交易提示，再按等级从高到低逐条弹出，每项都由“我知道了！”明确结束。失败交易、仓库单品出售和单纯推进时间都不会触发弹窗。</div>
     <div class="card"><strong>轻量庆祝特效</strong>成就卡使用商品品质渐变、奖章光环和星芒散射；系统开启减少动态效果时自动关闭位移与循环动画，小窗口中卡片可滚动。</div>
     <div class="card"><strong>生产关系从开局记录</strong>生产计划建立和商品完工时即累计计划者、制作次数、投入来源和成品去向，与滤镜是否打开无关；聚合记录随 IndexedDB 存档，并且不受市场历史压缩影响。</div>
     <div class="card"><strong>所选商品专属图</strong>“生产稳定”只显示当前下拉框商品：需求投入与目标商品使用地板 emoji 标注，投入来源和成品去向用简洁抛物线连接，线宽和箭头大小按累计次数的 <code>log2</code> 缩放。</div>
@@ -195,7 +195,8 @@ npm run dev</code></pre>
   <p>内存对照：1000 猫运行 60 模拟秒时，Heap Total 从 165.96 MB 降至 107.21 MB，RSS 从 270.75 MB 降至 193.43 MB；默认新档推进 3 模拟小时从约 29.1 秒降到 13.5 秒，最终状态和队列结果一致。</p>
 
   <h2>Windows 桌面版</h2>
-  <p><strong>本地 0.14.26 不需要安装：</strong>双击 <code>release\win-unpacked-0.14.26\猫咪工坊.exe</code> 即可脱离 Toolbox 独立运行，不需要另行安装 Node.js、Vite 或浏览器。请保留整个 <code>win-unpacked-0.14.26</code> 目录，不能只复制其中的 EXE。</p>
+  <p><strong>0.14.27 单文件便携版不需要安装：</strong>在空白 Windows 10/11 x64 电脑上双击 <code>CatWorkshop-0.14.27-portable.exe</code> 即可运行。它内置 Electron/Chromium、Node 运行时和本地服务，不需要另装 Node.js、Python、浏览器、WebView2 或 VC++ 运行库，不安装程序，也不写入注册表；DeepSeek 密钥只影响可选的法规编译。</p>
+  <p>整目录备用版位于 <code>release\win-unpacked-0.14.27\猫咪工坊.exe</code>。使用该版本时必须保留整个 <code>win-unpacked-0.14.27</code> 目录，不能只复制其中的 EXE。</p>
   <p>游戏会立即创建以 760×720 为 100% 基准的无边框置顶桌宠窗口；普通模式滚轮整体缩放窗口、左拖移动窗口。点击底栏“地图与开拓”后，滚轮与拖动改为操作地图，单击相邻地块仍可开拓。点击“配方”由系统默认浏览器打开大尺寸 HTML 流程图。内置服务在默认端口被占用时自动尝试后续端口，启动步骤写入 EXE 同目录的 <code>CatWorkshop-startup.log</code>，且不记录密钥。</p>
 
   <h2>核心规则</h2>
@@ -230,7 +231,7 @@ npm start</code></pre>
   <div class="notice">请轮换任何曾经出现在聊天记录中的 DeepSeek 密钥。新密钥只应保存在未提交的本地 <code>.env</code> 中，不能写进浏览器代码、存档、日志或 README。</div>
   <p>模型生成的共享逻辑会执行，但只在 Acorn 白名单解释器中读取基础半径 2、受量子信标提升到最高 5 的只读快照。每条法规源码最多 24 KiB、4096 个 AST 节点、64 层 AST 深度和 10000 个确定性解释步骤；它不能访问 DOM、网络、存储、时间、随机数或原型链，也不使用 <code>eval</code> 或 <code>new Function</code>。</p>
 
-  <footer>猫咪工坊 0.14.26 · 自适应桌宠控件 · Electron 透明桌宠</footer>
+  <footer>猫咪工坊 0.14.27 · 交易触发成就回顾 · Electron 透明桌宠</footer>
 </main>
 </body>
 </html>
