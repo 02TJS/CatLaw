@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>猫咪工坊：再生循环复杂度证明分析</title>
+<style>
+:root{--paper:#f7f7f3;--card:#fff;--ink:#17201c;--muted:#5f6b64;--line:#d8ded9;--green:#176b48;--green2:#e8f4ed;--amber:#925d00;--amber2:#fff4d8;--red:#9c2f2f;--red2:#fdeaea;--blue:#205f8f;--blue2:#e9f3fa;--mono:#10251b}
+*{box-sizing:border-box} html{scroll-behavior:smooth} body{margin:0;background:var(--paper);color:var(--ink);font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;line-height:1.68}
+main{width:min(1180px,calc(100% - 32px));margin:24px auto 72px} header{padding:42px;border:1px solid var(--line);border-radius:24px;background:linear-gradient(135deg,#fff 10%,#eaf5ee)}
+h1{font-size:clamp(30px,5vw,58px);line-height:1.08;margin:0 0 16px;letter-spacing:-.04em} h2{font-size:28px;margin:0 0 16px} h3{font-size:20px;margin:26px 0 10px} p{margin:10px 0} a{color:var(--blue)}
+.eyebrow{color:var(--green);font-weight:750;letter-spacing:.08em;text-transform:uppercase} .lead{font-size:19px;max-width:900px} .meta{color:var(--muted);font-size:14px}
+nav{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 0} nav a{text-decoration:none;background:#fff;border:1px solid var(--line);padding:7px 11px;border-radius:999px;font-size:13px}
+section{margin-top:20px;padding:28px;background:var(--card);border:1px solid var(--line);border-radius:20px;box-shadow:0 8px 30px rgba(23,32,28,.035)}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px} .metric{padding:16px;border-radius:14px;border:1px solid var(--line);background:#fbfcfa} .metric b{display:block;font-size:26px;line-height:1.15} .metric span{font-size:13px;color:var(--muted)}
+.callout{padding:14px 16px;border-left:4px solid var(--blue);background:var(--blue2);border-radius:8px} .ok{border-color:var(--green);background:var(--green2)} .warn{border-color:var(--amber);background:var(--amber2)} .bad{border-color:var(--red);background:var(--red2)}
+.formula{font-family:Cambria,"Times New Roman",serif;font-size:18px;background:#f4f7f4;border:1px solid var(--line);border-radius:10px;padding:13px 16px;overflow:auto} code,.mono{font-family:"Cascadia Mono",Consolas,monospace;color:var(--mono)} .break{overflow-wrap:anywhere}
+.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px} table{border-collapse:collapse;width:100%;min-width:720px;font-size:14px} th,td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top} th{background:#edf2ee;position:sticky;top:0} tr:last-child td{border-bottom:0}
+.badge{display:inline-block;padding:3px 8px;border-radius:99px;font-size:12px;font-weight:700} .proved{background:var(--green2);color:var(--green)} .numeric{background:var(--blue2);color:var(--blue)} .censored{background:var(--amber2);color:var(--amber)} .open{background:var(--red2);color:var(--red)}
+ol.proof li{margin:10px 0} details{border:1px solid var(--line);border-radius:10px;padding:10px 13px;margin:8px 0} summary{cursor:pointer;font-weight:700} footer{color:var(--muted);font-size:13px;margin-top:18px;text-align:center}
+@media(max-width:800px){main{width:min(100% - 18px,1180px);margin-top:9px}header,section{padding:20px;border-radius:15px}.grid{grid-template-columns:1fr 1fr}}
+@media(max-width:480px){.grid{grid-template-columns:1fr}h2{font-size:23px}}
+@media print{body{background:#fff}main{width:100%;margin:0}section,header{box-shadow:none;break-inside:avoid}nav{display:none}}
+</style>
+</head>
+<body><main>
+<header>
+  <div class="eyebrow">Cat Workshop · formal analysis</div>
+  <h1>再生循环复杂度<br>证明与数值证书</h1>
+  <p class="lead">本报告把“固有工作量”“最优循环时间”和“法规协调倍率”拆成三个可证伪对象。没有把 50% 税、25 分摩擦、2% 借贷费或任何经验系数塞进理论；价格与法规仅在真实轨迹层出现。</p>
+  <p class="meta">计算主机：5090_Lian / marathon · Python 3.10.18 · SciPy 1.15.3 · 8进程 · 难度5 · 5秒/动作 · 1000个固定世界</p>
+  <nav><a href="#verdict">结论边界</a><a href="#definitions">定义</a><a href="#work">固有工作量</a><a href="#period">离散最优周期</a><a href="#growth">无限族增长</a><a href="#actual">真实法规轨迹</a><a href="#goals">阶段目标</a><a href="#reproduce">复现</a></nav>
+</header>
+
+<section id="verdict">
+<h2>1. 先给结论：哪些已经证明</h2>
+<div class="grid">
+  <div class="metric"><b>5,000</b><span>整数 MILP 世界×阶段证书</span></div>
+  <div class="metric"><b>0</b><span>MIP 失败 / 非零 gap / 整数残差</span></div>
+  <div class="metric"><b>1.166158×</b><span>无限族每新增一个模板的严格渐近倍率</span></div>
+  <div class="metric"><b>39/200</b><span>当前法规第15项严格再生证书（最新搜索）</span></div>
+</div>
+<h3>结论分层</h3>
+<div class="table-wrap"><table class=""><thead><tr><th>对象</th><th>状态</th><th>可以说什么</th><th>不能说什么</th></tr></thead><tbody><tr><td>真实65项固有工作量</td><td><span class="badge proved">解析证明</span></td><td>反向拓扑递推给出唯一逐分量最小整数动作数。</td><td>不等于市场实际用时。</td></tr><tr><td>可扩展无限配方族</td><td><span class="badge proved">解析证明</span></td><td>周期模板族的工作量随商品序号、依赖深度指数增长。</td><td>不是说任意配方树都必然指数增长。</td></tr><tr><td>10/15/19/20/22物理最优周期</td><td><span class="badge numeric">求解器证书</span></td><td>1000世界全部得到离散5秒动作槽最优解。</td><td>不包含订单、信用、法规选择和建筑。</td></tr><tr><td>当前法规真实轨迹</td><td><span class="badge censored">有限搜索</span></td><td>通过世界可报告严格 H；其余是截至 2,400 秒的右删失。</td><td>右删失不等于数学不可达。</td></tr><tr><td>完整10→15→20→22→30→35游戏目标</td><td><span class="badge open">尚未证明</span></td><td>本报告能定位物理下界与协调损失。</td><td>不能用物理可行性冒充法规稳定生产。</td></tr></tbody></table></div>
+<div class="callout bad"><b>对当前价格/法规的直接判决：</b> 最新轨迹中第10项全世界通过=否，第15项全世界通过=否。因此这份分析<b>没有</b>证明“当前方案稳定达到15”；它精确证明了失败不是物理动作下界导致，而是债务、队列或库存漂移等协调层问题。</div>
+</section>
+
+<section id="definitions">
+<h2>2. 三个定义，不引入启发参数</h2>
+<h3>2.1 配方与目标篮子</h3>
+<p>按拓扑顺序记商品为 <code>1…N</code>。配方 <code>j</code> 消耗商品 <code>i</code> 的整数数量为 <code>q[j,i]</code>。目标篮子要求前 N 项各出现一个净新增单位，即 <code>b[i]=1</code>。</p>
+<h3>2.2 固有工作量 W<sub>N</sub><sup>*</sup></h3>
+<div class="formula">c<sub>i</sub> = b<sub>i</sub> + Σ<sub>j&gt;i</sub> q<sub>j,i</sub> c<sub>j</sub>，&nbsp; W<sub>N</sub><sup>*</sup> = Σ<sub>i=1…N</sub> c<sub>i</sub></div>
+<p><code>c[i]</code> 是为了做出完整篮子且补回所有被消耗库存，至少必须执行的第 i 项采集/制作次数。它只由配方 DAG 决定，不含价格、税、距离、猫数或法规。</p>
+<h3>2.3 最优离散再生周期 P<sub>N</sub><sup>*</sup>(G)</h3>
+<div class="formula">P<sub>N</sub><sup>*</sup>(G) = τ · K<sub>N</sub><sup>*</sup>(G)，其中 τ=5 秒，K<sup>*</sup> 是整数制作与逐格运输流下的最小“单猫最大动作槽数”。</div>
+<p>这是充分爬坡后的最优物理流水线周期：每周期净新增前 N 项各一件，并补回全部投入。允许用有限在制品缓冲启动，但不允许瞬移、分数动作或一只猫同时执行两个动作。</p>
+<h3>2.4 法规协调倍率 H<sub>N</sub><sup>L</sup>(G)</h3>
+<div class="formula">H<sub>N</sub><sup>L</sup>(G) = P<sub>N</sub><sup>L</sup>(G) / P<sub>N</sub><sup>*</sup>(G) ≥ 1</div>
+<p><code>P^L</code> 只从冻结法规与玩家操作后的三窗口真实轨迹证书取得。通过项必须每种至少新做3次、跨至少2窗、末窗仍产出、库存不净消耗、债务与队列不漂移。没在搜索上限内找到证书时只记“右删失”，不伪造 H。</p>
+</section>
+
+<section id="work">
+<h2>3. W<sub>N</sub><sup>*</sup> 的解析证明</h2>
+<ol class="proof">
+  <li><b>末端开始。</b> 每个目标商品至少净新增一件，所以最后一项至少制作 <code>b[N]</code> 次。</li>
+  <li><b>反向归纳。</b> 假定所有 <code>j&gt;i</code> 的最低制作次数已确定。它们确定地消耗 <code>Σ q[j,i]c[j]</code> 件 i；若末库存不低于初库存且还要净新增 <code>b[i]</code>，任何合法轨迹都必须满足上式。</li>
+  <li><b>可达性。</b> 按正向拓扑顺序采集/制作递推得到的次数，能补齐所有消耗并留下目标篮子，因此下界可达。</li>
+  <li><b>唯一逐分量最小。</b> 所有系数和动作成本非负；任何一个分量少于递推值都会在该商品的守恒式产生赤字。故解既最小又唯一。</li>
+</ol>
+<div class="table-wrap"><table class=""><thead><tr><th>前N项</th><th>依赖深度</th><th>一篮子固有动作 W*</th><th>三篮子最低动作</th><th>离散周期最小/中位/最大</th><th>最优周期内运输最小/中位/最大</th></tr></thead><tbody><tr><td>10</td><td>1</td><td>18</td><td>54</td><td>20.0 秒</td><td>30.0 秒</td><td>30.0 秒</td><td>1 / 4 / 6</td></tr><tr><td>15</td><td>3</td><td>47</td><td>141</td><td>40.0 秒</td><td>100.0 秒</td><td>100.0 秒</td><td>11 / 25 / 38</td></tr><tr><td>19</td><td>3</td><td>80</td><td>240</td><td>70.0 秒</td><td>160.0 秒</td><td>160.0 秒</td><td>33 / 59 / 82</td></tr><tr><td>20</td><td>4</td><td>110</td><td>330</td><td>100.0 秒</td><td>210.0 秒</td><td>210.0 秒</td><td>53 / 89 / 120</td></tr><tr><td>22</td><td>4</td><td>145</td><td>435</td><td>130.0 秒</td><td>260.0 秒</td><td>260.0 秒</td><td>74 / 123 / 164</td></tr></tbody></table></div>
+<p class="callout">例如前15项稳定观察至少需要 <b>141次</b>固有采集/制作，不是“15项×3=45次”。因为玻璃、金属、齿轮等会反复消耗木材、矿石与中间件；141由守恒方程推出，没有人工倍率。</p>
+</section>
+
+<section id="period">
+<h2>4. P<sub>N</sub><sup>*</sup> 的整数模型与双向证明</h2>
+<p>对每只猫 c、商品 i、相邻有向边 c→d，设整数变量：</p>
+<ul><li><code>x[c,i]</code>：本周期制作 i 的次数；</li><li><code>y[c,d,i]</code>：本周期把 i 从 c 送到 d 的逐跳次数；</li><li><code>s[c,i]</code>：周期结束留在 c 的目标净增量；</li><li><code>K</code>：任意一只猫最多占用的动作槽。</li></ul>
+<div class="formula">x<sub>c,i</sub> + Σ<sub>d→c</sub>y<sub>d,c,i</sub> − Σ<sub>c→d</sub>y<sub>c,d,i</sub> − Σ<sub>j&gt;i</sub>q<sub>j,i</sub>x<sub>c,j</sub> − s<sub>c,i</sub> = 0<br>Σ<sub>c</sub>s<sub>c,i</sub>=1<br>Σ<sub>i</sub>x<sub>c,i</sub> + Σ<sub>d,i</sub>y<sub>c,d,i</sub> ≤ K</div>
+<p>资源制作变量只在能采集对应资源的猫上存在；所有变量为非负整数。先最小化 K，再固定 K 最小化总运输，消除不影响 K 的无用环流。</p>
+<h3>下界</h3><p>把任何合法再生流水线在一个周期内的动作按猫、商品、边求和，必然满足上述守恒和容量约束。因此任何流水线的槽数都不小于 MILP 最优 K。</p>
+<h3>上界</h3><p>对一个整数最优解，把每只猫不超过 K 个动作任意放入 K 个槽。逐项计算一个周期内的库存前缀和，把启动缓冲设为“最负前缀”的相反数；该缓冲有限。守恒式保证周期末每项库存不低于周期初，因此相同 K 槽动作模式可以持续重复。故下界可达，<code>P*=5000K</code>。</p>
+<h3>1000世界完整离散分布</h3>
+<div class="table-wrap"><table class=""><thead><tr><th>阶段</th><th>K槽频数（槽数:世界数）</th></tr></thead><tbody><tr><td>10</td><td><span class="mono">4槽:329界 · 6槽:671界</span></td></tr><tr><td>15</td><td><span class="mono">8槽:36界 · 9槽:19界 · 11槽:274界 · 20槽:671界</span></td></tr><tr><td>19</td><td><span class="mono">14槽:8界 · 15槽:28界 · 16槽:4界 · 17槽:15界 · 23槽:274界 · 32槽:671界</span></td></tr><tr><td>20</td><td><span class="mono">20槽:17界 · 21槽:8界 · 22槽:4界 · 23槽:26界 · 31槽:274界 · 42槽:671界</span></td></tr><tr><td>22</td><td><span class="mono">26槽:8界 · 27槽:9界 · 28槽:8界 · 29槽:11界 · 30槽:4界 · 31槽:15界 · 47槽:274界 · 52槽:671界</span></td></tr></tbody></table></div>
+<h3>连续LP为何不再冒充精确周期</h3>
+<div class="table-wrap"><table class=""><thead><tr><th>阶段</th><th>最大取整差(槽)</th><th>平均差</th><th>整数/流体中位比</th><th>整数/流体最大比</th><th>K=ceil(LP)覆盖1000界</th></tr></thead><tbody><tr><td>10</td><td>0</td><td>0</td><td>1</td><td>1</td><td>是</td></tr><tr><td>15</td><td>0.750000</td><td>0.022750</td><td>1</td><td>1.090909</td><td>是</td></tr><tr><td>19</td><td>0.750000</td><td>0.029000</td><td>1</td><td>1.052632</td><td>是</td></tr><tr><td>20</td><td>0.750000</td><td>0.025500</td><td>1</td><td>1.033708</td><td>是</td></tr><tr><td>22</td><td>0.777778</td><td>0.024176</td><td>1</td><td>1.026616</td><td>是</td></tr></tbody></table></div>
+<p>连续 LP 仍有价值：它给出对偶与流量瓶颈。但分数动作不是游戏动作，故报告只用整数 MILP 的 K 作为 P<sup>*</sup> 分母。</p>
+</section>
+
+<section id="growth">
+<h2>5. 可扩展无限族：为何是指数增长</h2>
+<p>真实65项保持完全不变。第66项起，按顺序周期重放真实第7–65项的59个非资源配方模板；每个模板保留每条输入的数量和“依赖索引距离”。例如原模板在 i 使用 i−δ，则新位置 n 使用 n−δ。资源种类、动作种类和建筑机制均不增加。</p>
+<div class="grid">
+  <div class="metric"><b>59</b><span>模板周期长度</span></div>
+  <div class="metric"><b>45</b><span>最大依赖位移</span></div>
+  <div class="metric"><b>8</b><span>单配方最大投入单位</span></div>
+  <div class="metric"><b>8,683.284×</b><span>每59模板严格增长下界</span></div>
+</div>
+<h3>Collatz–Wielandt 证书</h3>
+<p>把最近45项工作量组成正向量 v，一个59模板周期对应非负线性算子 M。对脚本生成的严格正向量 v：</p>
+<div class="formula">min<sub>i</sub>(Mv)<sub>i</sub>/v<sub>i</sub> ≤ ρ(M) ≤ max<sub>i</sub>(Mv)<sub>i</sub>/v<sub>i</sub></div>
+<p>下界的精确有理数大于1，因此不是指数曲线拟合，而是谱半径的严格证书。每模板下界为 <b>1.166157893280</b>。实际递推还含正的“+1制作动作”，只会提高工作量；把常数维增广后谱半径仍由 ρ(M)&gt;1 主导。</p>
+<p>同时深度满足 <code>Ω(n/45)</code> 且 <code>O(n)</code>，所以商品序号 n 与依赖深度 d 线性等价。单件工作量 w<sub>n</sub> 指数增长；前缀篮子 <code>W*_N=Σw_i</code> 也具有相同指数阶。</p>
+<div class="table-wrap"><table class=""><thead><tr><th>族前缀项数</th><th>依赖深度</th><th>末项工作量位数</th><th>完整前缀篮子位数</th><th>末项工作量（长数截断）</th></tr></thead><tbody><tr><td>65</td><td>17</td><td>5</td><td>6</td><td><span class="mono break">36192</span></td></tr><tr><td>66</td><td>14</td><td>4</td><td>6</td><td><span class="mono break">2491</span></td></tr><tr><td>124</td><td>33</td><td>9</td><td>9</td><td><span class="mono break">314163279</span></td></tr><tr><td>183</td><td>49</td><td>13</td><td>13</td><td><span class="mono break">2727967382346</span></td></tr><tr><td>242</td><td>65</td><td>17</td><td>17</td><td><span class="mono break">23687716021415921</span></td></tr><tr><td>301</td><td>81</td><td>21</td><td>21</td><td><span class="mono break">205687170436385246218…</span></td></tr><tr><td>537</td><td>145</td><td>37</td><td>37</td><td><span class="mono break">116934662724375215750888…</span></td></tr><tr><td>1009</td><td>273</td><td>68</td><td>69</td><td><span class="mono break">377933504368980252043189…</span></td></tr><tr><td>1481</td><td>401</td><td>100</td><td>100</td><td><span class="mono break">122148326592679432354538…</span></td></tr><tr><td>1953</td><td>529</td><td>131</td><td>132</td><td><span class="mono break">394784096062177219884075…</span></td></tr><tr><td>2425</td><td>657</td><td>163</td><td>163</td><td><span class="mono break">127594447546832793807459…</span></td></tr></tbody></table></div>
+<details><summary>精确谱证书与模板哈希</summary><p class="mono break">lower=14486931679940178094261529269985282014002134847638337192970847662778413041099387585460117990567105512951599144962803173502195/1668370092912444926402822078375074508553828771508970462737433169883884052475873449990010496418866803647204024926633736981</p><p class="mono break">upper=7458000250850057116030062847718149456956654171139707973215603333875785258404202666048373334890860118872830818663668042763785/858891644300425657412939479439981620887899542589632621208686635667973745179410098134755048460016906008881610865954284994</p><p class="mono break">templates.sha256=6116638b2f13c1ee164f96e973154a7a88e05daf3baf4764c96eecef8d25d02d</p><p>分子分母均直接保存在机器 JSON 中；十进制上下界显示相同只是浮点打印精度，不是把两者宣称为代数相等。</p></details>
+<div class="callout warn"><b>措辞边界：</b>这里证明的是“这个明确定义、包含真实65项为严格前缀的配方族”的生产工作复杂度。它不是对所有可能未来配方设计的普遍定理，也不是说求解器运行时间必然指数增长。</div>
+</section>
+
+<section id="actual">
+<h2>6. 真实法规轨迹：H 只能从通过证书的世界计算</h2>
+<div class="table-wrap"><table class=""><thead><tr><th>场景/搜索上限</th><th>阶段</th><th>严格通过</th><th>爬坡失败</th><th>右删失</th><th>实际窗 最小/中位/最大</th><th>严格H 最小/中位/最大</th><th>终点失败原因计数</th></tr></thead><tbody><tr><td>当前版本·2400秒</td><td>10</td><td>89/200</td><td>0</td><td>111</td><td>105 / 110 / 160 秒</td><td>3.500 / 3.667 / 5.333</td><td><span class="mono">debt-increase:111, queue-growth:102</span></td></tr><tr><td>当前版本·2400秒</td><td>15</td><td>39/200</td><td>20</td><td>141</td><td>95 / 125 / 230 秒</td><td>1.100 / 1.950 / 3.636</td><td><span class="mono">debt-increase:141, inventory-drawdown:35, queue-growth:61</span></td></tr><tr><td>仅换定理价格·当前引擎·2400秒</td><td>10</td><td>138/200</td><td>0</td><td>62</td><td>75 / 110 / 160 秒</td><td>3.500 / 4.333 / 7</td><td><span class="mono">debt-increase:62, queue-growth:62</span></td></tr><tr><td>仅换定理价格·当前引擎·2400秒</td><td>15</td><td>55/200</td><td>0</td><td>145</td><td>85 / 135 / 255 秒</td><td>1 / 1.909 / 4.636</td><td><span class="mono">inventory-drawdown:39, debt-increase:145, queue-growth:83</span></td></tr><tr><td>定理价格候选·600秒</td><td>10</td><td>138/200</td><td>0</td><td>62</td><td>75 / 110 / 160 秒</td><td>3.500 / 4.333 / 7</td><td><span class="mono">debt-increase:62, queue-growth:57</span></td></tr><tr><td>定理价格候选·600秒</td><td>15</td><td>55/200</td><td>0</td><td>145</td><td>85 / 135 / 255 秒</td><td>1 / 1.909 / 4.636</td><td><span class="mono">inventory-drawdown:24, debt-increase:145, queue-growth:82</span></td></tr><tr><td>定理价格候选·2400秒</td><td>10</td><td>138/200</td><td>0</td><td>62</td><td>75 / 110 / 160 秒</td><td>3.500 / 4.333 / 7</td><td><span class="mono">debt-increase:62, queue-growth:62</span></td></tr><tr><td>定理价格候选·2400秒</td><td>15</td><td>55/200</td><td>0</td><td>145</td><td>85 / 135 / 255 秒</td><td>1 / 1.909 / 4.636</td><td><span class="mono">inventory-drawdown:39, debt-increase:145, queue-growth:83</span></td></tr></tbody></table></div>
+<p>隔离的定理价格候选在600秒运行中第10项通过138/200，第15项通过55/200。失败主要由债务增加和队列增长触发，第15项另有木材/金属净消耗。候选的2400秒扩展已经纳入上表。 当前源码哈希匹配的2400秒结果也已纳入。</p>
+<div class="callout bad"><b>候选的2400秒扩展没有解除任何右删失：</b>阶段10仍为138/200，阶段15仍为55/200，所有新增通过数均为0。62/62个阶段10删失世界与145/145个阶段15删失世界的债务在三个连续窗口中都严格增加；三窗债务增量中位数分别为阶段10的16.82/41.97/43.78金币，以及阶段15的133.11/248.22/250.28金币。阶段15库存净消耗失败还从24界增至39界（木材21→36，金属3→4）。这构成持续漂移的强数值证据，但仍不冒充无限时间不可达证明。</div>
+<div class="callout warn"><b>当前版本债务漂移审计：</b>阶段10删失111界，其中111界三窗债务全为正增量，中位数为18.18/36.79/41.97金币；阶段15删失141界，其中141界三窗全正，中位数为226.40/395.00/395.51金币。这是有限观察漂移，不是无限期不可达定理。</div>
+<div class="callout warn"><b>仅替换定理价格的当前引擎配对组债务漂移审计：</b>阶段10删失62界，其中62界三窗债务全为正增量，中位数为16.82/41.97/43.78金币；阶段15删失145界，其中145界三窗全正，中位数为133.11/248.22/250.28金币。这是有限观察漂移，不是无限期不可达定理。</div>
+<div class="callout ok"><b>纯价格配对：</b>当前引擎与行为哈希保持不变，只替换价格表后，阶段10严格通过由89/200变为138/200，阶段15由39/200变为55/200，阶段15爬坡失败由20变为0。这才是可归因于价格的配对结果；旧隔离候选因引擎哈希不同仅作复核。</div>
+<h3>配对组实际替换的前22项价格</h3>
+<p>基础资源不变；定理向量主要降低中间件价格。待检验假说是：这会减少单个高价中间件长期垄断猫的贪心选择。这里先列替换值，再由配对结果判断，不把“降低”预设为正确。</p>
+<div class="table-wrap"><table class=""><thead><tr><th>序号</th><th>商品ID</th><th>当前基础价</th><th>定理候选价</th><th>候选/当前</th></tr></thead><tbody><tr><td>1</td><td>wood</td><td>1</td><td>1</td><td>1.000×</td></tr><tr><td>2</td><td>stone</td><td>1</td><td>1</td><td>1.000×</td></tr><tr><td>3</td><td>sand</td><td>1</td><td>1</td><td>1.000×</td></tr><tr><td>4</td><td>water</td><td>1</td><td>1</td><td>1.000×</td></tr><tr><td>5</td><td>fiber</td><td>1</td><td>1</td><td>1.000×</td></tr><tr><td>6</td><td>ore</td><td>1</td><td>1</td><td>1.000×</td></tr><tr><td>7</td><td>fire</td><td>4</td><td>3</td><td>0.750×</td></tr><tr><td>8</td><td>plank</td><td>11</td><td>4</td><td>0.364×</td></tr><tr><td>9</td><td>brick</td><td>7</td><td>6</td><td>0.857×</td></tr><tr><td>10</td><td>thread</td><td>5</td><td>4</td><td>0.800×</td></tr><tr><td>11</td><td>paper</td><td>14</td><td>4</td><td>0.286×</td></tr><tr><td>12</td><td>tools</td><td>18</td><td>7</td><td>0.389×</td></tr><tr><td>13</td><td>glass</td><td>8</td><td>8</td><td>1.000×</td></tr><tr><td>14</td><td>metal</td><td>10</td><td>8</td><td>0.800×</td></tr><tr><td>15</td><td>gear</td><td>24</td><td>19</td><td>0.792×</td></tr><tr><td>16</td><td>cable</td><td>36</td><td>14</td><td>0.389×</td></tr><tr><td>17</td><td>battery</td><td>30</td><td>11</td><td>0.367×</td></tr><tr><td>18</td><td>chemical</td><td>33</td><td>13</td><td>0.394×</td></tr><tr><td>19</td><td>chassis</td><td>30</td><td>14</td><td>0.467×</td></tr><tr><td>20</td><td>factory</td><td>73</td><td>57</td><td>0.781×</td></tr><tr><td>21</td><td>lamp</td><td>84</td><td>40</td><td>0.476×</td></tr><tr><td>22</td><td>magnet</td><td>46</td><td>22</td><td>0.478×</td></tr></tbody></table></div>
+<p class="callout warn">“右删失”表示在给定最大窗口前没找到满足全部严格条件的窗口。它既不能证明永远失败，也不能被记成通过；只有增加观察时间或给出不变量/漂移证明才能进一步分类。</p>
+<details><summary>600秒失败种子（便于逐世界复现）</summary><p><b>阶段10：</b><span class="mono break">5,8,9,11,18,21,24,26,29,32,36,37,39,42,48,50,53,54,59,63,66,72,76,80,87,88,92,93,94,95,96,98,99,102,106,109,116,119,120,126,131,132,133,134,138,146,151,153,154,162,163,164,166,167,170,173,175,177,185,192,194,195</span></p><p><b>阶段15：</b><span class="mono break">1,2,3,4,5,6,7,8,11,12,13,14,15,16,17,18,21,22,23,25,26,27,28,30,35,37,38,39,42,43,44,46,47,48,49,50,51,52,53,54,55,57,58,59,61,62,63,66,67,72,73,74,75,76,77,78,81,82,87,88,89,90,92,93,94,95,96,97,98,99,100,101,102,103,106,110,111,112,113,114,115,118,119,120,121,123,124,125,126,128,129,131,132,133,134,135,136,138,139,140,142,143,144,145,146,147,148,149,150,152,153,155,156,158,161,162,163,164,165,166,167,168,169,171,172,173,174,175,176,178,180,181,182,183,185,186,187,189,191,192,193,194,195,199,200</span></p></details>
+</section>
+
+<section id="goals">
+<h2>7. 对完整阶段目标的逐项判定</h2>
+<div class="table-wrap"><table class=""><thead><tr><th>目标</th><th>本次证据</th><th>判定</th><th>还缺什么</th></tr></thead><tbody><tr><td>不操作稳定达到10，且11为0</td><td>最新严格证书 89/200；本测量未把第11为0作为周期分母。</td><td><span class="badge open">未满足全世界证明</span></td><td>解决或证明债务/队列漂移，并单独审计第11产量。</td></tr><tr><td>只买11–15图纸后稳定达到15</td><td>当前复算图纸购买 200/200；最新严格证书 39/200。</td><td><span class="badge open">未满足全世界证明</span></td><td>修复协调层后重新跑100–1000世界。</td></tr><tr><td>自然无法稳定达到20</td><td>物理层1000/1000可行，中位最优周期210秒。</td><td><span class="badge censored">不能由物理模型证明</span></td><td>需要冻结当前法规、解锁16–20后的真实负向/右删失证书。</td></tr><tr><td>选择性价格达到22</td><td>物理层1000/1000可行，中位最优周期260秒。</td><td><span class="badge open">未做法规轨迹</span></td><td>一条真实统一法规、固定哈希、操作账本和三窗口证书。</td></tr><tr><td>纯×2等四方案无法稳定30</td><td>本次没有运行四分支。</td><td><span class="badge open">尚无证据</span></td><td>相同世界配对、四套法规、右删失边界与失败物品/信用瓶颈。</td></tr><tr><td>物流法规稳定30；玩家操作稳定35</td><td>30/35的固有工作分别为330/818动作每篮子；存在建筑范围条件。</td><td><span class="badge open">尚无完整证书</span></td><td>明确建筑布局，合法玩家操作账本，冻结后供应链再生。</td></tr></tbody></table></div>
+<p>这张表刻意不把“首次制作”或“物理上存在一条流水线”写成“稳定达到”。稳定达到仍采用用户指定的三窗口、库存来源、债务、队列和冻结操作标准。</p>
+</section>
+
+<section id="limits">
+<h2>8. 假设、反例入口与可证伪性</h2>
+<ul>
+  <li><b>温启动而非白手起家时间。</b> P<sup>*</sup> 是充分爬坡后的再生周期；首次制作时间另算。有限前缀赤字缓冲给出构造性上界，但不是免费注入到真实验收。</li>
+  <li><b>建筑。</b> 阶段22以前没有场地要求。30/35阶段必须给出玩家实际建筑布局，分析器拒绝静默假设。</li>
+  <li><b>经济协调。</b> MILP不含价格、税、贷款、保证金、广播和订单。这样做不是遗漏，而是让 H 单独测量这些机制；否则会把待解释的现象预埋为常数。</li>
+  <li><b>求解器证书等级。</b> 5,000个整数解均为 HiGHS 报告的最优解，MIP gap=0且代回整数约束残差=0；它是可复算的数值最优证书，不宣称形式化定理证明器级别。</li>
+  <li><b>反例。</b> 任一机器 JSON 中出现非零 gap、守恒残差、配方非拓扑、哈希不一致或某世界实际窗小于其 P<sup>*</sup>，都会直接推翻相应声明并使报告生成失败/显红。</li>
+</ul>
+</section>
+
+<section id="reproduce">
+<h2>9. 复现、权限边界与文件哈希</h2>
+<pre class="formula"><code># 在 5090_Lian / marathon 执行，而非本机求解
+/home/tjshen/miniconda3/envs/arena/bin/python   scripts/prove-cycle-complexity.py --seed-limit 1000   --integer-seed-limit 1000 --stages 10,15,19,20,22   --integer-stages 10,15,19,20,22 --workers 8
+
+node --import tsx scripts/measure-regenerative-cycles.mts   --seed-start=1 --seed-count=10 --max-window-ms=2400000
+
+python scripts/generate-regenerative-cycle-proof-report.py</code></pre>
+<p><b>共享行为哈希：</b><span class="mono">fnv1a-3d8b3782</span><br><b>lawProgram SHA-256：</b><span class="mono break">a9676e617eabfa4ed19361878653b842a14509b87619f30ee8ac74d3ad650b34</span><br><b>catalog SHA-256：</b><span class="mono break">2db7da53f8f93b75897700a707a4d39a11e7e2e1dc719e544ab850f1d64f9aa0</span><br><b>engine SHA-256：</b><span class="mono break">0a191bfd38573eaf99e9d1c6ecba768a0e90c6b60670f9d0e2dfbb945ff181bb</span></p>
+<div class="table-wrap"><table class=""><thead><tr><th>证据文件</th><th>字节</th><th>SHA-256</th></tr></thead><tbody><tr><td>output\cycle-complexity-proof.json</td><td>7771580</td><td><span class="mono break">d3889ae7802842c90e51f76a1b6c4af93b0712485df4c7d0d84dac03f33ae701</span></td></tr><tr><td>output\cycle-complexity-proof-validation.json</td><td>306</td><td><span class="mono break">312eef50497a0124268da3f196a7310d10daf559b37c5aafda05ceae48f3522d</span></td></tr><tr><td>output\regenerative-cycles-200-600-aggregate.json</td><td>1870631</td><td><span class="mono break">dac3ab3d7b1549e9970310e6931e56ebc17115babe045de7382f0898b351e47b</span></td></tr><tr><td>output\proof-price-vector-current.json</td><td>5649</td><td><span class="mono break">a5f96da64f47e1be6b422a17f83cb0da571859fe94de9a2af80ee25229f387d3</span></td></tr><tr><td>output\proof-price-vector-theorem.json</td><td>5632</td><td><span class="mono break">a0d3f1d2ae9fc92a5cfdfc8094396175a1ed6fd00f5fd4169f85a2ba88861fbb</span></td></tr><tr><td>output\regenerative-cycles-200-2400-aggregate.json</td><td>2299760</td><td><span class="mono break">dc3172141b5f94dee95b4122ec67ab3c6b75f64443b38e72dc0302c26b2d4e9d</span></td></tr><tr><td>output\regenerative-cycles-current-200-2400-aggregate.json</td><td>2188436</td><td><span class="mono break">87bdf0ecb21f428f3c6d898d0b245f32b2797cc5ddc694aebbfe3916a428feec</span></td></tr><tr><td>output\regenerative-cycles-priceonly-currentruntime-200-2400-aggregate.json</td><td>2299760</td><td><span class="mono break">24de79fea212d632dc721adca7f3659dc1864ac2e57ef1969d25b4f7bd76d65b</span></td></tr></tbody></table></div>
+<p class="callout ok"><b>独立验证器：</b>状态 <span class="mono">valid</span>；重新核验了输入哈希、五阶段各 1000 个世界的覆盖、反向拓扑制作数、守恒、<span class="mono">P*=5000K</span>、<span class="mono">K=ceil(LP)</span>、猫负载总和、零 MIP gap 与零整数残差。</p>
+<p class="callout ok"><b>权限审计：</b>本轮没有调用 DeepSeek，没有颁布法规，没有改商品价格/配方/共享行为函数，没有注入库存、金币、建筑、图纸或发现状态。新增内容只有求解器、聚合器、报告与 output 证据。</p>
+</section>
+
+<section id="refs">
+<h2>10. 方法参考</h2>
+<ol>
+  <li><a href="https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.milp.html">SciPy <code>optimize.milp</code></a>：整数变量、线性约束与 HiGHS 接口。</li>
+  <li><a href="https://highs.dev/">HiGHS</a>：本次 LP/MILP 的开源求解后端。</li>
+  <li><a href="https://en.wikipedia.org/wiki/Perron%E2%80%93Frobenius_theorem">Perron–Frobenius / Collatz–Wielandt</a>：非负算子谱半径上下界。</li>
+  <li>Alexander Schrijver, <i>Theory of Linear and Integer Programming</i>：整数流、线性约束与最优性基础。</li>
+</ol>
+</section>
+<footer>Cat Workshop regenerative-cycle proof · computed on 5090_Lian / marathon, rendered locally from machine-readable evidence</footer>
+</main></body></html>

@@ -2,6 +2,7 @@ import { RECIPE_BY_ID, RECIPE_BY_OUTPUT, itemDependencyDistance } from "./catalo
 import { effectiveRecipeInputs } from "./difficulty";
 import { siteFailure } from "./logistics";
 import {
+  availableInputQuantityForPlan,
   bountyBroadcastsForCat,
   contractActionForCat,
   expectedActionGainCents,
@@ -22,10 +23,21 @@ interface Candidate {
   reason: string;
   targetItemId: ItemId;
   kind: LogisticsStatus["kind"];
+  influences: Map<string, { delta: number; priority: number }>;
+}
+
+export interface LocalActionDecision {
+  action: Exclude<CatAction, null>;
+  score: number;
+  reason: string;
+  targetItemId: ItemId;
+  kind: LogisticsStatus["kind"];
+  attributedLawId?: string;
 }
 
 export interface LocalLogisticsPlan {
   assignments: Map<string, Exclude<CatAction, null>>;
+  decisions: Map<string, LocalActionDecision>;
   traces: Map<string, string[]>;
   status: LogisticsStatus[];
 }
@@ -33,20 +45,21 @@ export interface LocalLogisticsPlan {
 export interface LocalActionWeights {
   craft: number;
   pass: number;
-  sell: number;
 }
 
 export interface LocalScoreAdjustment {
-  actionType: "craft" | "pass" | "sell" | "*";
+  actionType: "craft" | "pass" | "*";
   itemId: ItemId | "*";
   multiplier: number;
   bonus: number;
+  lawId?: string;
+  lawPriority?: number;
 }
 
-export function localVisibleCats(state: GameState, origin: CatState, positionMap?: Map<string, CatState>, radius = LOCAL_VISION_RADIUS): CatState[] {
+export function localVisibleCats(state: GameState, origin: CatState, positionMap?: Map<string, CatState>, _radius = LOCAL_VISION_RADIUS): CatState[] {
   const map = positionMap ?? new Map(state.cats.map((cat) => [positionKey(cat.position), cat]));
   const visible: CatState[] = [];
-  const effectiveRadius = Math.max(LOCAL_VISION_RADIUS, Math.min(5, Math.floor(radius)));
+  const effectiveRadius = LOCAL_VISION_RADIUS;
   for (let dy = -effectiveRadius; dy <= effectiveRadius; dy += 1) {
     const width = effectiveRadius - Math.abs(dy);
     for (let dx = -width; dx <= width; dx += 1) {
@@ -59,19 +72,23 @@ export function localVisibleCats(state: GameState, origin: CatState, positionMap
   ));
 }
 
-export function planLocalLogistics(state: GameState, priceOf: (itemId: ItemId) => number, landmarkIndex?: LandmarkSpatialIndex): LocalLogisticsPlan {
+export function planLocalLogistics(state: GameState, priceOf: (itemId: ItemId, cat: CatState) => number, landmarkIndex?: LandmarkSpatialIndex): LocalLogisticsPlan {
   const assignments = new Map<string, Exclude<CatAction, null>>();
+  const decisions = new Map<string, LocalActionDecision>();
   const traces = new Map<string, string[]>();
   const status: LogisticsStatus[] = [];
   const map = new Map(state.cats.map((cat) => [positionKey(cat.position), cat]));
   for (const cat of [...state.cats].sort((a, b) => a.createdIndex - b.createdIndex)) {
-    const visible = localVisibleCats(state, cat, map, landmarkEffectsAt(state, cat.position, landmarkIndex).effectiveVisionRadius);
+    const visible = localVisibleCats(state, cat, map);
     if (cat.action) {
       traces.set(cat.id, [`局部视野 ${visible.length} 个工位 · 已在工作`]);
       continue;
     }
-    const candidate = chooseLocalAction(state, cat, priceOf, { craft: 1, pass: 1, sell: 1 });
-    if (candidate) assignments.set(cat.id, candidate.action);
+    const candidate = chooseLocalAction(state, cat, (itemId) => priceOf(itemId, cat), { craft: 1, pass: 1 });
+    if (candidate) {
+      assignments.set(cat.id, candidate.action);
+      decisions.set(cat.id, toDecision(candidate));
+    }
     const plan = planForCatPublic(state, cat.id);
     const message = candidate
       ? `利己收益 ${candidate.score.toFixed(0)}分：${candidate.reason}`
@@ -87,20 +104,7 @@ export function planLocalLogistics(state: GameState, priceOf: (itemId: ItemId) =
       blockedReason: candidate ? null : message,
     });
   }
-  return { assignments, traces, status };
-}
-
-export function chooseWeightedLocalAction(
-  state: GameState,
-  cat: CatState,
-  priceOf: (itemId: ItemId) => number,
-  weights: LocalActionWeights,
-): CatAction {
-  return chooseLocalAction(state, cat, priceOf, {
-    craft: clampWeight(weights.craft),
-    pass: clampWeight(weights.pass),
-    sell: clampWeight(weights.sell),
-  })?.action ?? null;
+  return { assignments, decisions, traces, status };
 }
 
 export function chooseAdjustedLocalAction(
@@ -109,7 +113,17 @@ export function chooseAdjustedLocalAction(
   priceOf: (itemId: ItemId) => number,
   adjustments: ReadonlyArray<LocalScoreAdjustment>,
 ): CatAction {
-  return chooseLocalAction(state, cat, priceOf, { craft: 1, pass: 1, sell: 1 }, adjustments)?.action ?? null;
+  return chooseLocalAction(state, cat, priceOf, { craft: 1, pass: 1 }, adjustments)?.action ?? null;
+}
+
+export function chooseAdjustedLocalDecision(
+  state: GameState,
+  cat: CatState,
+  priceOf: (itemId: ItemId) => number,
+  adjustments: ReadonlyArray<LocalScoreAdjustment>,
+): LocalActionDecision | null {
+  const candidate = chooseLocalAction(state, cat, priceOf, { craft: 1, pass: 1 }, adjustments);
+  return candidate ? toDecision(candidate) : null;
 }
 
 function chooseLocalAction(
@@ -125,9 +139,10 @@ function chooseLocalAction(
     candidates.push({
       action: contractAction,
       score: 1_000_000 + expectedActionGainCents(state, cat, contractAction, priceOf),
-      reason: `履行有偿运输合同 ${contractAction.itemId}`,
+      reason: "履行有偿运输合同",
       targetItemId: contractAction.itemId,
       kind: "profit",
+      influences: new Map(),
     });
   }
 
@@ -152,16 +167,21 @@ function chooseLocalAction(
       const distance = itemDependencyDistance(recipe.output, targetItemId);
       return distance >= 0 && (best < 0 || distance < best) ? distance : best;
     }, -1);
-    const producingForPlan = planDistance >= 0;
-    const producingForOrder = orderDistance >= 0;
-    const bountyAvailable = heardBounties.has(recipe.output);
+    // A funded procurement plan owns exactly one production job. Missing
+    // ingredients must arrive through its committed orders; the buyer may not
+    // silently recurse through the recipe tree and make every part itself.
+    const producingForPlan = activePlan?.recipeId === recipeId;
+    const producingForOrder = false;
+    const bountyAvailable = false;
     if (!producingForPlan && !producingForOrder && !bountyAvailable) continue;
     if (activePlan?.recipeId !== recipeId && effectiveRecipeInputs(recipe, state.difficulty).some((input) => protectedInputs.has(input.itemId))) continue;
     if (recipe.inputs.length === 0
       && activePlan?.recipeId !== recipeId
       && !producingForOrder
       && unreservedOwnedQuantity(state, cat, recipe.output) >= 1) continue;
-    if (!effectiveRecipeInputs(recipe, state.difficulty).every((input) => unofferedOwnedQuantity(state, cat, input.itemId) >= input.quantity)) continue;
+    if (!effectiveRecipeInputs(recipe, state.difficulty).every((input) => (
+      !activePlan || availableInputQuantityForPlan(state, cat, activePlan, input.itemId) >= input.quantity
+    ))) continue;
     const action: Exclude<CatAction, null> = { type: "craft", recipeId };
     const gain = expectedActionGainCents(state, cat, action, priceOf);
     if (gain < 0) continue;
@@ -174,9 +194,10 @@ function chooseLocalAction(
           : producingForOrder
             ? 50_000 - orderDistance * 1_000
             : 0),
-      reason: activePlan?.recipeId === recipeId ? `执行盈利计划，制作 ${recipe.output}` : producingForOrder ? `响应全局订单广播，制作 ${recipe.output}` : `制作后净资产不下降：${recipe.output}`,
+      reason: activePlan?.recipeId === recipeId ? "执行盈利生产计划" : producingForOrder ? "响应全局订单广播" : "预计不会降低净资产",
       targetItemId: recipe.output,
-      kind: activePlan?.reason === "bounty" ? "tutorial" : "profit",
+      kind: activePlan?.reason === "bounty" ? "bounty" : "profit",
+      influences: new Map(),
     });
   }
 
@@ -185,7 +206,16 @@ function chooseLocalAction(
     for (const adjustment of adjustments) {
       if (adjustment.actionType !== "*" && adjustment.actionType !== candidate.action.type) continue;
       if (adjustment.itemId !== "*" && adjustment.itemId !== candidate.targetItemId) continue;
+      const before = candidate.score;
       candidate.score = candidate.score * clampWeight(adjustment.multiplier) + clampBonus(adjustment.bonus);
+      const delta = candidate.score - before;
+      if (delta > 0 && adjustment.lawId) {
+        const previous = candidate.influences.get(adjustment.lawId);
+        candidate.influences.set(adjustment.lawId, {
+          delta: (previous?.delta ?? 0) + delta,
+          priority: Math.min(previous?.priority ?? Number.MAX_SAFE_INTEGER, adjustment.lawPriority ?? Number.MAX_SAFE_INTEGER),
+        });
+      }
     }
   }
   return candidates.filter((candidate) => candidate.score > 0).sort((left, right) => (
@@ -193,6 +223,22 @@ function chooseLocalAction(
     || left.targetItemId.localeCompare(right.targetItemId)
     || actionKey(left.action).localeCompare(actionKey(right.action))
   ))[0];
+}
+
+function toDecision(candidate: Candidate): LocalActionDecision {
+  const attributedLawId = [...candidate.influences.entries()].sort((left, right) => (
+    right[1].delta - left[1].delta
+    || left[1].priority - right[1].priority
+    || left[0].localeCompare(right[0])
+  ))[0]?.[0];
+  return {
+    action: candidate.action,
+    score: candidate.score,
+    reason: candidate.reason,
+    targetItemId: candidate.targetItemId,
+    kind: candidate.kind,
+    attributedLawId,
+  };
 }
 
 function neededItemsForTarget(targetItemId: ItemId, inventory: Readonly<Record<ItemId, number>>, difficulty: GameState["difficulty"]): Set<ItemId> {

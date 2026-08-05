@@ -1,6 +1,54 @@
 import type { DifficultyLevel, ItemDefinition, ItemId, RecipeDefinition } from "./types.js";
 
-export const CATALOG_VERSION = "cat-workshop-65-v5-difficulty";
+export const CATALOG_VERSION = "cat-workshop-65-v10-value-curve";
+
+/**
+ * The old linear 15%-per-tier formula undervalued long production chains.
+ * These premiums keep early goods readable while making later eras worth the
+ * capital, transport and specialized-site burden they require.
+ */
+export const BASE_PRICE_TIER_PREMIUMS = [1, 1.15, 1.35, 1.65, 2, 2.5, 3.25, 4.25, 5.5] as const;
+
+/** Permanent catalog values that used to be hidden in starter price laws. */
+export const BASE_PRICE_FLOORS: Readonly<Record<string, number>> = Object.freeze({
+  // Wood is the only tier-0 input with a positive scarcity shadow price in
+  // the 1--19 regenerative flow: the measured closed-window balance was
+  // 239 produced versus 247 consumed. Prices are integer coins, so 2 is the
+  // smallest admissible correction above the zero-scarcity baseline of 1.
+  wood: 2,
+  fire: 3,
+  plank: 11,
+  brick: 7,
+  thread: 4,
+  paper: 14,
+  tools: 18,
+  glass: 6,
+  metal: 7,
+  gear: 18,
+  cable: 36,
+  battery: 30,
+  chemical: 33,
+  // With the locked 50% starter tax, chassis consumes 10.50 coins of
+  // liquidatable plank + metal and carries 9--11 burden units. 55 is the
+  // smallest integer price whose worst-case gain rate is strictly above the
+  // catalog's 150-cent/unit early-good frontier:
+  //   (0.5 * 55.00 - 10.50) / 11 = 1.545... coins per burden unit.
+  // At 54 the rate is exactly 1.50, so deterministic ties can still starve it.
+  chassis: 55,
+});
+
+const MINIMUM_RECIPE_MARKUP = 0.12;
+
+/**
+ * Deliberate market bottlenecks priced at exact input replacement parity.
+ *
+ * For factory this is not a fitted number: p_factory = 2 p_brick + p_gear
+ * + p_tools + p_glass. With one common sales-tax rate, both sides are scaled
+ * by the same after-tax factor. Any global price multiplier also scales both
+ * sides equally, so ordinary speculative factory production has exactly zero
+ * asset gain while the one-shot discovery bounty can still fund a first unit.
+ */
+export const INPUT_PARITY_PRICE_IDS = ["factory"] as const;
 
 export const DEPLOYABLE_BUILDING_IDS = ["factory", "machine_tool", "antenna", "lab", "reactor"] as const;
 
@@ -127,13 +175,13 @@ export const RECIPE_BY_ID = new Map(RECIPES.map((entry) => [entry.id, entry]));
 export const RECIPE_BY_OUTPUT = new Map(RECIPES.map((entry) => [entry.output, entry]));
 
 export const BASE_RECIPE_IDS = RECIPES.filter((entry) => entry.inputs.length === 0).map((entry) => entry.id);
-/** 前 9 项是免费启蒙；第 10–15 项构成第一道市场挑战。 */
-export const INTRO_RECIPE_IDS = RECIPES.slice(0, 9).map((entry) => entry.id);
-export const MARKET_CHALLENGE_RECIPE_IDS = RECIPES.slice(9, 15).map((entry) => entry.id);
-export const MARKET_CERTIFICATION_ITEM_IDS = RECIPES.slice(9, 15).map((entry) => entry.output);
-/** 教学不会在免费配方结束时停止；玩家解锁后会继续带领猫咪首次制造到第 15 项。 */
-export const TUTORIAL_RECIPE_IDS = RECIPES.slice(0, 15).map((entry) => entry.id);
-/** 第 16–20 项共享第 10–15 项的实际制造认证闸门。 */
+/** 前 10 项开局免费；第 11–15 项构成第一道市场挑战。 */
+export const INTRO_RECIPE_IDS = RECIPES.slice(0, 10).map((entry) => entry.id);
+export const MARKET_CHALLENGE_RECIPE_IDS = RECIPES.slice(10, 15).map((entry) => entry.id);
+export const MARKET_CERTIFICATION_ITEM_IDS = RECIPES.slice(10, 15).map((entry) => entry.output);
+/** 前 15 项构成白手起家的基础产业集合；它只用于分组与验收，不参与猫咪决策排序。 */
+export const FOUNDATION_RECIPE_IDS = RECIPES.slice(0, 15).map((entry) => entry.id);
+/** 第 16–20 项共享第 11–15 项的实际制造认证闸门。 */
 export const INDUSTRIAL_GATE_RECIPE_IDS = RECIPES.slice(15, 20).map((entry) => entry.id);
 
 export interface CatalogAnalysis {
@@ -184,7 +232,29 @@ export function validateCatalog(): CatalogAnalysis {
   };
   for (const entry of ITEMS) calculate(entry.id);
 
-  const sellPrices = Object.fromEntries(ITEMS.map((entry) => [entry.id, Math.ceil(workUnits[entry.id] * (1 + 0.15 * entry.tier))]));
+  const sellPrices: Record<string, number> = {};
+  const pricing = new Set<string>();
+  const calculatePrice = (id: string): number => {
+    if (sellPrices[id]) return sellPrices[id];
+    if (pricing.has(id)) throw new Error(`Price cycle at ${id}`);
+    pricing.add(id);
+    const definition = ITEM_BY_ID.get(id);
+    const source = RECIPE_BY_OUTPUT.get(id);
+    if (!definition || !source) throw new Error(`Missing price definition for ${id}`);
+    const legacyWorkPrice = Math.ceil(workUnits[id] * (1 + 0.15 * definition.tier));
+    const tierAdjustedPrice = Math.ceil(legacyWorkPrice * BASE_PRICE_TIER_PREMIUMS[definition.tier]);
+    const ingredientValue = source.inputs.reduce((sum, input) => sum + calculatePrice(input.itemId) * input.quantity, 0);
+    const replacementValueFloor = ingredientValue > 0
+      ? Math.ceil(ingredientValue * (1 + MINIMUM_RECIPE_MARKUP)) + 1
+      : 1;
+    const value = INPUT_PARITY_PRICE_IDS.includes(id as typeof INPUT_PARITY_PRICE_IDS[number])
+      ? ingredientValue
+      : Math.max(tierAdjustedPrice, BASE_PRICE_FLOORS[id] ?? 0, replacementValueFloor);
+    pricing.delete(id);
+    sellPrices[id] = value;
+    return value;
+  };
+  for (const entry of ITEMS) calculatePrice(entry.id);
   return { workUnits, basePrices: sellPrices, sellPrices };
 }
 

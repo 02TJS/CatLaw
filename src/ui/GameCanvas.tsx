@@ -1,16 +1,23 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import catSpriteUrl from "../assets/cat-workshop-sprite.png?url";
 import { ITEM_BY_ID } from "../game/catalog";
 import type { GameController } from "../game/controller";
 import { buildingPlacementFailure, formatMoney, landmarkPlacementFailure } from "../game/engine";
 import { LANDMARK_BY_ID } from "../game/landmarks";
+import { speechEventIsVisible } from "../game/speech";
 import type { ActionCommand, CatState, DeployedBuilding, DeployedLandmark, Direction, FloatingEvent, LandmarkId, Position, ResourceNode } from "../game/types";
 import { frontierParcels, isPositionUnlocked, parcelBounds, parcelCost, parcelForPosition, parcelKey, resourceHarvestTiles } from "../game/world";
 import {
+  MAP_SCALE_MAX,
+  MAP_SCALE_MIN,
+} from "./uiPreferences";
+import {
   type Camera,
+  depthCompare,
   isoToScreen,
+  isoPointToTile,
+  pointInTile,
   sceneDepthCompare,
-  screenPointToTile,
   screenToIso,
   TILE_HEIGHT,
   TILE_WIDTH,
@@ -19,16 +26,84 @@ import {
   WORKSTATION_DEPTH,
   worldToIso,
 } from "./isometric";
+import { EmojiCanvasCache } from "./emojiCanvasCache";
+import { buildingQualityPalette, itemQualityLevel, itemQualityPalette, type ItemQualityPalette, workstationQualityVisual } from "./itemQuality";
+import { chooseSpeechBubblePlacement, wrapSpeechText, type SpeechLayoutRectangle, type SpeechProtectedRectangle } from "./speechLayout";
+import { buildMapLensSnapshot, LENS_COLORS, type LensColor, type MapLensId, type MapLensOrderFloor, type MapLensSnapshot } from "./mapLenses";
 
 const DEFAULT_CAMERA: Camera = { x: 32, y: 28, zoom: 1.08 };
 const EMOJI_FONT = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
 const CAT_RENDER_SCALE = 2 / 5;
 const CAT_RENDER_SIZE = 64 * CAT_RENDER_SCALE;
-const emojiCache = new Map<string, HTMLCanvasElement>();
+const CANVAS_FRAME_INTERVAL_MS = 1000 / 60;
+const emojiCache = new EmojiCanvasCache<HTMLCanvasElement>();
 
 interface GroundLayerCache {
   canvas?: HTMLCanvasElement;
   key?: string;
+}
+
+interface RenderScratch {
+  visibleCats: CatState[];
+  scene: SceneEntry[];
+  stationBases: CatState[];
+  catById: Map<string, CatState>;
+  lensCache?: { revision: number; lensId: MapLensId; itemId: string | null; snapshot: MapLensSnapshot };
+  speechControls: { measuredAt: number; width: number; height: number; rectangles: SpeechLayoutRectangle[] };
+}
+
+function createRenderScratch(): RenderScratch {
+  return {
+    visibleCats: [],
+    scene: [],
+    stationBases: [],
+    catById: new Map(),
+    speechControls: { measuredAt: Number.NEGATIVE_INFINITY, width: 0, height: 0, rectangles: [] },
+  };
+}
+
+const SPEECH_CONTROL_SELECTORS = [
+  ".pet-drag-region",
+  ".pet-headline-stats",
+  ".pet-main-commerce",
+  ".pet-window-controls",
+  ".pet-dock",
+  ".map-lens-palette",
+  ".map-lens-legend",
+  ".pet-drawer",
+  ".pet-commerce-feedback",
+  ".pet-quick-stats",
+  ".pet-add-cat-menu",
+] as const;
+
+function collectSpeechControlObstacles(
+  canvas: HTMLCanvasElement,
+  width: number,
+  height: number,
+  measuredAt: number,
+  cache: RenderScratch["speechControls"],
+): SpeechLayoutRectangle[] {
+  if (cache.width === width && cache.height === height && measuredAt - cache.measuredAt < 200) return cache.rectangles;
+  const canvasRect = canvas.getBoundingClientRect();
+  const margin = 6;
+  const rectangles: SpeechLayoutRectangle[] = [];
+  for (const selector of SPEECH_CONTROL_SELECTORS) {
+    for (const element of document.querySelectorAll<HTMLElement>(selector)) {
+      const style = window.getComputedStyle(element);
+      if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) continue;
+      const rect = element.getBoundingClientRect();
+      const left = Math.max(0, rect.left - canvasRect.left - margin);
+      const top = Math.max(0, rect.top - canvasRect.top - margin);
+      const right = Math.min(width, rect.right - canvasRect.left + margin);
+      const bottom = Math.min(height, rect.bottom - canvasRect.top + margin);
+      if (right > left && bottom > top) rectangles.push({ x: left, y: top, width: right - left, height: bottom - top });
+    }
+  }
+  cache.measuredAt = measuredAt;
+  cache.width = width;
+  cache.height = height;
+  cache.rectangles = rectangles;
+  return rectangles;
 }
 
 interface Props {
@@ -39,7 +114,12 @@ interface Props {
   placingBuildingItemId: string | null;
   onBuildingPlacementResult: (feedback: { itemId: string; position: Position; ok: boolean; error?: string }) => void;
   placingLandmarkId: LandmarkId | null;
+  speechScale: number;
+  mapScale: number;
+  onMapScaleChange: (scale: number) => void;
   onLandmarkPlacementResult: (feedback: { landmarkId: LandmarkId; position: Position; ok: boolean; error?: string }) => void;
+  mapLensId: MapLensId;
+  mapLensItemId: string | null;
 }
 
 type SceneEntry =
@@ -47,6 +127,12 @@ type SceneEntry =
   | { kind: "building"; position: Position; layer: number; order: number; building: DeployedBuilding }
   | { kind: "landmark"; position: Position; layer: number; order: number; landmark: DeployedLandmark }
   | { kind: "actor"; position: Position; layer: number; order: number; cat: CatState };
+
+interface AddCatMenu {
+  tile: Position;
+  x: number;
+  y: number;
+}
 
 export function GameCanvas({
   controller,
@@ -56,22 +142,46 @@ export function GameCanvas({
   placingBuildingItemId,
   onBuildingPlacementResult,
   placingLandmarkId,
+  speechScale,
+  mapScale,
+  onMapScaleChange,
   onLandmarkPlacementResult,
+  mapLensId,
+  mapLensItemId,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const camera = useRef<Camera>({ ...DEFAULT_CAMERA });
+  const camera = useRef<Camera>({ ...DEFAULT_CAMERA, zoom: DEFAULT_CAMERA.zoom * mapScale });
   const hoveredTile = useRef<Position | null>(null);
-  const drag = useRef<{ x: number; y: number; cameraX: number; cameraY: number; moved: boolean } | null>(null);
+  const drag = useRef<{ x: number; y: number; cameraX: number; cameraY: number; moved: boolean; nativeWindow: boolean } | null>(null);
+  const groundCache = useRef<GroundLayerCache>({});
+  const renderScratch = useRef<RenderScratch>(createRenderScratch());
+  const renderOptions = useRef({ selectedCatId, expansionMode, placingBuildingItemId, placingLandmarkId, speechScale, mapLensId, mapLensItemId });
+  renderOptions.current = { selectedCatId, expansionMode, placingBuildingItemId, placingLandmarkId, speechScale, mapLensId, mapLensItemId };
+  const [addCatMenu, setAddCatMenu] = useState<AddCatMenu | null>(null);
+
+  useEffect(() => {
+    camera.current.zoom = DEFAULT_CAMERA.zoom * mapScale;
+  }, [mapScale]);
+
+  useEffect(() => {
+    const dismissAddCatMenu = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-testid='add-cat-menu']")) return;
+      setAddCatMenu(null);
+    };
+    window.addEventListener("pointerdown", dismissAddCatMenu, true);
+    return () => window.removeEventListener("pointerdown", dismissAddCatMenu, true);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current!;
-    const context = canvas.getContext("2d", { alpha: false })!;
+    const context = canvas.getContext("2d", { alpha: true })!;
     const image = new Image();
     image.src = catSpriteUrl;
     let frameHandle = 0;
+    let lastDrawAt = Number.NEGATIVE_INFINITY;
     let dpr = window.devicePixelRatio || 1;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const groundCache: GroundLayerCache = {};
 
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
@@ -83,9 +193,22 @@ export function GameCanvas({
     observer.observe(canvas);
     resize();
 
-    const draw = () => {
+    const draw = (now: number) => {
+      // Leave a small tolerance for 60 Hz displays whose rAF timestamps land a
+      // fraction below 16.667 ms; without it, every other frame can be skipped.
+      if (now - lastDrawAt + 0.5 < CANVAS_FRAME_INTERVAL_MS) {
+        frameHandle = requestAnimationFrame(draw);
+        return;
+      }
+      lastDrawAt = now;
       const rect = canvas.getBoundingClientRect();
+      const options = renderOptions.current;
+      const hasVisibleSpeech = controller.state.floatingEvents.some((event) => speechEventIsVisible(event, controller.state.simTime));
+      const speechControlObstacles = hasVisibleSpeech
+        ? collectSpeechControlObstacles(canvas, rect.width, rect.height, now, renderScratch.current.speechControls)
+        : [];
       context.setTransform(dpr, 0, 0, dpr, 0, 0);
+      context.clearRect(0, 0, rect.width, rect.height);
       drawWorld(
         context,
         rect.width,
@@ -94,13 +217,18 @@ export function GameCanvas({
         controller,
         image,
         camera.current,
-        selectedCatId,
+        options.selectedCatId,
         hoveredTile.current,
-        expansionMode,
-        placingBuildingItemId,
-        placingLandmarkId,
+        options.expansionMode,
+        options.placingBuildingItemId,
+        options.placingLandmarkId,
+        options.speechScale,
+        speechControlObstacles,
+        options.mapLensId,
+        options.mapLensItemId,
         reducedMotion,
-        groundCache,
+        groundCache.current,
+        renderScratch.current,
       );
       frameHandle = requestAnimationFrame(draw);
     };
@@ -109,18 +237,30 @@ export function GameCanvas({
       cancelAnimationFrame(frameHandle);
       observer.disconnect();
     };
-  }, [controller, selectedCatId, expansionMode, placingBuildingItemId, placingLandmarkId]);
+  }, [controller]);
 
   const pointToTile = (clientX: number, clientY: number) => {
     const rect = canvasRef.current!.getBoundingClientRect();
-    return screenPointToTile(
+    const isoPoint = screenToIso(
       { x: clientX - rect.left, y: clientY - rect.top },
       camera.current,
       { width: rect.width, height: rect.height },
     );
+    const rough = isoPointToTile(isoPoint);
+    const raisedHit = controller.state.cats
+      .filter((cat) => Math.abs(cat.position.x - rough.x) <= 1 && Math.abs(cat.position.y - rough.y) <= 1)
+      .filter((cat) => {
+        const lift = workstationLift(cat);
+        return lift > 0 && pointInTile({ x: isoPoint.x, y: isoPoint.y + lift }, cat.position);
+      })
+      .sort((left, right) => -depthCompare(
+        { ...left.position, createdIndex: left.createdIndex },
+        { ...right.position, createdIndex: right.createdIndex },
+      ))[0];
+    return raisedHit?.position ?? rough;
   };
 
-  const placeHoveredCat = () => {
+  const activateHoveredTile = () => {
     const tile = hoveredTile.current;
     if (!tile) return;
     if (placingBuildingItemId) {
@@ -134,33 +274,66 @@ export function GameCanvas({
       return;
     }
     if (expansionMode) {
+      const occupied = controller.state.cats.find((cat) => cat.position.x === tile.x && cat.position.y === tile.y);
+      if (mapLensId !== "none" && occupied) {
+        onSelectCat(occupied.id);
+        return;
+      }
       controller.expandParcel(parcelForPosition(tile));
       return;
     }
     if (!isPositionUnlocked(controller.state.unlockedParcels, tile)) return;
     const occupied = controller.state.cats.find((cat) => cat.position.x === tile.x && cat.position.y === tile.y);
-    if (occupied) {
-      onSelectCat(occupied.id);
-      return;
-    }
-    if (controller.addCat(tile)) {
-      const created = controller.state.cats.find((cat) => cat.position.x === tile.x && cat.position.y === tile.y);
-      if (created) onSelectCat(created.id);
-    }
+    if (occupied) onSelectCat(occupied.id);
   };
 
+  const addCatAt = (tile: Position) => {
+    if (placingBuildingItemId || placingLandmarkId || expansionMode) return;
+    if (!isPositionUnlocked(controller.state.unlockedParcels, tile)) return;
+    if (controller.state.cats.some((cat) => cat.position.x === tile.x && cat.position.y === tile.y)) return;
+    controller.addCat(tile);
+  };
+
+  const canOfferAddCatAt = (tile: Position) => !placingBuildingItemId
+    && !placingLandmarkId
+    && !expansionMode
+    && isPositionUnlocked(controller.state.unlockedParcels, tile)
+    && !controller.state.resourceNodes.some((node) => node.position.x === tile.x && node.position.y === tile.y)
+    && !controller.state.buildings.some((building) => building.position.x === tile.x && building.position.y === tile.y)
+    && !controller.state.landmarks.some((landmark) => landmark.position.x === tile.x && landmark.position.y === tile.y)
+    && !controller.state.cats.some((cat) => cat.position.x === tile.x && cat.position.y === tile.y);
+
   return (
+    <>
     <canvas
       id="game-canvas"
       ref={canvasRef}
       data-testid="game-canvas"
+      data-map-scale={mapScale}
       tabIndex={0}
-      aria-label="等距猫咪工坊。拖拽平移，滚轮缩放，点击或按空格在绿色预览工位放置猫咪。"
-      onContextMenu={(event) => event.preventDefault()}
+      aria-label={window.catWorkshopDesktop ? "等距猫咪工坊。普通模式左键拖动桌宠、滚轮缩放整体；地图模式改为平移和缩放地图。右键合法空地打开新增猫咪按钮。" : "等距猫咪工坊。左键拖拽平移，滚轮缩放地图，右键合法空地打开新增猫咪按钮。"}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        const tile = pointToTile(event.clientX, event.clientY);
+        hoveredTile.current = tile;
+        if (!canOfferAddCatAt(tile)) {
+          setAddCatMenu(null);
+          return;
+        }
+        const rect = canvasRef.current!.getBoundingClientRect();
+        setAddCatMenu({
+          tile,
+          x: Math.max(64, Math.min(rect.width - 64, event.clientX - rect.left)),
+          y: Math.max(12, Math.min(rect.height - 48, event.clientY - rect.top)),
+        });
+      }}
       onPointerDown={(event) => {
         canvasRef.current?.focus();
+        if (event.button !== 0) return;
         canvasRef.current?.setPointerCapture(event.pointerId);
-        drag.current = { x: event.clientX, y: event.clientY, cameraX: camera.current.x, cameraY: camera.current.y, moved: false };
+        const nativeWindow = Boolean(window.catWorkshopDesktop) && !placingBuildingItemId && !placingLandmarkId && !expansionMode;
+        drag.current = { x: event.clientX, y: event.clientY, cameraX: camera.current.x, cameraY: camera.current.y, moved: false, nativeWindow };
+        if (nativeWindow) window.catWorkshopDesktop?.beginWindowDrag(event.screenX, event.screenY);
       }}
       onPointerMove={(event) => {
         hoveredTile.current = pointToTile(event.clientX, event.clientY);
@@ -168,37 +341,56 @@ export function GameCanvas({
         const dx = event.clientX - drag.current.x;
         const dy = event.clientY - drag.current.y;
         if (Math.hypot(dx, dy) > 4) drag.current.moved = true;
+        if (drag.current.nativeWindow) {
+          window.catWorkshopDesktop?.moveWindowDrag(event.screenX, event.screenY);
+          return;
+        }
         camera.current.x = drag.current.cameraX - dx / camera.current.zoom;
         camera.current.y = drag.current.cameraY - dy / camera.current.zoom;
       }}
       onPointerLeave={() => {
-        if (!drag.current) hoveredTile.current = null;
+        if (!drag.current || !drag.current.nativeWindow) hoveredTile.current = null;
       }}
       onPointerUp={(event) => {
+        if (event.button !== 0) return;
         const current = drag.current;
         drag.current = null;
+        if (current?.nativeWindow) window.catWorkshopDesktop?.endWindowDrag();
         hoveredTile.current = pointToTile(event.clientX, event.clientY);
         if (!current || current.moved) return;
-        placeHoveredCat();
+        activateHoveredTile();
       }}
-      onPointerCancel={() => { drag.current = null; }}
-      onKeyDown={(event) => {
-        if (event.key === " ") {
-          event.preventDefault();
-          placeHoveredCat();
-        }
+      onPointerCancel={() => {
+        if (drag.current?.nativeWindow) window.catWorkshopDesktop?.endWindowDrag();
+        drag.current = null;
       }}
       onWheel={(event) => {
+        if (window.catWorkshopDesktop && !expansionMode) return;
         const rect = canvasRef.current!.getBoundingClientRect();
         const pointer = { x: event.clientX - rect.left, y: event.clientY - rect.top };
         const before = screenToIso(pointer, camera.current, { width: rect.width, height: rect.height });
-        camera.current.zoom = Math.max(0.34, Math.min(1.8, camera.current.zoom * Math.exp(-event.deltaY * 0.001)));
+        const nextScale = Math.round(Math.max(
+          MAP_SCALE_MIN,
+          Math.min(MAP_SCALE_MAX, (camera.current.zoom * Math.exp(-event.deltaY * 0.001)) / DEFAULT_CAMERA.zoom),
+        ) * 20) / 20;
+        camera.current.zoom = DEFAULT_CAMERA.zoom * nextScale;
         const after = screenToIso(pointer, camera.current, { width: rect.width, height: rect.height });
         camera.current.x += before.x - after.x;
         camera.current.y += before.y - after.y;
         hoveredTile.current = pointToTile(event.clientX, event.clientY);
+        onMapScaleChange(nextScale);
       }}
     />
+    {addCatMenu && <button
+      className="pet-add-cat-menu"
+      data-testid="add-cat-menu"
+      style={{ left: addCatMenu.x, top: addCatMenu.y }}
+      onClick={() => {
+        addCatAt(addCatMenu.tile);
+        setAddCatMenu(null);
+      }}
+    >＋ 新增猫咪</button>}
+    </>
   );
 }
 
@@ -215,8 +407,13 @@ function drawWorld(
   expansionMode: boolean,
   placingBuildingItemId: string | null,
   placingLandmarkId: LandmarkId | null,
+  speechScale: number,
+  speechControlObstacles: readonly SpeechLayoutRectangle[],
+  mapLensId: MapLensId,
+  mapLensItemId: string | null,
   reducedMotion: boolean,
   groundCache: GroundLayerCache,
+  scratch: RenderScratch,
 ) {
   const state = controller.state;
   const viewport = { width, height };
@@ -231,17 +428,38 @@ function drawWorld(
 
   drawUnlockedParcels(context, state.unlockedParcels);
   if (expansionMode) drawExpansionParcels(context, state.unlockedParcels, state.treasuryCoins, state.difficulty, hoveredTile);
-  drawResourceRegions(context, state.resourceNodes);
+  const revision = controller.getRevision();
+  if (!scratch.lensCache || scratch.lensCache.revision !== revision
+    || scratch.lensCache.lensId !== mapLensId || scratch.lensCache.itemId !== mapLensItemId) {
+    scratch.lensCache = {
+      revision,
+      lensId: mapLensId,
+      itemId: mapLensItemId,
+      snapshot: buildMapLensSnapshot(state, mapLensId, mapLensItemId),
+    };
+  }
+  const lens = scratch.lensCache.snapshot;
+  if (mapLensId === "environment") drawLensAreas(context, lens);
+  else drawResourceRegions(context, state.resourceNodes);
+  if (mapLensId === "coordinates") drawCoordinateAxes(context, bounds, camera.zoom);
 
-  const visibleCats = state.cats
-    .filter((cat) => cat.position.x >= bounds.minX - 1 && cat.position.x <= bounds.maxX + 1
-      && cat.position.y >= bounds.minY - 1 && cat.position.y <= bounds.maxY + 1);
-  const visibleResources = state.resourceNodes.filter((node) => node.position.x >= bounds.minX - 1
-    && node.position.x <= bounds.maxX + 1 && node.position.y >= bounds.minY - 1 && node.position.y <= bounds.maxY + 1);
-  const scene: SceneEntry[] = [];
-  visibleResources.forEach((node, index) => scene.push({
-    kind: "resource", position: node.position, layer: 0.5, order: -1_000_000 + index, node,
-  }));
+  const { visibleCats, scene, stationBases, catById } = scratch;
+  visibleCats.length = 0;
+  scene.length = 0;
+  stationBases.length = 0;
+  catById.clear();
+  for (const cat of state.cats) {
+    if (cat.position.x < bounds.minX - 1 || cat.position.x > bounds.maxX + 1
+      || cat.position.y < bounds.minY - 1 || cat.position.y > bounds.maxY + 1) continue;
+    visibleCats.push(cat);
+    catById.set(cat.id, cat);
+  }
+  for (let index = 0; index < state.resourceNodes.length; index += 1) {
+    const node = state.resourceNodes[index];
+    if (node.position.x < bounds.minX - 1 || node.position.x > bounds.maxX + 1
+      || node.position.y < bounds.minY - 1 || node.position.y > bounds.maxY + 1) continue;
+    scene.push({ kind: "resource", position: node.position, layer: 0.5, order: -1_000_000 + index, node });
+  }
   for (const cat of visibleCats) {
     scene.push({
       kind: "actor",
@@ -251,28 +469,42 @@ function drawWorld(
       cat,
     });
   }
-  state.buildings.filter((building) => building.position.x >= bounds.minX - 1
-    && building.position.x <= bounds.maxX + 1 && building.position.y >= bounds.minY - 1
-    && building.position.y <= bounds.maxY + 1).forEach((building, index) => scene.push({
-    kind: "building", position: building.position, layer: 0.35, order: index * 4 + 1, building,
-  }));
-  state.landmarks.filter((landmark) => landmark.position.x >= bounds.minX - 1
-    && landmark.position.x <= bounds.maxX + 1 && landmark.position.y >= bounds.minY - 1
-    && landmark.position.y <= bounds.maxY + 1).forEach((landmark, index) => scene.push({
-    kind: "landmark", position: landmark.position, layer: 0.4, order: 500_000 + index, landmark,
-  }));
+  for (let index = 0; index < state.buildings.length; index += 1) {
+    const building = state.buildings[index];
+    if (building.position.x < bounds.minX - 1 || building.position.x > bounds.maxX + 1
+      || building.position.y < bounds.minY - 1 || building.position.y > bounds.maxY + 1) continue;
+    scene.push({ kind: "building", position: building.position, layer: 0.35, order: index * 4 + 1, building });
+  }
+  for (let index = 0; index < state.landmarks.length; index += 1) {
+    const landmark = state.landmarks[index];
+    if (landmark.position.x < bounds.minX - 1 || landmark.position.x > bounds.maxX + 1
+      || landmark.position.y < bounds.minY - 1 || landmark.position.y > bounds.maxY + 1) continue;
+    scene.push({ kind: "landmark", position: landmark.position, layer: 0.4, order: 500_000 + index, landmark });
+  }
   scene.sort(sceneDepthCompare);
 
   // Workstations are terrain, not scene actors. Drawing every base before the
   // footpoint-sorted object layer prevents a tile top from covering a cat that
   // is crossing its rear edge while still preserving actor/building occlusion.
-  const stationBases = [...visibleCats].sort((a, b) => sceneDepthCompare(
+  stationBases.push(...visibleCats);
+  stationBases.sort((a, b) => sceneDepthCompare(
     { position: a.position, layer: 0, order: a.createdIndex },
     { position: b.position, layer: 0, order: b.createdIndex },
   ));
   for (const cat of stationBases) {
-    drawCatStationBase(context, cat, state.simTime, camera.zoom, cat.id === selectedCatId, reducedMotion);
+    drawCatStationBase(
+      context,
+      cat,
+      state.simTime,
+      camera.zoom,
+      reducedMotion,
+      dpr,
+      lens.catColors.get(cat.id),
+      mapLensId === "orders" || mapLensId === "stability" ? lens.orderFloors.get(cat.id) : undefined,
+      mapLensId === "inventory",
+    );
   }
+  if (mapLensId === "orders" || mapLensId === "stability") drawOrderLensEdges(context, lens, catById, camera.zoom);
 
   if (hoveredTile && placingLandmarkId) {
     const failure = landmarkPlacementFailure(state, placingLandmarkId, hoveredTile);
@@ -303,13 +535,30 @@ function drawWorld(
         drawLandmarkMarker(context, entry.landmark, dpr);
         break;
       case "actor":
-        drawCatActor(context, entry.cat, state.simTime, image, dpr, reducedMotion);
+        drawCatActor(context, entry.cat, state.simTime, image, dpr, reducedMotion, mapLensId !== "none");
         break;
     }
   }
 
-  drawFloatingEvents(context, state.cats, state.floatingEvents, state.simTime, reducedMotion);
+  if (mapLensId === "coordinates") drawCoordinateCatLabels(context, visibleCats, camera.zoom);
+
+  if (mapLensId === "none") drawFloatingEvents(context, catById, state.floatingEvents, state.simTime, reducedMotion);
   context.restore();
+
+  if (mapLensId === "none") {
+    drawSpeechBubbles(
+      context,
+      catById,
+      state.floatingEvents,
+      state.simTime,
+      reducedMotion,
+      camera,
+      width,
+      height,
+      speechScale,
+      speechControlObstacles,
+    );
+  }
 
   drawCanvasHud(
     context,
@@ -342,7 +591,7 @@ function getGroundLayer(
   const canvas = cache.canvas ?? document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(width * dpr));
   canvas.height = Math.max(1, Math.round(height * dpr));
-  const context = canvas.getContext("2d", { alpha: false })!;
+  const context = canvas.getContext("2d", { alpha: true })!;
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
   drawBackdrop(context, width, height);
   cache.canvas = canvas;
@@ -369,14 +618,25 @@ function tracePolygon(context: CanvasRenderingContext2D, points: Position[]) {
 
 function drawUnlockedParcels(context: CanvasRenderingContext2D, parcels: Position[]) {
   context.save();
-  context.lineWidth = 1.3;
-  context.setLineDash([10, 8]);
+  context.lineWidth = 0.72;
+  context.setLineDash([]);
   for (const parcel of parcels) {
+    const bounds = parcelBounds(parcel);
+    context.strokeStyle = "rgba(104, 116, 108, .16)";
+    for (let x = bounds.minX; x <= bounds.maxX; x += 1) {
+      for (let y = bounds.minY; y <= bounds.maxY; y += 1) {
+        tracePolygon(context, tileDiamond({ x, y }));
+        context.stroke();
+      }
+    }
+
+    context.lineWidth = 1.25;
+    context.setLineDash([9, 7]);
     tracePolygon(context, parcelPolygon(parcel));
-    context.fillStyle = "rgba(246, 247, 248, .32)";
-    context.fill();
-    context.strokeStyle = "rgba(135, 142, 151, .28)";
+    context.strokeStyle = "rgba(91, 105, 96, .34)";
     context.stroke();
+    context.lineWidth = 0.72;
+    context.setLineDash([]);
   }
   context.restore();
 }
@@ -427,50 +687,290 @@ function drawResourceRegions(context: CanvasRenderingContext2D, nodes: ResourceN
     const color = RESOURCE_COLORS[node.itemId] ?? "108, 126, 112";
     for (const tile of resourceHarvestTiles(node)) {
       tracePolygon(context, tileDiamond(tile));
-      context.fillStyle = `rgba(${color}, .14)`;
+      context.fillStyle = `rgba(${color}, .055)`;
       context.fill();
-      context.strokeStyle = `rgba(${color}, .38)`;
-      context.lineWidth = 1;
+      context.strokeStyle = `rgba(${color}, .22)`;
+      context.lineWidth = 0.85;
       context.stroke();
     }
     tracePolygon(context, tileDiamond(node.position));
-    context.fillStyle = `rgba(${color}, .28)`;
+    context.fillStyle = `rgba(${color}, .12)`;
     context.fill();
-    context.strokeStyle = `rgba(${color}, .72)`;
-    context.lineWidth = 1.8;
+    context.strokeStyle = `rgba(${color}, .52)`;
+    context.lineWidth = 1.4;
     context.stroke();
   }
 }
 
-function drawResourceMarker(context: CanvasRenderingContext2D, node: ResourceNode, dpr: number) {
-  const color = RESOURCE_COLORS[node.itemId] ?? "108, 126, 112";
-  const center = worldToIso(node.position);
+function drawLensAreas(context: CanvasRenderingContext2D, lens: MapLensSnapshot) {
   context.save();
-  context.beginPath();
-  context.ellipse(center.x, center.y + 5, 25, 11, 0, 0, Math.PI * 2);
-  context.fillStyle = `rgba(${color}, .22)`;
-  context.fill();
-  context.strokeStyle = `rgba(${color}, .58)`;
-  context.lineWidth = 1.4;
-  context.stroke();
-  const item = ITEM_BY_ID.get(node.itemId);
-  const size = 25;
-  const emoji = getEmojiCanvas(item?.emoji ?? "📦", size, dpr);
-  context.drawImage(emoji, center.x - size / 2 - 2, center.y - size / 2 - 10, size + 4, size + 4);
+  for (const area of lens.areas) {
+    const tiles: Position[] = [];
+    if (area.kind === "resource") {
+      for (let dx = -1; dx <= 1; dx += 1) {
+        for (let dy = -1; dy <= 1; dy += 1) {
+          if (dx === 0 && dy === 0) continue;
+          tiles.push({ x: area.position.x + dx, y: area.position.y + dy });
+        }
+      }
+    } else {
+      for (let dx = -area.radius; dx <= area.radius; dx += 1) {
+        const remaining = area.radius - Math.abs(dx);
+        for (let dy = -remaining; dy <= remaining; dy += 1) {
+          tiles.push({ x: area.position.x + dx, y: area.position.y + dy });
+        }
+      }
+    }
+    for (const tile of tiles) {
+      tracePolygon(context, tileDiamond(tile));
+      context.globalAlpha = 0.15;
+      context.fillStyle = area.color;
+      context.fill();
+      context.globalAlpha = 0.52;
+      context.strokeStyle = area.color;
+      context.lineWidth = 1.05;
+      context.stroke();
+    }
+    tracePolygon(context, tileDiamond(area.position));
+    context.globalAlpha = 0.28;
+    context.fillStyle = area.color;
+    context.fill();
+    context.globalAlpha = 0.82;
+    context.strokeStyle = area.color;
+    context.lineWidth = 1.6;
+    context.stroke();
+  }
   context.restore();
+}
+
+function drawCoordinateAxisTile(
+  context: CanvasRenderingContext2D,
+  position: Position,
+  color: string,
+  label: string,
+  zoom: number,
+) {
+  tracePolygon(context, tileDiamond(position));
+  context.globalAlpha = 0.13;
+  context.fillStyle = color;
+  context.fill();
+  context.globalAlpha = 0.72;
+  context.strokeStyle = color;
+  context.lineWidth = 1.2 / zoom;
+  context.stroke();
+  const center = worldToIso(position);
+  const fontSize = 8.5 / zoom;
+  context.font = `850 ${fontSize}px 'Microsoft YaHei UI', system-ui`;
+  const textWidth = context.measureText(label).width;
+  const paddingX = 4 / zoom;
+  const boxHeight = 13 / zoom;
+  const boxY = center.y + 11 / zoom;
+  context.globalAlpha = 0.92;
+  context.fillStyle = "rgba(255, 255, 255, .9)";
+  context.beginPath();
+  context.roundRect(center.x - textWidth / 2 - paddingX, boxY - boxHeight / 2, textWidth + paddingX * 2, boxHeight, 4 / zoom);
+  context.fill();
+  context.globalAlpha = 1;
+  context.fillStyle = "#4c5650";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(label, center.x, boxY);
+}
+
+function drawCoordinateAxes(
+  context: CanvasRenderingContext2D,
+  bounds: { minX: number; maxX: number; minY: number; maxY: number },
+  zoom: number,
+) {
+  context.save();
+  const minX = Math.floor(bounds.minX);
+  const maxX = Math.ceil(bounds.maxX);
+  const minY = Math.floor(bounds.minY);
+  const maxY = Math.ceil(bounds.maxY);
+  if (minY <= 0 && maxY >= 0) {
+    for (let x = minX; x <= maxX; x += 1) {
+      if (x === 0) continue;
+      drawCoordinateAxisTile(context, { x, y: 0 }, LENS_COLORS.blue.top, `X ${x}`, zoom);
+    }
+  }
+  if (minX <= 0 && maxX >= 0) {
+    for (let y = minY; y <= maxY; y += 1) {
+      if (y === 0) continue;
+      drawCoordinateAxisTile(context, { x: 0, y }, LENS_COLORS.orange.top, `Y ${y}`, zoom);
+    }
+  }
+  if (minX <= 0 && maxX >= 0 && minY <= 0 && maxY >= 0) {
+    drawCoordinateAxisTile(context, { x: 0, y: 0 }, "#6f7772", "0,0", zoom);
+  }
+  context.restore();
+}
+
+function drawCoordinateCatLabels(
+  context: CanvasRenderingContext2D,
+  cats: readonly CatState[],
+  zoom: number,
+) {
+  context.save();
+  const fontSize = 8.5 / zoom;
+  const paddingX = 5 / zoom;
+  const boxHeight = 14 / zoom;
+  context.font = `900 ${fontSize}px 'Microsoft YaHei UI', system-ui`;
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  for (const cat of cats) {
+    const center = worldToIso(cat.position);
+    const text = `#${cat.createdIndex + 1}  (${cat.position.x},${cat.position.y})`;
+    const textWidth = context.measureText(text).width;
+    const x = center.x;
+    const y = center.y + WORKSTATION_DEPTH + 9 / zoom;
+    context.fillStyle = "rgba(248, 249, 248, .94)";
+    context.strokeStyle = "rgba(89, 98, 93, .62)";
+    context.lineWidth = 1 / zoom;
+    context.beginPath();
+    context.roundRect(x - textWidth / 2 - paddingX, y - boxHeight / 2, textWidth + paddingX * 2, boxHeight, 4 / zoom);
+    context.fill();
+    context.stroke();
+    context.fillStyle = "#404944";
+    context.fillText(text, x, y);
+  }
+  context.restore();
+}
+
+function stableCurveSide(id: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < id.length; index += 1) {
+    hash ^= id.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) % 2 === 0 ? -1 : 1;
+}
+
+function drawOrderLensEdges(
+  context: CanvasRenderingContext2D,
+  lens: MapLensSnapshot,
+  catById: Map<string, CatState>,
+  zoom: number,
+) {
+  context.save();
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  for (const edge of lens.edges) {
+    const sourceCat = catById.get(edge.sourceCatId);
+    const targetCat = catById.get(edge.targetCatId);
+    if (!sourceCat || !targetCat || sourceCat.id === targetCat.id) continue;
+    const sourceCenter = worldToIso(sourceCat.position);
+    const targetCenter = worldToIso(targetCat.position);
+    const dx = targetCenter.x - sourceCenter.x;
+    const dy = targetCenter.y - sourceCenter.y;
+    const distance = Math.max(1, Math.hypot(dx, dy));
+    const unitX = dx / distance;
+    const unitY = dy / distance;
+    const trim = Math.min(22 / zoom, distance * 0.22);
+    const start = { x: sourceCenter.x + unitX * trim, y: sourceCenter.y + unitY * trim - 8 / zoom };
+    const end = { x: targetCenter.x - unitX * trim, y: targetCenter.y - unitY * trim - 8 / zoom };
+    const bend = Math.max(24 / zoom, Math.min(94 / zoom, distance * 0.26));
+    const side = stableCurveSide(edge.id);
+    const normalX = -unitY;
+    const normalY = unitX;
+    const control = {
+      x: (start.x + end.x) / 2 + normalX * bend * 0.28 * side,
+      y: (start.y + end.y) / 2 + normalY * bend * 0.28 * side - bend,
+    };
+
+    const frequencyScale = Math.min(7, Math.log2(Math.max(1, edge.count ?? 1) + 1) * 1.25);
+    context.globalAlpha = 0.88;
+    context.strokeStyle = edge.color;
+    context.lineWidth = (2.5 + frequencyScale) / zoom;
+    context.beginPath();
+    context.moveTo(start.x, start.y);
+    context.quadraticCurveTo(control.x, control.y, end.x, end.y);
+    context.stroke();
+
+    const tangentX = end.x - control.x;
+    const tangentY = end.y - control.y;
+    const tangentLength = Math.max(1, Math.hypot(tangentX, tangentY));
+    const tx = tangentX / tangentLength;
+    const ty = tangentY / tangentLength;
+    const headLength = (8.5 + frequencyScale * 1.35) / zoom;
+    const headWidth = (4.8 + frequencyScale * 0.85) / zoom;
+    context.fillStyle = edge.color;
+    context.beginPath();
+    context.moveTo(end.x, end.y);
+    context.lineTo(end.x - tx * headLength - ty * headWidth, end.y - ty * headLength + tx * headWidth);
+    context.lineTo(end.x - tx * headLength + ty * headWidth, end.y - ty * headLength - tx * headWidth);
+    context.closePath();
+    context.fill();
+  }
+  context.restore();
+}
+
+function drawResourceMarker(context: CanvasRenderingContext2D, node: ResourceNode, dpr: number) {
+  const center = worldToIso(node.position);
+  const item = ITEM_BY_ID.get(node.itemId);
+  drawWorldObjectBadge(context, center, item?.emoji ?? "📦", itemQualityPalette(node.itemId), dpr);
 }
 
 function drawBuildingMarker(context: CanvasRenderingContext2D, building: DeployedBuilding, dpr: number) {
   const center = worldToIso(building.position);
-  const emoji = getEmojiCanvas(ITEM_BY_ID.get(building.itemId)?.emoji ?? "🏗️", 25, dpr);
+  const item = ITEM_BY_ID.get(building.itemId);
+  drawWorldObjectBadge(context, center, item?.emoji ?? "🏗️", buildingQualityPalette(building.itemId), dpr);
+}
+
+function drawWorldObjectBadge(
+  context: CanvasRenderingContext2D,
+  tileCenter: Position,
+  emojiText: string,
+  quality: ItemQualityPalette,
+  dpr: number,
+  alpha = 1,
+) {
+  const centerX = tileCenter.x;
+  const centerY = tileCenter.y - 23;
+  const radius = 18;
+  const emojiSize = 28;
+  const emojiCanvasSize = emojiSize + 8;
   context.save();
+  context.globalAlpha = alpha;
+
+  const halo = context.createRadialGradient(centerX, centerY, radius * 0.35, centerX, centerY, radius + 10);
+  halo.addColorStop(0, quality.haloInner);
+  halo.addColorStop(1, quality.haloOuter);
   context.beginPath();
-  context.arc(center.x + 29, center.y - 23, 17, 0, Math.PI * 2);
-  context.fillStyle = "rgba(255,255,255,.9)";
+  context.arc(centerX, centerY, radius + 10, 0, Math.PI * 2);
+  context.fillStyle = halo;
   context.fill();
-  context.strokeStyle = "rgba(98,112,103,.36)";
+
+  context.beginPath();
+  context.ellipse(tileCenter.x, tileCenter.y + 4, 24, 9, 0, 0, Math.PI * 2);
+  context.fillStyle = quality.haloInner;
+  context.fill();
+
+  const badge = context.createLinearGradient(centerX, centerY - radius, centerX, centerY + radius);
+  badge.addColorStop(0, "rgba(255, 255, 252, .99)");
+  badge.addColorStop(0.72, "rgba(255, 255, 252, .97)");
+  badge.addColorStop(1, quality.topStops[1]);
+  context.beginPath();
+  context.arc(centerX, centerY, radius, 0, Math.PI * 2);
+  context.fillStyle = badge;
+  context.fill();
+  context.strokeStyle = quality.accent;
+  context.lineWidth = 1.8;
   context.stroke();
-  context.drawImage(emoji, center.x + 14, center.y - 39, 30, 30);
+
+  context.beginPath();
+  context.arc(centerX, centerY, radius - 3, Math.PI * 0.18, Math.PI * 0.82);
+  context.strokeStyle = quality.topStops[0];
+  context.lineWidth = 1.15;
+  context.stroke();
+
+  const emoji = getEmojiCanvas(emojiText, emojiSize, dpr);
+  context.drawImage(
+    emoji,
+    centerX - emojiCanvasSize / 2,
+    centerY - emojiCanvasSize / 2,
+    emojiCanvasSize,
+    emojiCanvasSize,
+  );
   context.restore();
 }
 
@@ -561,17 +1061,230 @@ function drawBuildingPlacementPreview(
   context.strokeStyle = valid ? "rgba(45, 135, 72, .9)" : "rgba(188, 61, 54, .9)";
   context.lineWidth = 2;
   context.stroke();
-  const size = 31;
-  const emoji = getEmojiCanvas(ITEM_BY_ID.get(itemId)?.emoji ?? "🏗️", size, dpr);
-  context.save();
-  context.globalAlpha = valid ? 0.9 : 0.55;
-  context.drawImage(emoji, center.x - size / 2, center.y - size - 11, size, size);
-  context.restore();
+  const item = ITEM_BY_ID.get(itemId);
+  drawWorldObjectBadge(
+    context,
+    center,
+    item?.emoji ?? "🏗️",
+    buildingQualityPalette(itemId),
+    dpr,
+    valid ? 0.9 : 0.55,
+  );
 }
 
 function drawBackdrop(context: CanvasRenderingContext2D, width: number, height: number) {
-  context.fillStyle = "#ffffff";
-  context.fillRect(0, 0, width, height);
+  context.clearRect(0, 0, width, height);
+}
+
+function workstationLift(cat: CatState): number {
+  const activeItemId = cat.action && cat.action.type !== "wait" ? cat.action.itemId : null;
+  return TILE_HEIGHT * workstationQualityVisual(activeItemId).liftTileFraction;
+}
+
+function workstationCenter(cat: CatState): Position {
+  const center = worldToIso(cat.position);
+  return { x: center.x, y: center.y - workstationLift(cat) };
+}
+
+function drawSplitOrderFloor(
+  context: CanvasRenderingContext2D,
+  position: Position,
+  depth: number,
+  zoom: number,
+) {
+  drawExtrudedDiamond(
+    context,
+    position,
+    depth,
+    workstationLensGradient(context, position, LENS_COLORS.red),
+    LENS_COLORS.darkGreen.sideRight,
+    LENS_COLORS.red.sideLeft,
+    "#53645a",
+    2.8 / zoom,
+  );
+  const [north, east, south] = tileDiamond(position);
+  context.save();
+  context.beginPath();
+  context.moveTo(north.x, north.y);
+  context.lineTo(east.x, east.y);
+  context.lineTo(south.x, south.y);
+  context.closePath();
+  context.fillStyle = workstationLensGradient(context, position, LENS_COLORS.darkGreen);
+  context.fill();
+  context.strokeStyle = "rgba(255, 255, 255, .72)";
+  context.lineWidth = 1.4 / zoom;
+  context.beginPath();
+  context.moveTo(north.x, north.y);
+  context.lineTo(south.x, south.y);
+  context.stroke();
+  strokeDiamond(context, position, "#53645a", 2.8 / zoom);
+  context.restore();
+}
+
+function drawOrderFloorItemSet(
+  context: CanvasRenderingContext2D,
+  itemIds: readonly string[],
+  center: Position,
+  dpr: number,
+) {
+  const visibleItemIds = itemIds.slice(0, 4);
+  const offsets = visibleItemIds.length === 1
+    ? [{ x: 0, y: 0 }]
+    : visibleItemIds.length === 2
+      ? [{ x: -9, y: 0 }, { x: 9, y: 0 }]
+      : visibleItemIds.length === 3
+        ? [{ x: -10, y: 4 }, { x: 10, y: 4 }, { x: 0, y: -7 }]
+        : [{ x: -9, y: -6 }, { x: 9, y: -6 }, { x: -9, y: 7 }, { x: 9, y: 7 }];
+  visibleItemIds.forEach((itemId, index) => {
+    const item = ITEM_BY_ID.get(itemId);
+    if (!item) return;
+    const offset = offsets[index];
+    const x = center.x + offset.x;
+    const y = center.y + offset.y;
+    context.save();
+    context.globalAlpha = 0.88;
+    context.fillStyle = "rgba(255, 255, 255, .86)";
+    context.beginPath();
+    context.arc(x, y, 8.2, 0, Math.PI * 2);
+    context.fill();
+    context.restore();
+    const emoji = getEmojiCanvas(item.emoji, 16, dpr);
+    context.drawImage(emoji, x - 8, y - 8, 16, 16);
+  });
+}
+
+function drawDemandFloorItemSet(
+  context: CanvasRenderingContext2D,
+  orderFloor: MapLensOrderFloor,
+  center: Position,
+  dpr: number,
+  maxVisible: number,
+) {
+  const visibleItemIds = orderFloor.demandItemIds.slice(0, maxVisible);
+  const spacing = maxVisible <= 2 ? 17 : 18;
+  const firstX = -((visibleItemIds.length - 1) * spacing) / 2;
+  const targetsByItem = new Map(orderFloor.demandTargets.map((entry) => [entry.itemId, entry.targetItemIds]));
+  visibleItemIds.forEach((itemId, index) => {
+    const demandItem = ITEM_BY_ID.get(itemId);
+    if (!demandItem) return;
+    const x = center.x + firstX + index * spacing;
+    const demandY = center.y - 7;
+    context.save();
+    context.fillStyle = "rgba(255, 255, 255, .88)";
+    context.beginPath();
+    context.arc(x, demandY, 7.4, 0, Math.PI * 2);
+    context.fill();
+    context.restore();
+    const demandEmoji = getEmojiCanvas(demandItem.emoji, 14, dpr);
+    context.drawImage(demandEmoji, x - 7, demandY - 7, 14, 14);
+
+    const targetItemIds = targetsByItem.get(itemId) ?? [];
+    if (targetItemIds.length === 0) return;
+    const triangleY = center.y + 1;
+    context.save();
+    context.fillStyle = "rgba(82, 91, 86, .84)";
+    context.beginPath();
+    context.moveTo(x - 3, triangleY);
+    context.lineTo(x + 3, triangleY);
+    context.lineTo(x, triangleY + 4.5);
+    context.closePath();
+    context.fill();
+    context.restore();
+
+    const visibleTargets = targetItemIds.slice(0, 2);
+    const targetSpacing = 9;
+    const targetStartX = x - ((visibleTargets.length - 1) * targetSpacing) / 2;
+    visibleTargets.forEach((targetItemId, targetIndex) => {
+      const targetItem = ITEM_BY_ID.get(targetItemId);
+      if (!targetItem) return;
+      const targetX = targetStartX + targetIndex * targetSpacing;
+      const targetY = center.y + 11;
+      context.save();
+      context.fillStyle = "rgba(224, 227, 225, .94)";
+      context.beginPath();
+      context.arc(targetX, targetY, 5.7, 0, Math.PI * 2);
+      context.fill();
+      context.restore();
+      const targetEmoji = getEmojiCanvas(targetItem.emoji, 11, dpr);
+      context.drawImage(targetEmoji, targetX - 5.5, targetY - 5.5, 11, 11);
+    });
+  });
+}
+
+function drawOrderFloorItems(
+  context: CanvasRenderingContext2D,
+  position: Position,
+  orderFloor: MapLensOrderFloor,
+  dpr: number,
+) {
+  const center = worldToIso(position);
+  const hasDemand = orderFloor.demandItemIds.length > 0;
+  const hasSupply = orderFloor.supplyItemIds.length > 0;
+  if (hasDemand && hasSupply) {
+    drawDemandFloorItemSet(context, orderFloor, { x: center.x - 32, y: center.y }, dpr, 2);
+    drawOrderFloorItemSet(context, orderFloor.supplyItemIds, { x: center.x + 32, y: center.y + 2 }, dpr);
+    return;
+  }
+  if (hasDemand) {
+    drawDemandFloorItemSet(context, orderFloor, { x: center.x, y: center.y }, dpr, 3);
+  } else if (hasSupply) {
+    drawOrderFloorItemSet(context, orderFloor.supplyItemIds, { x: center.x, y: center.y + 3 }, dpr);
+  }
+}
+
+function drawCatInventoryMarkers(
+  context: CanvasRenderingContext2D,
+  cat: CatState,
+  dpr: number,
+) {
+  const entries = Object.entries(cat.inventory)
+    .filter(([itemId, quantity]) => quantity > 0 && ITEM_BY_ID.has(itemId))
+    .sort(([leftId], [rightId]) => itemQualityLevel(rightId) - itemQualityLevel(leftId)
+      || leftId.localeCompare(rightId));
+  if (entries.length === 0) return;
+
+  const shown = entries.slice(0, 3);
+  const overflowKinds = entries.length - shown.length;
+  const badgeWidth = 29;
+  const overflowWidth = overflowKinds > 0 ? 22 : 0;
+  const gap = 3;
+  const totalWidth = shown.length * badgeWidth + Math.max(0, shown.length - 1) * gap
+    + (overflowKinds > 0 ? gap + overflowWidth : 0);
+  const center = worldToIso(cat.position);
+  const y = center.y + 10;
+  let x = center.x - totalWidth / 2;
+
+  context.save();
+  context.textAlign = "left";
+  context.textBaseline = "middle";
+  context.font = "800 7px 'Microsoft YaHei UI', system-ui";
+  for (const [itemId, quantity] of shown) {
+    const item = ITEM_BY_ID.get(itemId)!;
+    context.beginPath();
+    context.roundRect(x, y - 7, badgeWidth, 14, 5);
+    context.fillStyle = "rgba(255, 255, 255, .9)";
+    context.fill();
+    context.strokeStyle = "rgba(112, 121, 115, .34)";
+    context.lineWidth = 0.8;
+    context.stroke();
+    const emoji = getEmojiCanvas(item.emoji, 10, dpr);
+    context.drawImage(emoji, x + 2, y - 5, 10, 10);
+    context.fillStyle = "#58625b";
+    context.fillText(`×${quantity}`, x + 13, y + 0.5);
+    x += badgeWidth + gap;
+  }
+  if (overflowKinds > 0) {
+    context.beginPath();
+    context.roundRect(x, y - 7, overflowWidth, 14, 5);
+    context.fillStyle = "rgba(245, 247, 246, .94)";
+    context.fill();
+    context.strokeStyle = "rgba(112, 121, 115, .3)";
+    context.stroke();
+    context.fillStyle = "#747d77";
+    context.textAlign = "center";
+    context.fillText(`+${overflowKinds}`, x + overflowWidth / 2, y + 0.5);
+  }
+  context.restore();
 }
 
 function drawCatStationBase(
@@ -579,37 +1292,86 @@ function drawCatStationBase(
   cat: CatState,
   simTime: number,
   zoom: number,
-  selected: boolean,
   reducedMotion: boolean,
+  dpr: number,
+  lensColor?: LensColor,
+  orderFloor?: MapLensOrderFloor,
+  showInventory = false,
 ) {
-  const top = cat.action
-    ? cat.action.type === "craft" ? "#e9f5ec" : cat.action.type === "pass" ? "#eaf1fb" : "#fbf0e5"
-    : "#e5e7eb";
-  drawExtrudedDiamond(context, cat.position, WORKSTATION_DEPTH, top, "#c6cbd1", "#b8bec5", selected ? "#d2a52c" : "#aeb4bb", selected ? 3 / zoom : 1.2 / zoom);
-  const center = worldToIso(cat.position);
+  const lensActive = Boolean(lensColor || orderFloor);
+  const activeItemId = !lensActive && cat.action && cat.action.type !== "wait" ? cat.action.itemId : null;
+  const quality = activeItemId ? itemQualityPalette(activeItemId) : null;
+  const visual = workstationQualityVisual(activeItemId);
+  const hasQualityBorder = visual.level >= 1;
+  const hasHighlightedBorder = visual.level >= 2;
+  const lift = TILE_HEIGHT * visual.liftTileFraction;
+  const depth = WORKSTATION_DEPTH + lift;
+  const hasDemand = Boolean(orderFloor?.demandItemIds.length);
+  const hasSupply = Boolean(orderFloor?.supplyItemIds.length);
+  const splitOrderFloor = hasDemand && hasSupply;
+  const floorLensColor = orderFloor
+    ? hasDemand ? LENS_COLORS.red : hasSupply ? LENS_COLORS.darkGreen : LENS_COLORS.blue
+    : lensColor;
 
-  if (selected) {
+  context.save();
+  context.translate(0, -lift);
+  const top = floorLensColor
+    ? workstationLensGradient(context, cat.position, floorLensColor)
+    : quality ? workstationTopGradient(context, cat.position, quality, simTime) : "#e5e7eb";
+  if (splitOrderFloor) {
+    drawSplitOrderFloor(context, cat.position, depth, zoom);
+  } else {
+    drawExtrudedDiamond(
+      context,
+      cat.position,
+      depth,
+      top,
+      floorLensColor?.sideRight ?? quality?.sideRight ?? "#c6cbd1",
+      floorLensColor?.sideLeft ?? quality?.sideLeft ?? "#b8bec5",
+      floorLensColor?.border ?? (hasQualityBorder ? quality!.accent : "#aeb4bb"),
+      floorLensColor ? 2.6 / zoom : visual.borderWidth / zoom,
+    );
+  }
+  if (orderFloor) drawOrderFloorItems(context, cat.position, orderFloor, dpr);
+  if (showInventory) drawCatInventoryMarkers(context, cat, dpr);
+
+  if (!floorLensColor && quality && hasHighlightedBorder) {
     context.save();
-    context.shadowColor = "rgba(226, 190, 96, .72)";
-    context.shadowBlur = 12;
-    strokeDiamond(context, cat.position, "#e2be60", 2.4 / zoom);
+    context.globalAlpha = 0.44;
+    context.shadowColor = quality.accent;
+    context.shadowBlur = visual.glowBlur;
+    strokeDiamond(context, cat.position, quality.accent, visual.glowWidth / zoom);
+    context.globalAlpha = 0.98;
+    context.shadowBlur = 5;
+    strokeDiamond(context, cat.position, quality.accent, visual.borderWidth / zoom);
     context.restore();
   }
+  if (!floorLensColor && quality && visual.fullHighlight) {
+    context.save();
+    context.globalAlpha = 0.7;
+    context.shadowColor = quality.accent;
+    context.shadowBlur = 18;
+    drawExtrudedDiamond(
+      context,
+      cat.position,
+      depth,
+      quality.haloInner,
+      quality.haloInner,
+      quality.haloInner,
+      quality.accent,
+      2.8 / zoom,
+    );
+    context.restore();
+  }
+  context.restore();
 
-  if (cat.action?.type === "pass" && cat.action.direction) {
+  const center = lensActive ? worldToIso(cat.position) : workstationCenter(cat);
+
+  if (!lensActive && cat.action?.type === "pass" && cat.action.direction) {
     const pulse = reducedMotion ? 0.5 : (Math.sin(simTime / 260) + 1) / 2;
     drawDirectionArrow(context, center, cat.action.direction, pulse);
   }
 
-  if (selected && zoom >= 0.62) {
-    context.save();
-    context.textAlign = "center";
-    context.textBaseline = "middle";
-    context.font = "700 9px 'Microsoft YaHei UI', system-ui";
-    context.fillStyle = "#6b7280";
-    context.fillText(`(${cat.position.x}, ${cat.position.y})`, center.x, center.y + WORKSTATION_DEPTH + 8);
-    context.restore();
-  }
 }
 
 function drawCatActor(
@@ -619,19 +1381,22 @@ function drawCatActor(
   sprite: HTMLImageElement,
   dpr: number,
   reducedMotion: boolean,
+  lensActive: boolean,
 ) {
-  const center = worldToIso(cat.position);
-  const frame = animationFrame(simTime, Boolean(cat.action), reducedMotion);
+  const center = lensActive ? worldToIso(cat.position) : workstationCenter(cat);
+  const visibleAction = cat.action?.type === "wait" ? null : cat.action;
+  const showActionItem = Boolean(visibleAction && !lensActive);
+  const frame = animationFrame(simTime, Boolean(visibleAction), reducedMotion);
   const motion = catMotion(cat, center, simTime, reducedMotion);
-  const itemPosition = cat.action ? actionItemPosition(cat.action, center, simTime, reducedMotion) : null;
-  if (cat.action && itemPosition && cat.action.type !== "pass" && motion.inFront) {
-    drawAction(context, cat.action, itemPosition, simTime, dpr, reducedMotion);
+  const itemPosition = visibleAction ? actionItemPosition(visibleAction, center, simTime, reducedMotion) : null;
+  if (showActionItem && visibleAction && itemPosition && visibleAction.type !== "pass" && motion.inFront) {
+    drawAction(context, visibleAction, itemPosition, simTime, dpr, reducedMotion);
   }
   drawCatSprite(context, sprite, frame, motion.x, motion.y, motion.mirror);
-  if (cat.action && itemPosition && (cat.action.type === "pass" || !motion.inFront)) {
-    drawAction(context, cat.action, itemPosition, simTime, dpr, reducedMotion);
+  if (showActionItem && visibleAction && itemPosition && (visibleAction.type === "pass" || !motion.inFront)) {
+    drawAction(context, visibleAction, itemPosition, simTime, dpr, reducedMotion);
   }
-  if (!cat.action) drawIdleIndicator(context, center, cat.lastDecision);
+  if (!visibleAction && !lensActive) drawIdleIndicator(context, center, cat.lastDecision);
 }
 
 function drawCatSprite(
@@ -665,7 +1430,7 @@ function catMotion(
   simTime: number,
   reducedMotion: boolean,
 ): { x: number; y: number; mirror: boolean; inFront: boolean } {
-  if (!cat.action) {
+  if (!cat.action || cat.action.type === "wait") {
     const idlePhase = reducedMotion ? 0 : simTime / 1_800 + cat.createdIndex * 0.71;
     return {
       x: stationCenter.x + Math.sin(idlePhase) * 1.6,
@@ -698,10 +1463,6 @@ function catMotion(
 
   if (!reducedMotion && cat.action.type === "craft") {
     angle += elapsed / 4_600 * Math.PI * 2;
-  } else if (!reducedMotion && cat.action.type === "sell") {
-    angle -= elapsed / 3_800 * Math.PI * 2;
-    radiusX = 27;
-    radiusY = 12;
   }
 
   const x = item.x + Math.cos(angle) * radiusX;
@@ -776,23 +1537,28 @@ function drawAction(
   const y = itemPosition.y;
   const progress = actionProgress(action, simTime);
   const pulse = reducedMotion ? 0.5 : (Math.sin(simTime / 260) + 1) / 2;
-  const color = actionColor(action);
+  const quality = itemQualityPalette(action.itemId);
+  const color = quality.accent;
 
   context.save();
-  if (action.type === "craft") {
-    context.beginPath();
-    context.arc(x, y, 18 + pulse * 3, 0, Math.PI * 2);
-    context.fillStyle = `rgba(72, 201, 116, ${0.08 + pulse * 0.08})`;
-    context.fill();
-  } else if (action.type === "sell") {
-    context.beginPath();
-    context.arc(x, y, 20 + pulse * 2, 0, Math.PI * 2);
-    context.strokeStyle = `rgba(242, 155, 75, ${0.34 + pulse * 0.36})`;
-    context.lineWidth = 2;
-    context.stroke();
-    context.fillStyle = "rgba(242, 155, 75, .18)";
-    context.fill();
+  context.beginPath();
+  context.arc(x, y, 19 + pulse * 4, 0, Math.PI * 2);
+  if (quality.id === "prism") {
+    const prism = context.createConicGradient(reducedMotion ? 0 : simTime / 1_200, x, y);
+    prism.addColorStop(0, "rgba(239, 186, 216, .38)");
+    prism.addColorStop(.2, "rgba(199, 213, 247, .38)");
+    prism.addColorStop(.4, "rgba(181, 229, 220, .38)");
+    prism.addColorStop(.6, "rgba(239, 226, 169, .38)");
+    prism.addColorStop(.8, "rgba(220, 196, 240, .38)");
+    prism.addColorStop(1, "rgba(239, 186, 216, .38)");
+    context.fillStyle = prism;
+  } else {
+    const halo = context.createRadialGradient(x, y, 4, x, y, 23);
+    halo.addColorStop(0, quality.haloInner);
+    halo.addColorStop(1, quality.haloOuter);
+    context.fillStyle = halo;
   }
+  context.fill();
 
   const cached = getEmojiCanvas(item?.emoji ?? "❔", 30, dpr);
   context.drawImage(cached, x - 17, y - 17, 34, 34);
@@ -853,31 +1619,32 @@ function drawIdleIndicator(context: CanvasRenderingContext2D, center: Position, 
 
 function drawFloatingEvents(
   context: CanvasRenderingContext2D,
-  cats: CatState[],
+  catById: ReadonlyMap<string, CatState>,
   events: FloatingEvent[],
   simTime: number,
   reducedMotion: boolean,
 ) {
-  const catById = new Map(cats.map((cat) => [cat.id, cat]));
   const perCat = new Map<string, FloatingEvent[]>();
-  for (const event of events) {
+  const valueEvents = events.filter((event) => event.kind !== "speech");
+  for (const event of valueEvents) {
     const list = perCat.get(event.catId) ?? [];
     list.push(event);
     perCat.set(event.catId, list);
   }
   for (const list of perCat.values()) list.sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
 
-  for (const event of events) {
+  for (const event of valueEvents) {
     const cat = catById.get(event.catId);
     if (!cat) continue;
     const age = Math.max(0, Math.min(1, (simTime - event.createdAt) / event.duration));
     const fade = age < 0.58 ? 1 : Math.max(0, 1 - (age - 0.58) / 0.42);
     const stack = perCat.get(event.catId) ?? [];
     const stackIndex = stack.findIndex((entry) => entry.id === event.id);
-    const center = worldToIso(cat.position);
+    const center = workstationCenter(cat);
     const rise = reducedMotion ? 8 : age * 24;
-    const x = center.x;
-    const y = center.y - 82 - stackIndex * 17 - rise;
+    const speaking = events.some((entry) => entry.catId === event.catId && speechEventIsVisible(entry, simTime));
+    const x = center.x + (speaking ? 48 : 0);
+    const y = center.y - (speaking ? 48 : 82) - stackIndex * 17 - rise;
     const tax = event.text.includes("税");
     const color = event.kind === "sale" ? (tax ? "#c47b18" : "#d37c25") : "#32905a";
 
@@ -895,6 +1662,142 @@ function drawFloatingEvents(
     context.fillText(event.text, x, y);
     context.restore();
   }
+}
+
+interface SpeechBubbleLayout {
+  event: FloatingEvent;
+  anchor: Position;
+  tailSide: "top" | "bottom";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  lines: string[];
+}
+
+function drawSpeechBubbles(
+  context: CanvasRenderingContext2D,
+  catById: ReadonlyMap<string, CatState>,
+  events: FloatingEvent[],
+  simTime: number,
+  reducedMotion: boolean,
+  camera: Camera,
+  width: number,
+  height: number,
+  requestedScale: number,
+  controlObstacles: readonly SpeechLayoutRectangle[],
+) {
+  const scale = Math.max(0.75, Math.min(1.6, requestedScale));
+  const fontSize = 11 * scale;
+  const lineHeight = 16 * scale;
+  const horizontalPadding = 10 * scale;
+  const verticalPadding = 8 * scale;
+  const speechEvents = events.filter((event) => speechEventIsVisible(event, simTime))
+    .sort((left, right) => {
+      const leftCat = catById.get(left.catId);
+      const rightCat = catById.get(right.catId);
+      if (!leftCat || !rightCat) return left.id.localeCompare(right.id);
+      return sceneDepthCompare(
+        { position: leftCat.position, layer: 1, order: leftCat.createdIndex },
+        { position: rightCat.position, layer: 1, order: rightCat.createdIndex },
+      );
+    });
+  const activeQualityLevels = [...new Set([...catById.values()]
+    .filter((cat) => cat.action?.type === "craft" || cat.action?.type === "pass")
+    .map((cat) => itemQualityLevel(cat.action?.itemId)))]
+    .sort((left, right) => right - left)
+    .slice(0, 2);
+  const protectedAreas: SpeechProtectedRectangle[] = [...catById.values()]
+    .filter((cat) => cat.action && activeQualityLevels.includes(itemQualityLevel(cat.action.itemId)))
+    .map((cat) => {
+      const center = isoToScreen(workstationCenter(cat), camera, { width, height });
+      const qualityRank = activeQualityLevels.indexOf(itemQualityLevel(cat.action?.itemId));
+      const horizontalPadding = 8 + TILE_WIDTH * camera.zoom * .55;
+      const topPadding = 20 + TILE_HEIGHT * camera.zoom * .82;
+      const bottomPadding = 8 + (TILE_HEIGHT * .55 + WORKSTATION_DEPTH) * camera.zoom;
+      return {
+        x: center.x - horizontalPadding,
+        y: center.y - topPadding,
+        width: horizontalPadding * 2,
+        height: topPadding + bottomPadding,
+        weight: qualityRank === 0 ? 3 : 2,
+      };
+    });
+  const layouts: SpeechBubbleLayout[] = [];
+  context.save();
+  context.font = `700 ${fontSize}px 'Microsoft YaHei UI', system-ui`;
+  for (const event of speechEvents) {
+    const cat = catById.get(event.catId);
+    if (!cat) continue;
+    const anchor = isoToScreen(workstationCenter(cat), camera, { width, height });
+    if (anchor.x < -180 || anchor.x > width + 180 || anchor.y < -120 || anchor.y > height + 120) continue;
+    const maxLineWidth = Math.min(202 * scale, Math.max(48, width - 32 * scale));
+    const lines = wrapSpeechText(event.text, maxLineWidth, (value) => context.measureText(value).width);
+    const textWidth = Math.max(...lines.map((line) => context.measureText(line).width));
+    const bubbleWidth = Math.max(96 * scale, Math.min(222 * scale, Math.ceil(textWidth + horizontalPadding * 2)));
+    const bubbleHeight = lines.length * lineHeight + verticalPadding * 2;
+    const edge = 8 * scale;
+    const { x, y, tailSide } = chooseSpeechBubblePlacement({
+      anchor,
+      bubbleWidth,
+      bubbleHeight,
+      viewportWidth: width,
+      viewportHeight: height,
+      edge,
+      anchorGap: Math.max(35 * scale, 26 * camera.zoom),
+      seed: hashString(event.id),
+      occupied: [...controlObstacles, ...layouts],
+      protectedAreas,
+    });
+    layouts.push({ event, anchor, tailSide, x, y, width: bubbleWidth, height: bubbleHeight, lines });
+  }
+
+  for (const layout of layouts) {
+    const elapsed = Math.max(0, simTime - layout.event.createdAt);
+    const remaining = Math.max(0, layout.event.duration - elapsed);
+    const enter = reducedMotion ? 1 : Math.min(1, elapsed / 140);
+    const alpha = Math.min(enter, remaining / 420);
+    const tailX = Math.max(layout.x + 18 * scale, Math.min(layout.x + layout.width - 18 * scale, layout.anchor.x));
+    const bubbleTop = layout.y;
+    const bubbleBottom = layout.y + layout.height;
+    const tailTipY = layout.tailSide === "bottom"
+      ? Math.max(bubbleBottom + 5 * scale, layout.anchor.y - Math.max(13 * scale, 10 * camera.zoom))
+      : Math.min(bubbleTop - 5 * scale, layout.anchor.y + Math.max(13 * scale, 10 * camera.zoom));
+    context.save();
+    context.globalAlpha = Math.max(0, Math.min(1, alpha));
+    context.shadowColor = "rgba(31, 43, 36, .18)";
+    context.shadowBlur = 9 * scale;
+    context.shadowOffsetY = 3 * scale;
+    context.beginPath();
+    context.roundRect(layout.x, layout.y, layout.width, layout.height, 10 * scale);
+    if (layout.tailSide === "bottom") {
+      context.moveTo(tailX - 7 * scale, bubbleBottom - 1);
+      context.lineTo(tailX, tailTipY);
+      context.lineTo(tailX + 7 * scale, bubbleBottom - 1);
+    } else {
+      context.moveTo(tailX - 7 * scale, bubbleTop + 1);
+      context.lineTo(tailX, tailTipY);
+      context.lineTo(tailX + 7 * scale, bubbleTop + 1);
+    }
+    context.closePath();
+    context.fillStyle = "rgba(255, 255, 255, .98)";
+    context.fill();
+    context.shadowColor = "transparent";
+    context.strokeStyle = "rgba(91, 105, 96, .55)";
+    context.lineWidth = 1;
+    context.stroke();
+    context.fillStyle = "#2f3732";
+    context.font = `700 ${fontSize}px 'Microsoft YaHei UI', system-ui`;
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    layout.lines.forEach((line, index) => context.fillText(
+      line,
+      layout.x + layout.width / 2,
+      layout.y + verticalPadding + index * lineHeight + lineHeight / 2,
+    ));
+    context.restore();
+  }
+  context.restore();
 }
 
 function drawEventParticles(
@@ -929,11 +1832,61 @@ function drawPlacementPreview(context: CanvasRenderingContext2D, position: Posit
   context.restore();
 }
 
+function workstationTopGradient(
+  context: CanvasRenderingContext2D,
+  position: Position,
+  quality: ItemQualityPalette,
+  simTime: number,
+): CanvasGradient {
+  const center = worldToIso(position);
+  const prismAngle = quality.id === "prism" ? simTime / 4_000 * Math.PI * 2 : Math.atan2(TILE_HEIGHT, TILE_WIDTH);
+  const gradientRadius = TILE_WIDTH * .5;
+  const gradientX = Math.cos(prismAngle) * gradientRadius;
+  const gradientY = Math.sin(prismAngle) * gradientRadius;
+  const gradient = context.createLinearGradient(
+    center.x - gradientX,
+    center.y - gradientY,
+    center.x + gradientX,
+    center.y + gradientY,
+  );
+  if (quality.id === "prism") {
+    const stops = [
+      "#f6e5ee", "#e7e1f7", "#dcecf8", "#dcf1ea", "#f5edcf", "#f4dfdd", "#f6e5ee",
+    ];
+    for (let index = 0; index < stops.length; index += 1) {
+      gradient.addColorStop(index / (stops.length - 1), stops[index]);
+    }
+  } else {
+    gradient.addColorStop(0, quality.topStops[0]);
+    gradient.addColorStop(.52, quality.topStops[1]);
+    gradient.addColorStop(1, quality.topStops[2]);
+  }
+  return gradient;
+}
+
+function workstationLensGradient(
+  context: CanvasRenderingContext2D,
+  position: Position,
+  lensColor: LensColor,
+): CanvasGradient {
+  const center = worldToIso(position);
+  const gradient = context.createLinearGradient(
+    center.x - TILE_WIDTH * 0.42,
+    center.y - TILE_HEIGHT * 0.3,
+    center.x + TILE_WIDTH * 0.42,
+    center.y + TILE_HEIGHT * 0.3,
+  );
+  gradient.addColorStop(0, "#f5f4e9");
+  gradient.addColorStop(0.18, lensColor.top);
+  gradient.addColorStop(1, lensColor.sideRight);
+  return gradient;
+}
+
 function drawExtrudedDiamond(
   context: CanvasRenderingContext2D,
   position: Position,
   depth: number,
-  top: string,
+  top: string | CanvasGradient,
   right: string,
   left: string,
   stroke: string,
@@ -1092,28 +2045,18 @@ function drawMilestone(context: CanvasRenderingContext2D, width: number, height:
 }
 
 function getEmojiCanvas(emoji: string, size: number, dpr: number): HTMLCanvasElement {
-  const ratio = Math.max(1, Math.round(dpr * 100) / 100);
-  const key = `${emoji}|${size}|${ratio}`;
-  const existing = emojiCache.get(key);
-  if (existing) return existing;
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.ceil((size + 8) * ratio);
-  canvas.height = Math.ceil((size + 8) * ratio);
-  const context = canvas.getContext("2d")!;
-  context.scale(ratio, ratio);
-  context.textAlign = "center";
-  context.textBaseline = "middle";
-  context.font = `${size}px ${EMOJI_FONT}`;
-  context.fillText(emoji, (size + 8) / 2, (size + 8) / 2 + 1);
-  emojiCache.set(key, canvas);
-  return canvas;
-}
-
-function actionColor(action: ActionCommand | null): string {
-  if (!action) return "rgba(126, 147, 130, .38)";
-  if (action.type === "craft") return "#64d582";
-  if (action.type === "pass") return "#63a7ff";
-  return "#f29b4b";
+  return emojiCache.get(emoji, size, dpr, (ratio) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.ceil((size + 8) * ratio);
+    canvas.height = Math.ceil((size + 8) * ratio);
+    const context = canvas.getContext("2d")!;
+    context.scale(ratio, ratio);
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.font = `${size}px ${EMOJI_FONT}`;
+    context.fillText(emoji, (size + 8) / 2, (size + 8) / 2 + 1);
+    return canvas;
+  });
 }
 
 function animationFrame(simTime: number, working: boolean, reducedMotion: boolean): number {

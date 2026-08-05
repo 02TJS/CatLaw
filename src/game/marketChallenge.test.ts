@@ -12,28 +12,27 @@ import {
 import { advanceGame, buyAllCatStockAndSell, createInitialState, enactLaw, itemPrice, unlockRecipe } from "./engine";
 import { hashSource } from "./lawInterpreter";
 import type { GameState, ItemId, LawDraft } from "./types";
-import { buyingPowerCents, productionOrderBidCents, publishBountySignal, refreshCatMarket } from "./market";
+import { publishBountySignal, refreshCatMarket } from "./market";
 
-const PASSIVE_SOURCE = "function decide(ctx) { return null; }";
+const MARKET_CHALLENGE_TOTAL_COST = MARKET_CHALLENGE_RECIPE_IDS
+  .reduce((sum, recipeId) => sum + recipeUnlockCost(recipeId), 0);
 
 function priceDraft(itemId: ItemId, multiplier: number): LawDraft {
+  const sourceCode = `function decide(ctx) { setPrice(${JSON.stringify(itemId)}, ${multiplier}); return null; }`;
   return {
     title: `${itemId} 测试价格法`,
     playerText: "test",
     summary: "test",
-    sourceCode: PASSIVE_SOURCE,
-    astHash: hashSource(PASSIVE_SOURCE),
+    sourceCode,
+    astHash: hashSource(sourceCode),
     examples: [],
     warnings: [],
-    category: "price",
-    taxRate: null,
-    priceItemId: itemId,
-    priceMultiplier: multiplier,
+    program: { version: 2 },
     validation: { syntax: true, safety: true, examplesPassed: 0, examplesTotal: 0, messages: [] },
   };
 }
 
-function finishTutorial(state: GameState): void {
+function finishFoundation(state: GameState): void {
   const discovered = new Set(ITEMS.slice(0, 15).map((item) => item.id));
   state.discoveredItems = [...discovered];
   for (const bounty of state.discoveryBounties) {
@@ -54,25 +53,26 @@ function buyMarketRecipes(state: GameState): number {
 }
 
 describe("market certification challenge", () => {
-  it("prices recipes 10–15 deterministically in cents and requires 84 treasury coins in total", () => {
+  it("prices recipes 11–15 deterministically in cents and keeps them inside the 150-coin treasury", () => {
     const costs = MARKET_CHALLENGE_RECIPE_IDS.map(recipeUnlockCost);
-    expect(costs).toEqual([800, 800, 1200, 1200, 1400, 3000]);
-    expect(costs.reduce((sum, cost) => sum + cost, 0)).toBe(8_400);
+    expect(costs).toEqual([2800, 3600, 1600, 2000, 4800]);
+    expect(costs.reduce((sum, cost) => sum + cost, 0)).toBe(14_800);
+    expect(MARKET_CHALLENGE_TOTAL_COST).toBeLessThanOrEqual(createInitialState().treasuryCoins);
   });
 
   it("requires the exact treasury balance and never charges a failed or duplicate purchase", () => {
     const state = createInitialState({ withStarter: false });
-    const cost = recipeUnlockCost("make_thread");
+    const cost = recipeUnlockCost("make_paper");
     state.treasuryCoins = cost - 1;
 
-    expect(unlockRecipe(state, "make_thread")).toEqual({ ok: false, error: "国库需要 8.00 🪙" });
+    expect(unlockRecipe(state, "make_paper")).toEqual({ ok: false, error: `国库需要 ${(cost / 100).toFixed(2)} 🪙` });
     expect(state.treasuryCoins).toBe(cost - 1);
-    expect(state.unlockedRecipes).not.toContain("make_thread");
+    expect(state.unlockedRecipes).not.toContain("make_paper");
 
     state.treasuryCoins = cost;
-    expect(unlockRecipe(state, "make_thread")).toEqual({ ok: true, cost });
+    expect(unlockRecipe(state, "make_paper")).toEqual({ ok: true, cost });
     expect(state.treasuryCoins).toBe(0);
-    expect(unlockRecipe(state, "make_thread")).toEqual({ ok: false, error: "配方已经解锁" });
+    expect(unlockRecipe(state, "make_paper")).toEqual({ ok: false, error: "配方已经解锁" });
     expect(state.treasuryCoins).toBe(0);
   });
 
@@ -85,7 +85,7 @@ describe("market certification challenge", () => {
 
   it("does not treat inventory, discovery, passing, or selling as production certification", () => {
     const state = createInitialState({ withStarter: false });
-    state.treasuryCoins = 10_000;
+    state.treasuryCoins = MARKET_CHALLENGE_TOTAL_COST;
     buyMarketRecipes(state);
     for (const itemId of MARKET_CERTIFICATION_ITEM_IDS) {
       state.discoveredItems.push(itemId);
@@ -114,7 +114,7 @@ describe("market certification challenge", () => {
     expect(INDUSTRIAL_GATE_RECIPE_IDS.every((recipeId) => !state.unlockedRecipes.includes(recipeId))).toBe(true);
   });
 
-  it("opens and purchases all recipes 16–20 immediately after certification reaches 6/6", () => {
+  it("opens and purchases all recipes 16–20 immediately after certification reaches 5/5", () => {
     const state = createInitialState({ withStarter: false });
     state.treasuryCoins = 100_000;
     const challengeSpend = buyMarketRecipes(state);
@@ -128,53 +128,55 @@ describe("market certification challenge", () => {
     expect(state.treasuryCoins).toBe(100_000 - challengeSpend - gateSpend);
   });
 
-  it("limits the six-item certification gate to recipes 16–20", () => {
+  it("limits the five-item certification gate to recipes 16–20", () => {
     const hypotheticalKnown = [...INTRO_RECIPE_IDS, ...MARKET_CHALLENGE_RECIPE_IDS, "make_cable", "make_battery"];
     expect(missingProductionCertifications("make_lamp", [])).toEqual([]);
     expect(canUnlockRecipe("make_lamp", hypotheticalKnown, [])).toBe(true);
   });
 
-  it("can fund all six purchases naturally without unlocking item 10 by itself", () => {
+  it("can fund all five purchases naturally without unlocking item 11 by itself", () => {
     const state = createInitialState();
     advanceGame(state, 900_000);
-    expect(state.treasuryCoins).toBeGreaterThanOrEqual(8_400);
+    expect(state.treasuryCoins).toBeGreaterThanOrEqual(MARKET_CHALLENGE_TOTAL_COST);
     expect(state.unlockedRecipes).toEqual(INTRO_RECIPE_IDS);
     expect(MARKET_CERTIFICATION_ITEM_IDS.every((itemId) => state.itemStats[itemId].crafted === 0)).toBe(true);
     expect(MARKET_CERTIFICATION_ITEM_IDS.every((itemId) => !state.discoveredItems.includes(itemId))).toBe(true);
   }, 20_000);
 
-  it("continues the shared two-tile teaching logic until all six paid goods are certified", () => {
+  it("continues the shared two-tile teaching logic until all five paid goods are certified", () => {
     const state = createInitialState();
-    state.treasuryCoins = 10_000;
+    state.treasuryCoins = MARKET_CHALLENGE_TOTAL_COST;
     buyMarketRecipes(state);
     advanceGame(state, 300_000);
     expect(MARKET_CERTIFICATION_ITEM_IDS.filter((itemId) => state.itemStats[itemId].crafted > 0)).toEqual(MARKET_CERTIFICATION_ITEM_IDS);
   });
 
-  it("allows a strong thread price law to earn its missing certification", () => {
+  it("allows a strong paper price law to earn its missing certification", () => {
     const state = createInitialState({ worldSeed: 123 });
-    finishTutorial(state);
-    state.treasuryCoins = 10_000;
+    finishFoundation(state);
+    state.treasuryCoins = MARKET_CHALLENGE_TOTAL_COST;
     buyMarketRecipes(state);
-    expect(enactLaw(state, priceDraft("thread", 10)).ok).toBe(true);
-    advanceGame(state, 120_000);
-    expect(state.itemStats.thread.crafted).toBeGreaterThan(0);
+    expect(enactLaw(state, priceDraft("paper", 10)).ok).toBe(true);
+    // finishFoundation intentionally preserves already-funded work.  Give
+    // those commitments time to drain before judging the new price regime.
+    advanceGame(state, 300_000);
+    expect(state.itemStats.paper.crafted).toBeGreaterThan(0);
   });
 
   it("lets paid hop-by-hop orders bridge separated water and wood regions", () => {
     const state = createInitialState({ worldSeed: 123 });
-    finishTutorial(state);
-    state.treasuryCoins = 10_000;
+    finishFoundation(state);
+    state.treasuryCoins = MARKET_CHALLENGE_TOTAL_COST;
     buyMarketRecipes(state);
     expect(enactLaw(state, priceDraft("paper", 10)).ok).toBe(true);
-    advanceGame(state, 120_000);
+    advanceGame(state, 300_000);
     expect(state.itemStats.paper.crafted).toBeGreaterThan(0);
   });
 
   it.each(["tools", "glass"] as const)("uses market contracts to assemble spatially separated %s inputs", (itemId) => {
     const state = createInitialState({ worldSeed: 123 });
-    finishTutorial(state);
-    state.treasuryCoins = 10_000;
+    finishFoundation(state);
+    state.treasuryCoins = MARKET_CHALLENGE_TOTAL_COST;
     buyMarketRecipes(state);
     expect(enactLaw(state, priceDraft(itemId, 10)).ok).toBe(true);
     advanceGame(state, 300_000);
@@ -183,8 +185,8 @@ describe("market certification challenge", () => {
 
   it("keeps a certification permanently after the certified product is sold", () => {
     const state = createInitialState({ worldSeed: 123 });
-    finishTutorial(state);
-    state.treasuryCoins = 10_000;
+    finishFoundation(state);
+    state.treasuryCoins = MARKET_CHALLENGE_TOTAL_COST;
     buyMarketRecipes(state);
     expect(enactLaw(state, priceDraft("thread", 10)).ok).toBe(true);
     advanceGame(state, 180_000);
@@ -195,7 +197,7 @@ describe("market certification challenge", () => {
     expect(missingProductionCertifications("make_cable", ["thread"])).not.toContain("thread");
   });
 
-  it("turns a direct x2 signal into ordinary input-job bids at the 22-30 difficulty-five plateau", () => {
+  it("does not let a direct x2 signal replace reliable supplier quotes or create partial orders", () => {
     const state = createInitialState({ withStarter: false, difficulty: 5, worldSeed: 91 });
     const wheelRecipeId = "make_wheel";
     state.unlockedRecipes.push(wheelRecipeId);
@@ -205,25 +207,17 @@ describe("market certification challenge", () => {
     });
     publishBountySignal(state, "wheel", "open", state.cats[0].id);
     expect(enactLaw(state, priceDraft("wheel", 2)).ok).toBe(true);
+    advanceGame(state, 5_000);
     const priceOf = (itemId: string) => itemPrice(state, itemId);
-    const requiredByOrders = productionOrderBidCents(state, wheelRecipeId, "chassis", priceOf)
-      + productionOrderBidCents(state, wheelRecipeId, "gear", priceOf);
-    const x10PriceOf = (itemId: string) => itemId === "wheel" ? 31_000 : itemPrice(state, itemId);
-    const requiredAtX10 = productionOrderBidCents(state, wheelRecipeId, "chassis", x10PriceOf)
-      + productionOrderBidCents(state, wheelRecipeId, "gear", x10PriceOf);
-
-    expect(requiredByOrders).toBeGreaterThan(buyingPowerCents(state, state.cats[0], priceOf));
-    expect(requiredAtX10).toBeGreaterThan(requiredByOrders);
     refreshCatMarket(state, state.cats[0], priceOf);
     expect(state.procurementPlans.some((plan) => plan.outputItemId === "wheel")).toBe(false);
     expect(state.demandOrders).toHaveLength(0);
 
-    // It is deliberately a soft market bottleneck: existing cash can fund the
-    // same x2 input jobs without changing or bypassing any rule.
-    state.cats[0].coins = requiredByOrders;
+    // Money alone cannot make a firm quote appear when there is no supplier or
+    // transport route for either direct ingredient.
+    state.cats[0].coins = 1_000_000_000;
     refreshCatMarket(state, state.cats[0], priceOf);
-    expect(state.procurementPlans.some((plan) => plan.outputItemId === "wheel")).toBe(true);
-    expect(state.demandOrders.filter((order) => order.planId !== null).map((order) => order.maxDeliveredCents).reduce((sum, bid) => sum + bid, 0))
-      .toBe(requiredByOrders);
+    expect(state.procurementPlans.some((plan) => plan.outputItemId === "wheel")).toBe(false);
+    expect(state.demandOrders).toHaveLength(0);
   });
 });

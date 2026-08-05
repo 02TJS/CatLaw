@@ -8,6 +8,7 @@ import type {
 } from "./types";
 import { resourceItemsAt } from "./logistics";
 import { isPositionUnlocked, positionKey } from "./world";
+import { consumeWarehousePurchase } from "./warehouse";
 
 export const LANDMARK_DEFINITIONS: readonly LandmarkDefinition[] = [
   {
@@ -38,7 +39,7 @@ export const LANDMARK_DEFINITIONS: readonly LandmarkDefinition[] = [
   {
     id: "quantum_beacon", emoji: "🗼", name: "量子信标", radius: 5, blueprintPriceCents: 287_000,
     materials: [{ itemId: "satellite", quantity: 2 }, { itemId: "ai_core", quantity: 2 }, { itemId: "quantum_sensor", quantity: 1 }, { itemId: "superconductor", quantity: 2 }],
-    description: "半径 5 · 观察半径 +1 · 全部动作加速 5%", effects: { visionRadiusBonus: 1, actionSpeedReduction: 0.05 },
+    description: "半径 5 · 全部动作加速 5%", effects: { actionSpeedReduction: 0.05 },
   },
 ] as const;
 
@@ -113,20 +114,24 @@ export function landmarkEffectsAt(
   };
   for (const definition of LANDMARK_DEFINITIONS) {
     const count = stacks[definition.id];
-    for (const key of Object.keys(totals) as Array<keyof typeof totals>) {
-      totals[key] += (definition.effects[key] ?? 0) * count;
+    for (let stack = 0; stack < count; stack += 1) {
+      for (const key of Object.keys(totals) as Array<keyof typeof totals>) {
+        const contribution = definition.effects[key] ?? 0;
+        if (key === "actionSpeedReduction" || key === "craftSpeedReduction" || key === "passSpeedReduction") {
+          totals[key] = 1 - (1 - totals[key]) * (1 - contribution);
+        } else {
+          totals[key] += contribution;
+        }
+      }
     }
   }
-  totals.actionSpeedReduction = Math.min(0.60, totals.actionSpeedReduction);
-  totals.craftSpeedReduction = Math.min(0.60, totals.craftSpeedReduction);
-  totals.passSpeedReduction = Math.min(0.60, totals.passSpeedReduction);
   totals.saleValueBonus = Math.min(0.45, totals.saleValueBonus);
   totals.creditBonusCents = Math.min(7_500, totals.creditBonusCents);
   totals.carrierFeeBonus = Math.min(0.60, totals.carrierFeeBonus);
-  totals.visionRadiusBonus = Math.min(3, totals.visionRadiusBonus);
+  totals.visionRadiusBonus = 0;
   return {
     ...totals,
-    effectiveVisionRadius: Math.min(5, 2 + totals.visionRadiusBonus),
+    effectiveVisionRadius: 2,
     stacks,
   };
 }
@@ -134,12 +139,12 @@ export function landmarkEffectsAt(
 export function actionSpeedReductionAt(
   state: GameState,
   position: Position,
-  actionType: "craft" | "pass" | "sell",
+  actionType: "craft" | "pass",
   index?: LandmarkSpatialIndex,
 ): number {
   const effects = landmarkEffectsAt(state, position, index);
   const specific = actionType === "craft" ? effects.craftSpeedReduction : actionType === "pass" ? effects.passSpeedReduction : 0;
-  return Math.min(0.60, effects.actionSpeedReduction + specific);
+  return Math.min(0.60, 1 - (1 - effects.actionSpeedReduction) * (1 - specific));
 }
 
 export function buyLandmarkBlueprint(state: GameState, landmarkId: LandmarkId): { ok: boolean; error?: string; cost?: number } {
@@ -183,6 +188,7 @@ export function placeLandmark(state: GameState, landmarkId: LandmarkId, position
   };
   for (const material of definition.materials) {
     state.playerBuildingInventory[material.itemId] -= material.quantity;
+    consumeWarehousePurchase(state, material.itemId, material.quantity);
     if (state.playerBuildingInventory[material.itemId] <= 0) delete state.playerBuildingInventory[material.itemId];
   }
   state.landmarks.push(landmark);

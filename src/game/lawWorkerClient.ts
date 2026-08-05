@@ -1,6 +1,8 @@
 import type { LawDraft } from "./types";
+import { validateSpeechTemplates } from "./speech";
 
 export function validateDraftInWorker(draft: LawDraft): Promise<LawDraft> {
+  const speechValidation = validateSpeechTemplates(draft.speechTemplates);
   return new Promise((resolve) => {
     const worker = new Worker(new URL("./lawWorker.ts", import.meta.url), { type: "module", name: "cat-law-sandbox" });
     const timeout = window.setTimeout(() => {
@@ -18,10 +20,10 @@ export function validateDraftInWorker(draft: LawDraft): Promise<LawDraft> {
         astHash: event.data.astHash,
         validation: {
           syntax: event.data.syntax && draft.validation.syntax,
-          safety: event.data.safety && draft.validation.safety,
+          safety: event.data.safety && draft.validation.safety && speechValidation.ok,
           examplesPassed: event.data.examplesPassed,
           examplesTotal: event.data.examplesTotal,
-          messages: [...new Set([...draft.validation.messages, ...event.data.messages])],
+          messages: [...new Set([...draft.validation.messages, ...event.data.messages, ...speechValidation.messages])],
         },
       });
     };

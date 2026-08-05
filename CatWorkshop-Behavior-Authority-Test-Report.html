@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>猫咪工坊 0.12.3 · 共享法规权限与经济瓶颈测试报告</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #182019;
+      --muted: #667069;
+      --line: #dfe6e1;
+      --paper: #ffffff;
+      --wash: #f4f7f4;
+      --green: #25683d;
+      --green-bg: #eaf5ed;
+      --amber: #8a5a08;
+      --amber-bg: #fff5d9;
+      --red: #9a3434;
+      --red-bg: #fff0ef;
+      --blue: #315d84;
+      --blue-bg: #eaf2f8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--wash);
+      color: var(--ink);
+      font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+      line-height: 1.65;
+    }
+    main {
+      width: min(1120px, calc(100% - 36px));
+      margin: 28px auto 56px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: 0 16px 50px rgba(36, 55, 42, .08);
+      overflow: hidden;
+    }
+    header {
+      padding: 44px 52px 38px;
+      background: linear-gradient(135deg, #f1f8f3 0%, #fff 65%);
+      border-bottom: 1px solid var(--line);
+    }
+    .eyebrow { margin: 0 0 8px; color: var(--green); font-size: 13px; font-weight: 800; letter-spacing: .12em; }
+    h1 { margin: 0; max-width: 850px; font-size: clamp(28px, 4vw, 46px); line-height: 1.2; letter-spacing: -.035em; }
+    .lead { max-width: 850px; margin: 18px 0 0; color: #445047; font-size: 17px; }
+    .meta { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 22px; color: var(--muted); font-size: 13px; }
+    section { padding: 34px 52px; border-bottom: 1px solid var(--line); }
+    section:last-child { border-bottom: 0; }
+    h2 { margin: 0 0 18px; font-size: 24px; line-height: 1.3; }
+    h3 { margin: 24px 0 10px; font-size: 17px; }
+    p { margin: 10px 0; }
+    ul { margin: 10px 0; padding-left: 22px; }
+    li + li { margin-top: 6px; }
+    code { padding: 2px 6px; border-radius: 5px; background: #eef2ef; font-family: Consolas, monospace; font-size: .92em; }
+    .verdict-grid, .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .card { padding: 17px 18px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+    .card strong { display: block; margin-bottom: 5px; font-size: 15px; }
+    .card span { color: var(--muted); font-size: 13px; }
+    .status { display: inline-flex; align-items: center; gap: 7px; padding: 4px 9px; border-radius: 999px; font-size: 12px; font-weight: 800; }
+    .pass { color: var(--green); background: var(--green-bg); }
+    .partial { color: var(--amber); background: var(--amber-bg); }
+    .not-run { color: var(--red); background: var(--red-bg); }
+    .info { color: var(--blue); background: var(--blue-bg); }
+    .callout { margin: 18px 0 0; padding: 16px 18px; border-left: 4px solid var(--amber); background: var(--amber-bg); border-radius: 8px; }
+    .callout strong { color: var(--amber); }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 12px 11px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+    th { color: #465148; background: #f7f9f7; font-size: 12px; letter-spacing: .03em; }
+    tr:last-child td { border-bottom: 0; }
+    .num { white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .timeline { display: grid; gap: 10px; }
+    .timeline-row { display: grid; grid-template-columns: 90px 150px 1fr; gap: 16px; align-items: start; padding: 13px 15px; border: 1px solid var(--line); border-radius: 10px; }
+    .timeline-row time { color: var(--green); font-weight: 800; font-variant-numeric: tabular-nums; }
+    .timeline-row b { font-size: 14px; }
+    .timeline-row span { color: var(--muted); font-size: 13px; }
+    .chain { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 18px 0 4px; }
+    .chain span { padding: 7px 10px; border-radius: 8px; background: #eef4ef; font-size: 13px; font-weight: 700; }
+    .chain i { color: #92a097; font-style: normal; }
+    .footnote { color: var(--muted); font-size: 12px; }
+    details { margin-top: 12px; border: 1px solid var(--line); border-radius: 10px; background: #fafcfa; }
+    summary { padding: 11px 14px; cursor: pointer; color: #355c43; font-weight: 800; }
+    details p, details pre { margin: 0; padding: 0 14px 14px; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.6 Consolas, monospace; }
+    .api-table td:nth-child(1), .api-table td:nth-child(2) { white-space: nowrap; }
+    .muted { color: var(--muted); }
+    footer { padding: 24px 52px 30px; color: var(--muted); background: #f8faf8; font-size: 12px; }
+    @media (max-width: 760px) {
+      main { width: 100%; margin: 0; border: 0; border-radius: 0; }
+      header, section, footer { padding-left: 22px; padding-right: 22px; }
+      .verdict-grid, .metric-grid { grid-template-columns: 1fr; }
+      .timeline-row { grid-template-columns: 74px 1fr; }
+      .timeline-row span { grid-column: 1 / -1; }
+      .table-wrap { overflow-x: auto; }
+      table { min-width: 700px; }
+    }
+    @media print {
+      body { background: #fff; }
+      main { width: 100%; margin: 0; border: 0; box-shadow: none; }
+      section, .card, .timeline-row { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+<main data-testid="test-report">
+  <header>
+    <p class="eyebrow">CAT WORKSHOP · TEST REPORT</p>
+    <h1>共享法规权限与经济瓶颈测试报告</h1>
+    <p class="lead">验证猫咪是否只受一份全体共享的 <code>function decide(ctx)</code> 控制，并记录最高难度下从白手起家到第 22 项附近的真实玩家操作结果。</p>
+    <div class="meta">
+      <span>版本：0.12.3</span>
+      <span>日期：2026-08-02</span>
+      <span>世界种子：1</span>
+      <span>难度：5（最高难度）</span>
+      <span>模拟加速：5000×</span>
+      <span>API 补充审计：2026-08-03 00:02–00:04 CST</span>
+    </div>
+  </header>
+
+  <section>
+    <h2>结论总览</h2>
+    <div class="verdict-grid">
+      <div class="card"><strong><span class="status pass">通过</span> 唯一行动权限</strong><span>猫咪动作只能由唯一现行 behavior 法规返回。</span></div>
+      <div class="card"><strong><span class="status pass">通过</span> 自动化回归</strong><span>19 个测试文件、131 个测试全部通过。</span></div>
+      <div class="card"><strong><span class="status pass">通过</span> 生产构建</strong><span>Web 与 Express 服务端 TypeScript/生产构建通过。</span></div>
+      <div class="card"><strong><span class="status pass">通过</span> 玩家阶段 1–21</strong><span>最高难度实跑已到灯，第 21 项在 900 模拟秒完成。</span></div>
+      <div class="card"><strong><span class="status partial">未完成</span> 第 22–35 项</strong><span>第 22 项专项价格试验启动后，按用户要求停止长跑。</span></div>
+      <div class="card"><strong><span class="status partial">4 / 7</span> API 补充审计</strong><span>4 条得到正确可用草案；3 条在重试后仍无可用结果。</span></div>
+      <div class="card"><strong><span class="status not-run">未执行</span> 本轮发布验收</strong><span>尚未重新执行浏览器截图、EXE 与 CodexToolBox 打包。</span></div>
+    </div>
+    <div class="callout"><strong>历史归档：</strong>本报告记录 0.12.x 早期实验，不代表 0.13.0 当前架构与验收结果。当前统一法规与 80×2 首答审计请以 <a href="output/DeepSeek-Creative-Availability-80x2.html">最新报告</a> 为准；其中已不存在法规分类或 behavior 替换机制。</div>
+  </section>
+
+  <section>
+    <h2>一、共享 behavior 权限验证</h2>
+    <div class="chain" aria-label="行动权限链">
+      <span>悬赏 / 价格 / 税收公开数据</span><i>→</i><span>唯一现行 decide(ctx)</span><i>→</i><span>合法性与经济门槛</span><i>→</i><span>动作命令</span>
+    </div>
+    <ul>
+      <li>0.13.0 中全体猫咪按优先级遍历同一法典；每条法规都是同一种 <code>function decide(ctx)</code> 程序，不替换共享运行时。</li>
+      <li>悬赏、价格、税、信用、动作与评分均经过同一个法规循环，没有“基础经济”等分类旁路。</li>
+      <li>只有 behavior 函数显式调用 <code>earnCoins()</code>、<code>choose()</code> 或 <code>weighted()</code> 时，市场规划器才会参与。</li>
+      <li>behavior 返回 <code>null</code> 时，验证得到：零动作、零生产计划、零订单、零合同、零发现、零隐藏物流状态。</li>
+      <li>每个新动作记录 <code>lawId</code>；每个生产计划记录 <code>createdByBehaviorLawId</code>，并能追溯到当时的共享 behavior 法规。</li>
+      <li>价格法与税法是被 behavior 读取的经济数据，不能绕过 behavior 直接控制猫咪。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>二、自动化结果</h2>
+    <div class="metric-grid">
+      <div class="card"><strong>131 / 131</strong><span>Vitest 引擎与界面纯逻辑测试</span></div>
+      <div class="card"><strong>50 / 50</strong><span>权限、市场、空间物流与瓶颈专项测试</span></div>
+      <div class="card"><strong>1000 只猫</strong><span>局部规划性能测试仍满足半径限制</span></div>
+    </div>
+    <h3>本机墙钟时间（2026-08-03 复测）</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>任务</th><th>结果</th><th>工具内部时间</th><th>完整命令墙钟</th></tr></thead>
+        <tbody>
+          <tr><td><code>npm test</code></td><td><span class="status pass">19 文件 / 131 测试通过</span></td><td class="num">Vitest 32.84 秒</td><td class="num">34.252 秒</td></tr>
+          <tr><td><code>npm run build:web</code></td><td><span class="status pass">52 模块，构建通过</span></td><td class="num">Vite 3.92 秒</td><td class="num">7.267 秒（含 TypeScript）</td></tr>
+          <tr><td><code>npm run build:server</code></td><td><span class="status pass">TypeScript 构建通过</span></td><td class="num">—</td><td class="num">1.626 秒</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3>重点断言</h3>
+    <ul>
+      <li>旧测试夹具必须显式安装共享 <code>return earnCoins()</code> 法规，不再依赖隐式全局贪心。</li>
+      <li>同一 behavior 法规创建的动作和生产计划都带有同一法规来源 ID。</li>
+      <li>22–26 项统一价格 ×2 后只会部分推进，范围内至少一项仍为零；切换到订单物流 behavior 后才全部完成。</li>
+      <li>完整 Web 构建与服务端构建通过。现有 Vitest 配置仅统计 <code>src/**/*.test.ts</code>；服务端编译器测试文件未计入 131 项。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>三、最高难度玩家实跑时间线</h2>
+    <p>操作权限限制为：推进确定性时间、正常购买配方、从猫咪收购并按仓库价转卖、购买和放置建筑，以及提交自然语言给 DeepSeek 编译法规。未直接写入国库、库存、发现、猫咪、动作或 behavior 源码。</p>
+    <div class="timeline">
+      <div class="timeline-row"><time>00:90</time><b>第 10 项</b><span>累计 90 秒；本阶段 90 秒。开局共享资产贪心 behavior 自主完成。</span></div>
+      <div class="timeline-row"><time>03:30</time><b>第 15 项</b><span>累计 210 秒；本阶段 120 秒。只购买第 11–15 项配方后完成；未修改猫咪函数。</span></div>
+      <div class="timeline-row"><time>09:30</time><b>第 16–19 项</b><span>累计 570 秒；本阶段 360 秒。自然完成，但工厂仍为 0，形成第一个软瓶颈。</span></div>
+      <div class="timeline-row"><time>12:30</time><b>第 20 项工厂</b><span>累计 750 秒；本阶段 180 秒。工厂 ×4 与炉火 ×0.1 的动态价格组合后完成。</span></div>
+      <div class="timeline-row"><time>15:00</time><b>第 21 项灯</b><span>累计 900 秒；本阶段 150 秒。工厂价恢复 1×，灯 ×1.5 后完成；随后灯价也恢复 1×。</span></div>
+      <div class="timeline-row"><time>130:00</time><b>第 22 项未完成</b><span>无专项信号的反事实累计运行到 7800 秒，较第 21 项再运行 6900 秒仍无磁铁；磁铁 ×1.5 新一轮在完成前停止，停止时刻未持久化。</span></div>
+      <div class="timeline-row"><time>未执行</time><b>第 35 项车辆</b><span>没有形成可报告的 35/35 玩家权限结果。</span></div>
+    </div>
+    <p class="footnote">时间均为从新游戏开始计算的游戏内模拟时间。QA 使用 5000× 确定性快进，不会真实等待每个 5 秒动画。原始玩家长跑未单独保存完整墙钟耗时，因此本报告不反推该数值。</p>
+  </section>
+
+  <section>
+    <h2>四、价格瓶颈实验</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>方案</th><th>观察</th><th>结论</th></tr></thead>
+        <tbody>
+          <tr><td>工厂 ×2</td><td>成熟供应链中的木板、工具等作业激励不足。</td><td><span class="status partial">过低</span> 不能稳定解决真实玩家状态。</td></tr>
+          <tr><td>木材 ×10</td><td>木材产量恢复，但木材报价高到下游木板订单买不起。</td><td><span class="status partial">转移瓶颈</span> 单纯抬原料价会破坏订单。</td></tr>
+          <tr><td>工厂 ×10</td><td>配料完成，但作业报价和信用占用凸性增长，买方无法结算。</td><td><span class="status partial">信用瓶颈</span> 倍率越高并不越有效。</td></tr>
+          <tr><td>工厂 ×4 + 炉火 ×0.1</td><td>在最终项目预算、木材供给与信用额度之间取得平衡。</td><td><span class="status pass">有效</span> 第 20 项在 750 秒完成。</td></tr>
+          <tr><td>工厂高价不复原</td><td>11 只猫全部重复追逐工厂，产生大量重复配料订单。</td><td><span class="status partial">产业挤出</span> 完工后必须撤销项目溢价。</td></tr>
+          <tr><td>灯 ×3</td><td>玻璃、线缆订单各升至约 196–199 金币，超过最高难度信用承受能力。</td><td><span class="status partial">过高</span> 改为 ×1.5。</td></tr>
+          <tr><td>工厂复原 + 灯 ×1.5</td><td>灯完成后再恢复灯价，避免持续溢价挤占下一项目。</td><td><span class="status pass">有效</span> 第 21 项在 900 秒完成。</td></tr>
+          <tr><td>22–26 项统一 ×2</td><td>自动化反事实只完成部分商品，至少一项保持为 0。</td><td><span class="status pass">瓶颈成立</span> 需要物流 behavior。</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>五、难度 5 理论生产工时</h2>
+    <p>以下为递归计算全部原料时的单猫纯制作下限。每个动作 5 秒；未计运输、订单、信用、建筑范围、库存等待和多猫并行，因此不能直接等同于实跑完成时间。</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>序号</th><th>商品 ID</th><th>递归动作数</th><th>单猫纯制作下限</th><th>实跑里程碑</th></tr></thead>
+        <tbody>
+          <tr><td>#10</td><td>thread</td><td class="num">3</td><td class="num">15 秒</td><td>前 10 项于 90 秒全部出现</td></tr>
+          <tr><td>#15</td><td>gear</td><td class="num">11</td><td class="num">55 秒</td><td>前 15 项于 210 秒全部出现</td></tr>
+          <tr><td>#19</td><td>chassis</td><td class="num">9</td><td class="num">45 秒</td><td>16–19 阶段于 570 秒确认</td></tr>
+          <tr><td>#20</td><td>factory</td><td class="num">30</td><td class="num">150 秒</td><td>750 秒</td></tr>
+          <tr><td>#21</td><td>lamp</td><td class="num">22</td><td class="num">110 秒</td><td>900 秒</td></tr>
+          <tr><td>#22</td><td>magnet</td><td class="num">13</td><td class="num">65 秒</td><td>未完成</td></tr>
+          <tr><td>#23</td><td>wheel</td><td class="num">21</td><td class="num">105 秒</td><td>未执行</td></tr>
+          <tr><td>#26</td><td>antenna</td><td class="num">24</td><td class="num">120 秒</td><td>未执行</td></tr>
+          <tr><td>#27</td><td>machine_tool</td><td class="num">22</td><td class="num">110 秒</td><td>未执行</td></tr>
+          <tr><td>#28</td><td>chip</td><td class="num">19</td><td class="num">95 秒</td><td>未执行</td></tr>
+          <tr><td>#30</td><td>display</td><td class="num">47</td><td class="num">235 秒</td><td>未执行</td></tr>
+          <tr><td>#35</td><td>vehicle</td><td class="num">145</td><td class="num">725 秒</td><td>未执行</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>六、DeepSeek API 调用、返回与改动审计</h2>
+    <div class="metric-grid">
+      <div class="card"><strong>7 次</strong><span>顶层法规编译调用</span></div>
+      <div class="card"><strong>10 次</strong><span>底层 HTTP 请求（含 3 次内部重试）</span></div>
+      <div class="card"><strong>145.231 秒</strong><span>两批并行调用的总墙钟</span></div>
+      <div class="card"><strong>4 / 7</strong><span>得到正确且通过安全校验的草案</span></div>
+      <div class="card"><strong>10 / 10 HTTP 200</strong><span>均收到响应头；不等于响应正文可用</span></div>
+      <div class="card"><strong>0 项状态改动</strong><span>补充审计只编译，不颁布、不推进、不写存档</span></div>
+    </div>
+    <p class="callout"><strong>如何读时间：</strong>7 条法规分两批并行调用，因此逐条耗时不能相加。前两条各重试一次并各占约 80 秒；第二批五条并行，最慢物流法 65.190 秒；从第一批开始到第二批全部结束的真实总耗时为 145.231 秒。</p>
+
+    <h3>逐条调用结果</h3>
+    <div class="table-wrap">
+      <table class="api-table">
+        <thead><tr><th>调用</th><th>耗时 / HTTP</th><th>调用目的</th><th>返回内容</th><th>是否正确</th><th>本次改动</th></tr></thead>
+        <tbody>
+          <tr><td>#1 工厂 ×4</td><td class="num">80.027 秒<br>请求 #1、#3</td><td>突破第 20 项的项目收益瓶颈。</td><td>两次均先收到 HTTP 200 响应头，但正文读取到 40 秒超时；无可用 JSON 草案。</td><td><span class="status not-run">失败</span></td><td>无；未颁布。</td></tr>
+          <tr><td>#2 炉火 ×0.1</td><td class="num">80.020 秒<br>请求 #2、#4</td><td>降低炉火机会成本，让木材流向木板订单。</td><td>两次均先收到 HTTP 200 响应头，但正文读取到 40 秒超时；无可用 JSON 草案。</td><td><span class="status not-run">失败</span></td><td>无；未颁布。</td></tr>
+          <tr><td>#3 工厂恢复 1×</td><td class="num">27.919 秒<br>请求 #5</td><td>工厂完成后撤销溢价。</td><td>《工厂价格基准条例》；<code>price/factory/1</code>；AST <code>fnv1a-fcc0382f</code>；无警告。</td><td><span class="status pass">正确</span><br>语法/沙箱通过</td><td>无；仅生成草案。</td></tr>
+          <tr><td>#4 灯 ×1.5</td><td class="num">26.421 秒<br>请求 #6</td><td>温和推动第 21 项并控制信用。</td><td>《灯具价格折中条例》；<code>price/lamp/1.5</code>；AST <code>fnv1a-fcc0382f</code>；无警告。</td><td><span class="status pass">正确</span><br>语法/沙箱通过</td><td>无；仅生成草案。</td></tr>
+          <tr><td>#5 灯恢复 1×</td><td class="num">29.357 秒<br>请求 #7</td><td>灯完成后释放下一项目产能。</td><td>《灯价格回归基准法》；<code>price/lamp/1</code>；AST <code>fnv1a-fcc0382f</code>；无警告。</td><td><span class="status pass">正确</span><br>语法/沙箱通过</td><td>无；仅生成草案。</td></tr>
+          <tr><td>#6 磁铁 ×1.5</td><td class="num">28.562 秒<br>请求 #8</td><td>温和推动第 22 项并避免超额信用。</td><td>《磁铁温和溢价条例》；<code>price/magnet/1.5</code>；AST <code>fnv1a-fcc0382f</code>；无警告。</td><td><span class="status pass">正确</span><br>语法/沙箱通过</td><td>无；仅生成草案。</td></tr>
+          <tr><td>#7 物流法规</td><td class="num">65.190 秒<br>请求 #9、#10</td><td>用一条统一法规协调开放订单、悬赏和缺料。</td><td>首轮未得到可用正文；重试返回空内容；无可用法规草案。</td><td><span class="status not-run">失败</span></td><td>无；法典未变。</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="footnote">HTTP 计数按对 <code>https://api.deepseek.com/chat/completions</code> 的实际请求计算；模型别名为 <code>deepseek-v4-flash</code>。HTTP 200 只说明服务端接受请求并返回响应头，正文仍可能超时、为空或无法形成合规 JSON。</p>
+
+    <details>
+      <summary>查看 7 条完整自然语言输入与成功返回摘要</summary>
+      <pre>1. 工厂 ×4
+输入：制定价格条例：只把工厂 factory 的实际价格调到基础价格的4倍，在配料供给激励与猫咪信用占用之间折中；不修改任何猫咪行动，不调整其他商品。
+返回：无可用结果；两次正文读取超时。
+
+2. 炉火 ×0.1
+输入：制定价格条例：为了解决木材工位总去制作炉火、木板订单缺少木材的问题，只把炉火 fire 的实际价格降低到基础价格的0.1倍，让木材恢复相对收益；不修改猫咪行为，也不调整其他商品。
+返回：无可用结果；两次正文读取超时。
+
+3. 工厂恢复 1×
+输入：工厂首次完成后制定新的价格条例：只把工厂 factory 的价格恢复为基础价格1倍，避免所有猫继续重复追逐工厂；不修改猫咪行为和其他商品。
+返回（历史格式，现已废止）：标题“工厂价格基准条例”；当前 0.13.0 对应统一源码为 function decide(ctx) { setPrice("factory", 1); return null; }。
+
+4. 灯 ×1.5
+输入：制定价格条例：只把灯 lamp 的实际价格调到基础价格的1.5倍，在配料供给与最高难度信用额度之间折中；不修改猫咪行为，也不调整其他商品。
+返回（历史格式，现已废止）：标题“灯具价格折中条例”；当前 0.13.0 对应统一源码为 function decide(ctx) { setPrice("lamp", 1.5); return null; }。
+
+5. 灯恢复 1×
+输入：灯首次完成后制定新的价格条例：只把灯 lamp 的价格恢复为基础价格1倍，避免持续溢价挤占后续项目；不修改猫咪行为和其他商品。
+返回（历史格式，现已废止）：标题“灯价格回归基准法”；当前 0.13.0 对应统一源码为 function decide(ctx) { setPrice("lamp", 1); return null; }。
+
+6. 磁铁 ×1.5
+输入：制定价格条例：只把磁铁 magnet 的实际价格调到基础价格的1.5倍，用温和项目收益推动第22项，同时避免配料订单超过最高难度信用额度；不修改猫咪行为和其他商品。
+返回（历史格式，现已废止）：标题“磁铁温和溢价条例”；当前 0.13.0 对应统一源码为 function decide(ctx) { setPrice("magnet", 1.5); return null; }。
+
+7. 物流 behavior
+输入：制定一条加入现行统一法典的物流法规。所有猫继续只看自己的本地观察并以净资产收益贪心。若存在任何开放订单，显著提高制作和有偿传递候选的评分。若磁铁、车轮、燃料、冷却剂、天线或机床的首次发现悬赏仍开放，就提高金属、齿轮、线缆、电池、化学品和底盘的制作评分；若芯片、存储器、显示器、控制器、无线电、机器人、制造机或车辆的悬赏仍开放，就提高芯片、玻璃、灯、线缆、控制器和电池的制作评分。不要直接指定固定动作，不要出售，最后用 choose() 选择。
+返回：无可用结果；重试后为空内容。</pre>
+    </details>
+
+    <h3>原玩家实跑中的法规改动与效果（与上述“只编译审计”分开）</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>原实跑法规</th><th>是否颁布</th><th>游戏改动</th><th>观测结果</th></tr></thead>
+        <tbody>
+          <tr><td>工厂 ×4 + 炉火 ×0.1</td><td><span class="status pass">已颁布</span></td><td>历史版本只改变两项价格数据；0.13.0 由两条统一法规源码表达。</td><td>工厂于累计 750 模拟秒完成。</td></tr>
+          <tr><td>工厂恢复 1× + 灯 ×1.5</td><td><span class="status pass">已颁布</span></td><td>历史版本撤销工厂溢价并给灯温和溢价；0.13.0 由统一法规源码表达。</td><td>灯于累计 900 模拟秒完成。</td></tr>
+          <tr><td>灯恢复 1× + 磁铁 ×1.5</td><td><span class="status pass">已颁布</span></td><td>撤销灯溢价并启动磁铁价格阶段。</td><td>长跑按用户要求停止，是否能完成磁铁尚无结论。</td></tr>
+          <tr><td>物流法规</td><td><span class="status not-run">未颁布</span></td><td>法典未变。</td><td>23–35 玩家权限实跑未开始。</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul>
+      <li>原玩家实跑确实得到过上述 7 个编译草案并推进到磁铁阶段，但旧脚本未持久化逐次 API 墙钟、标题和哈希；本节的精确调用时间来自本次同输入补充审计，不能倒填为旧实跑时间。</li>
+      <li>补充审计密钥只从被 Git 忽略的本地 <code>.env</code> 读取，测试输出和本报告均不包含密钥；审计原始脱敏记录见 <a href="output/deepseek-api-audit-2026-08-02.json">JSON</a>。</li>
+      <li>验收层要求语法、安全沙箱与目标字段全部通过后才能颁布；失败或空返回不收费、不改法规、不改游戏状态。</li>
+      <li>由于密钥曾出现在聊天记录中，仍应在 DeepSeek 控制台轮换。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>七、待完成项目</h2>
+    <ul>
+      <li>完成磁铁专项价格阶段，确认“价格优化稳定到第 22 项”。</li>
+      <li>在第 22 项完成后才颁布 DeepSeek 物流 behavior，完成 23–35 玩家权限实跑。</li>
+      <li>运行浏览器截图与 <code>render_game_to_text()</code> 一致性检查。</li>
+      <li>通过后再重建本地 EXE，并同步 CodexToolBox；本轮未更新线上 Release。</li>
+    </ul>
+  </section>
+
+  <footer>
+    生成依据：猫咪工坊 0.12.3 当前工作区、2026-08-03 本机复测、脱敏 DeepSeek API 审计及 2026-08-02 最高难度玩家权限实跑。报告明确保留未完成项，不作为 35/35 通关证明。
+  </footer>
+</main>
+</body>
+</html>

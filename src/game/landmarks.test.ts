@@ -36,7 +36,7 @@ function unlockAndStock(state: GameState, id: LandmarkId): void {
 function behaviorLaw(sourceCode: string): LawVersion {
   return {
     id: "test-law", title: "test", playerText: "test", summary: "test", sourceCode, astHash: "test", examples: [], warnings: [],
-    enactedAt: 0, category: "behavior", taxRate: null, priceItemId: null, priceMultiplier: null,
+    enactedAt: 0, program: { version: 2 },
     hitCount: 0, invalidCount: 0, consecutiveFaults: 0, status: "active",
   };
 }
@@ -109,8 +109,24 @@ describe("0.11.0 player landmarks", () => {
     expect(effects.saleValueBonus).toBeCloseTo(0.45);
     expect(effects.creditBonusCents).toBe(7_500);
     expect(effects.carrierFeeBonus).toBeCloseTo(0.60);
-    expect(effects.effectiveVisionRadius).toBe(5);
+    expect(effects.effectiveVisionRadius).toBe(2);
     expect(actionSpeedReductionAt(state, { x: 0, y: 0 }, "craft")).toBeCloseTo(0.60);
+  });
+
+  it("multiplies repeated and cross-type time reductions", () => {
+    const state = blank();
+    state.landmarks.push(
+      { id: "craft-1", landmarkId: "craft_academy", position: { x: 1, y: 0 }, deployedAt: 0 },
+      { id: "craft-2", landmarkId: "craft_academy", position: { x: -1, y: 0 }, deployedAt: 0 },
+    );
+    expect(landmarkEffectsAt(state, { x: 0, y: 0 }).craftSpeedReduction).toBeCloseTo(0.36);
+    expect(actionSpeedReductionAt(state, { x: 0, y: 0 }, "craft")).toBeCloseTo(0.36);
+
+    state.landmarks = [
+      { id: "all", landmarkId: "founders_plaza", position: { x: 1, y: 0 }, deployedAt: 0 },
+      { id: "craft", landmarkId: "craft_academy", position: { x: -1, y: 0 }, deployedAt: 0 },
+    ];
+    expect(actionSpeedReductionAt(state, { x: 0, y: 0 }, "craft")).toBeCloseTo(0.28);
   });
 
   it("locks accelerated duration while player warehouse sales ignore landmarks and tax", () => {
@@ -118,11 +134,11 @@ describe("0.11.0 player landmarks", () => {
     state.landmarks.push({ id: "p", landmarkId: "founders_plaza", position: { x: 2, y: 0 }, deployedAt: 0 });
     state.cats[0].inventory.wood = 2;
     state.laws = [behaviorLaw('function decide(ctx) { return { type: "craft", recipeId: "make_plank" }; }')];
-    advanceGame(state, 1);
-    expect(state.cats[0].action?.endsAt).toBe(4_500);
+    advanceGame(state, 5_000);
+    expect(state.cats[0].action?.endsAt).toBe(9_500);
     state.landmarks = [];
-    expect(state.cats[0].action?.endsAt).toBe(4_500);
-    advanceGame(state, 4_498);
+    expect(state.cats[0].action?.endsAt).toBe(9_500);
+    advanceGame(state, 4_499);
     expect(state.itemStats.plank.crafted).toBe(0);
     advanceGame(state, 1);
     expect(state.itemStats.plank.crafted).toBe(1);
@@ -130,7 +146,7 @@ describe("0.11.0 player landmarks", () => {
     const sale = blank();
     sale.playerBuildingInventory.wood = 1;
     sale.landmarks.push({ id: "m", landmarkId: "market_center", position: { x: 1, y: 0 }, deployedAt: 0 });
-    sale.laws = [{ ...behaviorLaw("function decide(ctx) { return null; }"), id: "tax", category: "tax", taxRate: 0.5 }];
+    sale.laws = [{ ...behaviorLaw("function decide(ctx) { setTax(0.5); return null; }"), id: "tax", program: { version: 2 } }];
     const treasuryBefore = sale.treasuryCoins;
     expect(sellWarehouseItem(sale, "wood")).toMatchObject({ ok: true, revenueCents: warehouseSellPrice("wood") });
     expect(sale.totalSales).toBe(warehouseSellPrice("wood"));
@@ -151,7 +167,7 @@ describe("0.11.0 player landmarks", () => {
     expect(carrierFeeCents(state, cat, (id) => itemPrice(state, id))).toBe(Math.ceil(baseFee * 1.2));
   });
 
-  it("migrates schema 6 saves to empty schema 8 landmark and warehouse-lock state without loss", () => {
+  it("migrates schema 6 saves to empty schema 10 landmark and warehouse-lock state without loss", () => {
     const legacy = structuredClone(blank()) as any;
     legacy.schemaVersion = 6;
     delete legacy.landmarks;
@@ -160,7 +176,7 @@ describe("0.11.0 player landmarks", () => {
     legacy.treasuryCoins = 12_345;
     legacy.playerBuildingInventory = { wood: 9 };
     const migrated = migrateSaveSnapshot(legacy);
-    expect(migrated.schemaVersion).toBe(8);
+    expect(migrated.schemaVersion).toBe(14);
     expect(migrated.landmarks).toEqual([]);
     expect(migrated.unlockedLandmarkIds).toEqual([]);
     expect(migrated.nextLandmarkIndex).toBe(0);

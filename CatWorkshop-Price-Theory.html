@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>猫咪工坊价格模型的理论基础</title>
+<style>
+:root{--ink:#1d231f;--muted:#59635c;--line:#d7ddd8;--paper:#fff;--soft:#f4f7f4;--green:#176a43;--gold:#865d13;--red:#94352e}*{box-sizing:border-box}body{margin:0;background:#edf1ed;color:var(--ink);font:15px/1.78 "Segoe UI","Microsoft YaHei",sans-serif}main{width:min(1120px,calc(100% - 32px));margin:24px auto 64px;background:#fff;border:1px solid var(--line);box-shadow:0 12px 40px #1e2b211c}header,section,footer{padding:34px 52px;border-bottom:1px solid var(--line)}header{padding-top:48px;background:linear-gradient(135deg,#fff,#f3f8f4)}footer{border-bottom:0;color:var(--muted);font-size:13px}h1{font-size:34px;line-height:1.2;margin:0 0 14px}h2{font-size:23px;margin:0 0 14px}h3{font-size:18px;margin:24px 0 8px}.eyebrow{color:var(--green);font-weight:700;letter-spacing:.08em}.lede{font-size:18px;color:#38413a}.box{border-left:5px solid var(--green);background:#e9f5ed;padding:14px 18px;margin:16px 0}.warn{border-left-color:var(--gold);background:#fcf5e7}.no{border-left-color:var(--red);background:#faecea}.formula{font:16px/1.65 Consolas,"Segoe UI",monospace;background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:13px 16px;overflow:auto;margin:12px 0}.proof{padding-left:20px;border-left:2px solid #b7c6ba}.proof li{margin:9px 0}.two{display:grid;grid-template-columns:1fr 1fr;gap:22px}.ref{font-size:13px;color:var(--muted)}code{font-family:Consolas,monospace;font-size:.92em}table{border-collapse:collapse;width:100%;margin:12px 0}th,td{border:1px solid var(--line);padding:9px;text-align:left;vertical-align:top}th{background:#eff4f0}@media(max-width:700px){header,section,footer{padding-left:23px;padding-right:23px}.two{grid-template-columns:1fr}h1{font-size:28px}}
+</style>
+</head>
+<body><main>
+<header>
+<div class="eyebrow">CAT WORKSHOP · THEORY BEFORE COMPUTATION</div>
+<h1>价格模型的理论基础</h1>
+<p class="lede">本页先确定理论对象，再进行数值计算。代码中的税率、贷款费、运输费、悬赏和价格倍率都被视为外生规则；它们不是生产成本的数学结论。</p>
+<div class="box"><strong>结论：</strong>这个游戏不是“给 65 个商品拍一个百分比”的问题，而是固定比例生产网络上的线性规划与对偶价格问题。无空间瓶颈时，价格是技术工作量的线性尺度；有猫容量、资源点、相邻运输和建筑范围时，合理价格是带地点下标的影子价格。</div>
+</header>
+
+<section>
+<h2>一、理论身份：四个已知模型的组合</h2>
+<table><thead><tr><th>游戏对象</th><th>数学对象</th><th>为什么匹配</th></tr></thead><tbody>
+<tr><th>固定配方</th><td>Leontief 固定系数投入产出模型</td><td>每种成品必须按固定数量消耗原料，投入不能相互替代。</td></tr>
+<tr><th>猫、地块、建筑和运输</th><td>带容量的多商品网络流</td><td>物品在节点生产和消费，在相邻边逐跳移动；节点动作和边运输都有容量。</td></tr>
+<tr><th>稳定生产目标</th><td>线性规划（LP）</td><td>稳定产出、库存平衡、动作容量和运输容量都可写成线性约束。</td></tr>
+<tr><th>合理价格</th><td>LP 对偶变量 / 影子价格</td><td>对偶变量表示放宽一单位资源、工位或运输容量对最优目标的边际影响。</td></tr>
+</tbody></table>
+<p>诺贝尔奖官方说明把 Leontief 的投入产出法定义为“生产系统中各部门交付的相互依赖网络”；Boyd 与 Vandenberghe 的《Convex Optimization》第 5.4.4 节解释了约束拉格朗日乘子作为约束价格，第 5.6 节解释了强对偶下的敏感性含义。</p>
+<p class="ref">参考：<a href="https://www.nobelprize.org/prizes/economic-sciences/1973/leontief/facts/">Nobel Prize 1973: Wassily Leontief</a>；<a href="https://web.stanford.edu/~boyd/cvxbook/bv_cvxbook.pdf">Boyd &amp; Vandenberghe, Convex Optimization, §§5.4.4, 5.6</a>。</p>
+</section>
+
+<section>
+<h2>二、第一层定理：没有空间稀缺时的技术价值</h2>
+<h3>定义 1：生产 DAG</h3>
+<p>令物品集合为 (I)，配方集合为 (R)。配方 (r) 生产一件输出 (o(r))，消耗 (a_{ir}inmathbb{Z}_{ge0}) 件物品 (i)。配方图无环，因此存在拓扑顺序。令一次制作动作的机会成本为 (c&gt;0)。</p>
+<div class="formula">v_i = c，若 i 是零输入资源<br>v_{o(r)} = c + Σ_i a_{ir} v_i，若 r 是普通配方</div>
+<h3>定理 1：递推有唯一解</h3>
+<div class="proof"><ol><li>资源节点没有前驱，价值被定义为 (c)。</li><li>任取拓扑序中第一个尚未赋值的普通物品，它的所有投入都已在前面赋值，因此右侧是唯一确定的实数。</li><li>按拓扑序重复该步骤，所有节点都得到唯一值。若存在另一组解，在第一个不同节点处，右侧投入值相同而新增动作成本相同，矛盾。</li></ol></div>
+<h3>定理 2：它等于内含工作量</h3>
+<p>定义 (W_i) 为生产一件 (i) 所需的完整动作数：</p>
+<div class="formula">W_i = 1，资源；W_{o(r)} = 1 + Σ_i a_{ir}W_i，普通配方</div>
+<div class="proof"><p>对拓扑序归纳。资源有 (v_i=c=cW_i)。假设所有投入满足 (v_i=cW_i)，则：</p><div class="formula">v_{o(r)} = c + Σ_i a_{ir}cW_i = c(1+Σ_i a_{ir}W_i)=cW_{o(r)}</div><p>故所有物品 (v_i=cW_i)。</p></div>
+<div class="box warn"><strong>可识别性：</strong>这个定理只确定相对价格。把所有价格和 (c) 同时乘以任意正数，生产排序不变。因此“1 金币/动作”必须由货币尺子或玩家财政规则额外指定，不能声称由配方数学自动产生。</div>
+</section>
+
+<section>
+<h2>三、第二层模型：加入空间、猫容量和稳定需求</h2>
+<p>令猫节点为 (V)，有向相邻运输边为 (E)，时间单位取一个动作周期。变量：</p>
+<ul><li>(x_{vr})：猫 (v) 执行配方 (r) 的制作流量；</li><li>(y_{e i})：物品 (i) 沿运输边 (e) 的流量；</li><li>(z_{vi})：物品 (i) 在节点 (v) 被最终需求吸收的流量；</li><li>(lambda)：目标需求向量 (d_i) 的共同放大倍数。</li></ul>
+<div class="formula">max λ
+
+对每个 v：Σ_r x_{vr}+Σ_{e 出自 v,i} y_{ei} ≤ C_v
+
+对每个 v,i：产出_{vi}(x)+流入_{vi}(y)-流出_{vi}(y)-消耗_{vi}(x)-z_{vi}=0
+
+对每个 i：Σ_v z_{vi}=λd_i；x,y,z,λ ≥ 0</div>
+<p>其中 (C_v) 是猫在一个时间单位内可执行的动作容量，资源采集只允许在资源节点，建筑范围通过把不合法的 (x_{vr}) 变量固定为零实现。若需要把运输接收也计为动作，只需在容量式中加入对应入边，理论不变。</p>
+<h3>需求向量不是装饰</h3>
+<table><thead><tr><th>需求定义</th><th>含义</th><th>适合的验收</th></tr></thead><tbody><tr><th>(d_i=1)</th><td>每种目标商品相同件数</td><td>“每项至少重复三次”的稳定生产</td></tr><tr><th>(d_i=1/W_i)</th><td>各商品消耗相同的内含工作量</td><td>比较技术效率，不偏爱低级商品</td></tr><tr><th>阶段向量</th><td>按 10/15/22/30/35 阶段给权重</td><td>游戏进度和关卡经济</td></tr></tbody></table>
+<div class="box no"><strong>没有需求向量，就没有唯一“合理价格”。</strong>只给配方只能得到技术工作量；要得到市场价格，必须先声明希望稳定生产什么、多少、在哪里完成。</div>
+</section>
+
+<section>
+<h2>四、第三层定理：影子价格不是拍出来的</h2>
+<p>将上面的约束写为有限 LP：</p>
+<div class="formula">P(d): max cᵀu subject to Au ≤ b，Eu = f(d)，u ≥ 0</div>
+<p>其对偶为：</p>
+<div class="formula">D(d): min bᵀα + f(d)ᵀβ subject to Aᵀα + Eᵀβ ≥ c，α ≥ 0</div>
+<h3>定理 3：合理边际价格由对偶乘子给出</h3>
+<div class="proof"><ol><li>LP 的可行域由有限个线性约束构成；若目标有界且存在可行解，线性规划强对偶定理给出 (P(d)=D(d))。</li><li>对偶可行解是原问题目标值的上界证书；达到相等时，它证明任何生产方案都不能以更低的资源和容量代价实现同一目标。</li><li>若把某个资源、节点容量或运输容量的右端放宽 (delta)，最优值的一阶变化由对应对偶变量乘以 (delta) 给出；这正是“多一单位资源值多少钱”的影子价格含义。</li><li>互补松弛说明：未耗尽的约束影子价为零；真正卡住稳定产出的资源、猫工位或运输边才可以有正影子价。</li></ol></div>
+<p>因此合理价格应写为 (p_{i,v})，而不是永远相同的 (p_i)。只有当所有节点可互换、运输没有成本、容量约束不紧时，地点差异消失，才退化为第一层的技术价值 (cW_i)。</p>
+</section>
+
+<section>
+<h2>五、哪些数字不能从理论中得到</h2>
+<table><thead><tr><th>数字</th><th>理论身份</th><th>能否由配方证明</th></tr></thead><tbody><tr><th>12%</th><td>递归原料加价参数</td><td>不能；除非另有风险、等待或需求弹性数据。</td></tr><tr><th>0.5</th><td>若来自 50% 税率，是政策后的净现金比例</td><td>不能作为基础价值；它只是外生税法的结果。</td></tr><tr><th>25 分</th><td>代码中的运输/采购常量</td><td>不能；必须由一次动作的机会成本或实测服务成本校准。</td></tr><tr><th>1 金币/动作</th><td>货币计价单位</td><td>不能；只能由财政标尺或玩家体验目标指定。</td></tr></tbody></table>
+<div class="box"><strong>严格原则：</strong>凡是不能写成定义、约束、对偶变量或外部观测估计的数字，都不进入“理论价格”。它可以作为关卡调参，但必须标记为调参，不得称为合理成本。</div>
+</section>
+
+<section>
+<h2>六、计算前的可复现承诺</h2>
+<ol><li>先从当前 65 项配方和固定种子导出 (A)、猫图、资源点和相邻运输边。</li><li>分别求 (d_i=1)、(d_i=1/W_i) 与阶段目标向量的 LP。</li><li>记录原问题最优值、可行性、容量约束、对偶变量和互补松弛残差。</li><li>再把同一价格候选送入真实确定性猫咪引擎，用 1,000 个固定种子检验三窗口稳定生产。</li><li>报告会将“理论影子价”“模型假设”“模拟验证”分栏，不能用模拟通过率反向证明理论。</li></ol>
+</section>
+
+<footer>本页先于数值计算生成。理论参考见正文链接；计算结果另见《猫咪工坊价格模型与并行模拟报告》。代码中的既有常数均不被当作数学证明。</footer>
+</main></body></html>

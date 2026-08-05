@@ -20,8 +20,8 @@ function cat(index: number, position: Position): CatState {
   };
 }
 
-function passiveLaw(options: Partial<LawVersion> & Pick<LawVersion, "id" | "category">): LawVersion {
-  const { id, category, ...overrides } = options;
+function passiveLaw(options: Partial<LawVersion> & Pick<LawVersion, "id" | "program">): LawVersion {
+  const { id, program, ...overrides } = options;
   return {
     id,
     title: id,
@@ -32,10 +32,7 @@ function passiveLaw(options: Partial<LawVersion> & Pick<LawVersion, "id" | "cate
     examples: [],
     warnings: [],
     enactedAt: 0,
-    category,
-    taxRate: null,
-    priceItemId: null,
-    priceMultiplier: null,
+    program,
     hitCount: 0,
     invalidCount: 0,
     consecutiveFaults: 0,
@@ -44,29 +41,34 @@ function passiveLaw(options: Partial<LawVersion> & Pick<LawVersion, "id" | "cate
   };
 }
 
-function finishTutorial(state: GameState): void {
+function finishFoundation(state: GameState): void {
   state.discoveredItems = INTRO_RECIPE_IDS.map((id) => RECIPE_BY_ID.get(id)!.output);
   state.dirtyDecisions = true;
 }
 
+function installSharedGreedyBehavior(state: GameState): void {
+  state.laws = [structuredClone(createInitialState({ worldSeed: state.worldSeed }).laws
+    .find((law) => law.id === "starter-law-local-greedy")!)];
+}
+
 describe("0.8.0 spatial market acceptance", () => {
-  it("completes the nine-item tutorial for 100 deterministic scattered-resource seeds", () => {
+  it("lets asset-greedy cats discover the ten-item free foundation for 100 deterministic seeds", () => {
     for (let worldSeed = 1; worldSeed <= 100; worldSeed += 1) {
       const state = createInitialState({ worldSeed });
       advanceGame(state, 180_000);
-      expect(state.discoveredItems, `seed ${worldSeed}`).toHaveLength(9);
-      expect(state.discoveredItems, `seed ${worldSeed}`).not.toContain(ITEMS[9].id);
+      expect(state.discoveredItems, `seed ${worldSeed}`).toHaveLength(10);
+      expect(state.discoveredItems, `seed ${worldSeed}`).not.toContain(ITEMS[10].id);
       expect(state.resourceNodes.every((node) => !state.cats.some((cat) => cat.position.x === node.position.x
         && cat.position.y === node.position.y)), `seed ${worldSeed}`).toBe(true);
     }
   }, 60_000);
 
-  it("discovers exactly the first nine items within 180 seconds for a fixed seed", () => {
+  it("discovers exactly the first ten free items within 180 seconds for a fixed seed", () => {
     const state = createInitialState({ worldSeed: 123_456 });
     advanceGame(state, 180_000);
 
     expect(new Set(state.discoveredItems)).toEqual(new Set(INTRO_RECIPE_IDS.map((id) => RECIPE_BY_ID.get(id)!.output)));
-    expect(state.discoveredItems).not.toContain(ITEMS[9].id);
+    expect(state.discoveredItems).not.toContain(ITEMS[10].id);
   }, 60_000);
 
   it("lets isolated resource cats craft stock for player collection without cross-component sharing", () => {
@@ -76,26 +78,26 @@ describe("0.8.0 spatial market acceptance", () => {
       { id: "ore-node", itemId: "ore", position: { x: -1, y: -1 } },
       { id: "fiber-node", itemId: "fiber", position: { x: 3, y: 3 } },
     ];
-    finishTutorial(state);
+    finishFoundation(state);
+    installSharedGreedyBehavior(state);
 
+    decideIdleCats(state);
     advanceGame(state, 10_000);
     expect(state.itemStats.ore.crafted).toBeGreaterThan(0);
     expect(state.itemStats.fiber.crafted).toBeGreaterThan(0);
-    expect(state.cats[0].inventory.ore).toBeGreaterThan(0);
-    expect(state.cats[1].inventory.fiber).toBeGreaterThan(0);
     expect(state.itemStats.ore.sold + state.itemStats.fiber.sold).toBe(0);
     expect(state.itemStats.ore.passed + state.itemStats.fiber.passed).toBe(0);
   });
 
   it("changes player acquisition quotes for a price law but never starts a cat sale", () => {
     const baseline = createInitialState({ withStarter: false, worldSeed: 222 });
-    finishTutorial(baseline);
+    finishFoundation(baseline);
     baseline.resourceNodes = [];
     baseline.cats[0].inventory.brick = 1;
     baseline.cats[0].inventory.gear = 1;
     baseline.laws = [];
     decideIdleCats(baseline);
-    expect(baseline.cats[0].action).toBeNull();
+    expect(baseline.cats[0].action?.type).toBe("wait");
     const baselineQuote = catStockPurchaseQuote(baseline, baseline.cats[0].id);
 
     const taxed = structuredClone(baseline);
@@ -103,10 +105,10 @@ describe("0.8.0 spatial market acceptance", () => {
       if (entry.action) entry.inventory[entry.action.itemId] = (entry.inventory[entry.action.itemId] ?? 0) + 1;
       entry.action = null;
     });
-    taxed.laws = [passiveLaw({ id: "tax", category: "tax", taxRate: 0.99 })];
+    taxed.laws = [passiveLaw({ id: "tax", sourceCode: "function decide(ctx) { setTax(0.99); return null; }", program: { version: 2 } })];
     taxed.dirtyDecisions = true;
     decideIdleCats(taxed);
-    expect(taxed.cats[0].action).toBeNull();
+    expect(taxed.cats[0].action?.type).toBe("wait");
     expect(catStockPurchaseQuote(taxed, taxed.cats[0].id).totalCostCents).toBe(baselineQuote.totalCostCents);
 
     const priced = structuredClone(baseline);
@@ -114,10 +116,10 @@ describe("0.8.0 spatial market acceptance", () => {
       if (entry.action) entry.inventory[entry.action.itemId] = (entry.inventory[entry.action.itemId] ?? 0) + 1;
       entry.action = null;
     });
-    priced.laws = [passiveLaw({ id: "brick-price", category: "price", priceItemId: "brick", priceMultiplier: 100 })];
+    priced.laws = [passiveLaw({ id: "brick-price", sourceCode: "function decide(ctx) { setPrice('brick', 10); return null; }", program: { version: 2 } })];
     priced.dirtyDecisions = true;
     decideIdleCats(priced);
-    expect(priced.cats[0].action).toBeNull();
+    expect(priced.cats[0].action?.type).toBe("wait");
     expect(catStockPurchaseQuote(priced, priced.cats[0].id).totalCostCents).toBeGreaterThan(baselineQuote.totalCostCents);
   });
 
@@ -126,16 +128,17 @@ describe("0.8.0 spatial market acceptance", () => {
     state.cats = [cat(0, { x: 0, y: 0 }), cat(1, { x: 1, y: 0 }), cat(2, { x: 2, y: 0 })];
     state.nextCatIndex = 3;
     state.cats[0].inventory.factory = 1;
+    state.treasuryCoins = 1_000_000;
     state.unlockedRecipes = [...RECIPE_BY_ID.keys()];
     state.resourceNodes = [];
+    installSharedGreedyBehavior(state);
     // An already-produced building on the connected chain must be transported rather than recreated or teleported.
     const order = queueBuildingOrder(state, "cat-2", "factory");
     expect(order.ok).toBe(true);
     propagateOrderSignals(state);
     propagateOrderSignals(state);
     acceptProfitableOrders(state, (itemId) => itemPrice(state, itemId));
-    state.dirtyDecisions = true;
-    advanceGame(state, 1);
+    decideIdleCats(state);
     expect(state.cats[0].action).toMatchObject({ type: "pass", itemId: "factory", direction: "east" });
     advanceGame(state, 5_000);
     expect(state.cats[1].action).toMatchObject({ type: "pass", itemId: "factory", direction: "east" });
@@ -162,7 +165,7 @@ describe("0.8.0 spatial market acceptance", () => {
     }
     state.nextCatIndex = state.cats.length;
     state.resourceNodes = [{ id: "wood", itemId: "wood", position: { x: -1, y: -1 } }];
-    finishTutorial(state);
+    finishFoundation(state);
 
     const startedAt = performance.now();
     const result = planLocalLogistics(state, (itemId: ItemId) => itemPrice(state, itemId));

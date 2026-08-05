@@ -34,8 +34,9 @@ try {
     state.paused = true;
   });
   const progressed = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
-  assert(progressed.discoveredItems.length === 9, `tutorial discovered ${progressed.discoveredItems.length} items instead of nine`);
-  assert(!progressed.discoveredItems.includes("thread"), "tutorial crossed the item-ten lock");
+  assert(progressed.discoveredItems.length === 10, `asset-greedy foundation discovered ${progressed.discoveredItems.length} items instead of ten`);
+  assert(progressed.discoveredItems.includes("thread"), "asset-greedy cats did not autonomously produce item ten");
+  assert(!progressed.discoveredItems.includes("paper"), "locked item eleven was produced");
 
   await page.evaluate(() => {
     const state = window.__CAT_WORKSHOP__.state();
@@ -43,7 +44,7 @@ try {
     window.advanceTime(0);
   });
   await page.getByRole("button", { name: "配方图" }).click();
-  for (const recipeId of ["make_thread", "make_paper", "make_tools", "make_glass", "make_metal", "make_gear"]) {
+  for (const recipeId of ["make_paper", "make_tools", "make_glass", "make_metal", "make_gear"]) {
     await page.getByTestId(`unlock-${recipeId}`).click();
   }
   await page.evaluate(() => {
@@ -52,15 +53,15 @@ try {
     window.advanceTime(300_000);
     state.paused = true;
   });
-  const tutorial15 = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
-  assert(tutorial15.discoveredItems.length === 15, `continued tutorial discovered ${tutorial15.discoveredItems.length} items instead of fifteen`);
-  assert(tutorial15.discoveredItems.includes("gear"), "continued tutorial did not produce gear");
-  assert(!tutorial15.discoveredItems.includes("cable"), "continued tutorial crossed the item-sixteen gate");
-  assert(tutorial15.marketChallenge.tutorialCompleted === true, "text state does not report the fifteen-item tutorial complete");
-  await page.screenshot({ path: path.join(outputDir, "tutorial-15-full.png"), fullPage: true });
+  const foundation15 = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  assert(foundation15.discoveredItems.length === 15, `asset-greedy foundation discovered ${foundation15.discoveredItems.length} items instead of fifteen`);
+  assert(foundation15.discoveredItems.includes("gear"), "asset-greedy cats did not produce gear");
+  assert(!foundation15.discoveredItems.includes("cable"), "industrial certification gate was crossed");
+  assert(foundation15.marketChallenge.foundationCompleted === true, "text state does not report the fifteen-item foundation complete");
+  await page.screenshot({ path: path.join(outputDir, "foundation-15-full.png"), fullPage: true });
   assert(errors.length === 0, `browser errors: ${errors.join(" | ")}`);
-  fs.writeFileSync(path.join(outputDir, "resource-regions-state.json"), JSON.stringify({ initial, progressed, tutorial15 }, null, 2));
-  console.log(JSON.stringify({ ok: true, resources: nodes.map((node) => ({ itemId: node.itemId, position: node.position })), harvestCells: new Set(harvestKeys).size, initialTutorial: progressed.discoveredItems, continuedTutorial: tutorial15.discoveredItems, errors }));
+  fs.writeFileSync(path.join(outputDir, "resource-regions-state.json"), JSON.stringify({ initial, progressed, foundation15 }, null, 2));
+  console.log(JSON.stringify({ ok: true, resources: nodes.map((node) => ({ itemId: node.itemId, position: node.position })), harvestCells: new Set(harvestKeys).size, initialFoundation: progressed.discoveredItems, completedFoundation: foundation15.discoveredItems, errors }));
 } finally {
   await browser.close();
 }

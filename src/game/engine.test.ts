@@ -11,6 +11,7 @@ import {
 import {
   advanceGame,
   buyAllCatStockAndSell,
+  buildObservation,
   catStockPurchaseQuote,
   createInitialState,
   enactLaw,
@@ -18,38 +19,40 @@ import {
   nextEnactmentCost,
   placeCat,
   removeCat,
+  reorderLaw,
   repealLaw,
   sellWarehouseItem,
   unlockRecipe,
   warehouseSellPrice,
 } from "./engine";
-import { hashSource } from "./lawInterpreter";
+import { hashSource, validateLawSource } from "./lawInterpreter";
 import { openDemandOrder } from "./market";
 import { GameController } from "./controller";
 import type { LawDraft } from "./types";
 
 const PASSIVE_SOURCE = "function decide(ctx) { return null; }";
 
-function draft(category: "behavior" | "price" | "tax" = "price", options: { taxRate?: number; itemId?: string | "*"; multiplier?: number; sourceCode?: string } = {}): LawDraft {
-  const sourceCode = options.sourceCode ?? PASSIVE_SOURCE;
+function draft(kind: "behavior" | "price" | "tax" = "price", options: { taxRate?: number; itemId?: string | "*"; multiplier?: number; sourceCode?: string } = {}): LawDraft {
+  const sourceCode = options.sourceCode ?? (kind === "tax"
+    ? `function decide(ctx) { setTax(${options.taxRate ?? 1}); return null; }`
+    : kind === "price"
+      ? `function decide(ctx) { setPrice(${JSON.stringify(options.itemId ?? "gear")}, ${options.multiplier ?? 1.5}); return null; }`
+      : "function decide(ctx) { return choose(); }");
   return {
-    title: category === "tax" ? "测试税法" : category === "behavior" ? "测试共享逻辑" : "测试价格法",
+    title: kind === "tax" ? "测试税法" : kind === "behavior" ? "测试共享逻辑" : "测试价格法",
     playerText: "test",
     summary: "test",
     sourceCode,
     astHash: hashSource(sourceCode),
     examples: [],
     warnings: [],
-    category,
-    taxRate: category === "tax" ? options.taxRate ?? 1 : null,
-    priceItemId: category === "price" ? options.itemId ?? "gear" : null,
-    priceMultiplier: category === "price" ? options.multiplier ?? 1.5 : null,
+    program: { version: 2 },
     validation: { syntax: true, safety: true, examplesPassed: 0, examplesTotal: 0, messages: [] },
   };
 }
 
 function markIntroDiscovered(state: ReturnType<typeof createInitialState>): void {
-  const discovered = new Set(ITEMS.slice(0, 9).map((item) => item.id));
+  const discovered = new Set(ITEMS.slice(0, 10).map((item) => item.id));
   state.discoveredItems = [...discovered];
   for (const bounty of state.discoveryBounties) {
     if (discovered.has(bounty.itemId)) bounty.paid = true;
@@ -66,20 +69,44 @@ function unlockMarketChallenge(state: ReturnType<typeof createInitialState>): vo
 }
 
 describe("deterministic engine", () => {
-  it("automatically unlocks and autonomously crafts only the first nine items", () => {
-    const state = createInitialState();
-    expect(state.cats).toHaveLength(11);
-    expect(state.laws).toHaveLength(7);
-    expect(state.laws.filter((law) => law.category === "system")).toHaveLength(3);
-    expect(state.unlockedRecipes).toEqual(INTRO_RECIPE_IDS);
-    expect(state.laws.filter((law) => law.category === "behavior")).toHaveLength(1);
-
-    advanceGame(state, 180_000);
-    expect(new Set(state.discoveredItems)).toEqual(new Set(ITEMS.slice(0, 9).map((item) => item.id)));
-    expect(state.discoveredItems).not.toContain("thread");
+  it("exposes production only through cat-authored broadcasts", () => {
+    const state = createInitialState({ worldSeed: 1, simulationSpeed: 5_000 });
+    advanceGame(state, 30_000 / state.simulationSpeed);
+    const observation = buildObservation(state, state.cats[0]);
+    expect(observation.broadcasts?.some((entry) => entry.kind === "production-event")).toBe(true);
+    const craftedBefore = observation.broadcasts?.find((entry) => entry.kind === "production-total" && entry.itemId === "wood")?.amountCents ?? 0;
+    state.playerBuildingInventory.wood = 50;
+    expect("warehouse" in buildObservation(state, state.cats[0])).toBe(false);
+    expect(buildObservation(state, state.cats[0]).broadcasts?.find((entry) => entry.kind === "production-total" && entry.itemId === "wood")?.amountCents).toBe(craftedBefore);
+    advanceGame(state, 61_000 / state.simulationSpeed);
+    expect(state.recentProductionEvents.every((event) => state.simTime - event.at <= 60_000 / state.simulationSpeed)).toBe(true);
   });
 
-  it("keeps items 10–15 paid but continues the teaching sequence through all fifteen goods", () => {
+  it("automatically unlocks and autonomously crafts only the first ten items", () => {
+    const state = createInitialState();
+    expect(state.cats).toHaveLength(11);
+    expect(state.laws).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "starter-law-local-greedy" }),
+      expect.objectContaining({ id: "starter-law-workshop-cycle" }),
+      expect.objectContaining({ id: "starter-law-discovery-bounty", locked: true }),
+    ]));
+    expect(state.laws).toHaveLength(7);
+    expect(state.laws.filter((law) => law.locked)).toHaveLength(2);
+    expect(state.unlockedRecipes).toEqual(INTRO_RECIPE_IDS);
+    expect(state.laws.every((law) => law.program.version === 2)).toBe(true);
+    expect(state.laws.every((law) => validateLawSource(law.sourceCode).ok)).toBe(true);
+
+    advanceGame(state, 180_000);
+    const sharedBehaviorLaw = state.laws.find((law) => law.id === "starter-law-local-greedy")!;
+    expect(state.procurementPlans.every((plan) => plan.createdByBehaviorLawId === sharedBehaviorLaw.id)).toBe(true);
+    const activeLawIds = new Set(state.laws.filter((law) => law.status === "active").map((law) => law.id));
+    expect(state.cats.filter((cat) => cat.action?.type !== "wait").every((cat) => activeLawIds.has(cat.action?.lawId ?? ""))).toBe(true);
+    expect(new Set(state.discoveredItems)).toEqual(new Set(ITEMS.slice(0, 10).map((item) => item.id)));
+    expect(state.discoveredItems).toContain("thread");
+    expect(state.discoveredItems).not.toContain("paper");
+  });
+
+  it("keeps items 11–15 paid while asset greed naturally reaches all fifteen goods", () => {
     const state = createInitialState();
     expect(state.unlockedRecipes).toEqual(INTRO_RECIPE_IDS);
     expect(MARKET_CHALLENGE_RECIPE_IDS.every((id) => !state.unlockedRecipes.includes(id))).toBe(true);
@@ -108,13 +135,15 @@ describe("deterministic engine", () => {
     const state = createInitialState({ withStarter: false });
     const base = itemPrice(state, "gear");
     enactLaw(state, draft("price", { itemId: "gear", multiplier: 2 }));
+    advanceGame(state, 5_000);
     expect(itemPrice(state, "gear")).toBe(base * 2);
     enactLaw(state, draft("price", { itemId: "gear", multiplier: 3 }));
+    advanceGame(state, 5_000);
     expect(itemPrice(state, "gear")).toBe(base * 3);
     expect(itemPrice(state, "wood")).toBe(100);
   });
 
-  it("opens items 16–20 only after all six production certifications", () => {
+  it("opens items 16–20 only after all five paid production certifications", () => {
     const state = createInitialState({ withStarter: false });
     unlockMarketChallenge(state);
     expect(unlockRecipe(state, "make_memory")).toMatchObject({ ok: false });
@@ -126,12 +155,18 @@ describe("deterministic engine", () => {
     expect(unlockRecipe(state, "make_cable")).toMatchObject({ ok: false });
   });
 
-  it("settles exactly at 5000ms, only once", () => {
+  it("waits for entry, then settles a 5000ms action exactly once", () => {
     const state = createInitialState({ withStarter: false });
+    expect(enactLaw(state, draft("behavior", { sourceCode: "function decide(ctx) { return earnCoins(); }" })).ok).toBe(true);
     state.resourceNodes = [{ id: "wood-test", itemId: "wood", position: { x: 0, y: -1 } }];
     advanceGame(state, 4_999);
     expect(state.cats[0].inventory.wood ?? 0).toBe(0);
     expect(state.cats[0].action?.endsAt).toBe(5_000);
+    advanceGame(state, 1);
+    expect(state.cats[0].action).toMatchObject({ type: "craft", itemId: "wood", endsAt: 10_000 });
+    expect(state.itemStats.wood.crafted).toBe(0);
+    advanceGame(state, 4_999);
+    expect(state.itemStats.wood.crafted).toBe(0);
     advanceGame(state, 1);
     expect(state.itemStats.wood.crafted).toBe(1);
     expect(state.discoveryBounties.find((bounty) => bounty.itemId === "wood")?.paid).toBe(true);
@@ -141,47 +176,45 @@ describe("deterministic engine", () => {
 
   it("preserves the action boundary under an explicit test speed multiplier", () => {
     const state = createInitialState({ withStarter: false, simulationSpeed: 5_000 });
+    expect(enactLaw(state, draft("behavior", { sourceCode: "function decide(ctx) { return earnCoins(); }" })).ok).toBe(true);
     state.resourceNodes = [{ id: "wood-test-fast", itemId: "wood", position: { x: 0, y: -1 } }];
     advanceGame(state, 0.9);
     expect(state.cats[0].inventory.wood ?? 0).toBe(0);
     expect(state.cats[0].action?.endsAt).toBe(1);
     advanceGame(state, 0.1);
+    expect(state.cats[0].action).toMatchObject({ type: "craft", endsAt: 2 });
+    expect(state.itemStats.wood.crafted).toBe(0);
+    advanceGame(state, 0.9);
+    expect(state.itemStats.wood.crafted).toBe(0);
+    advanceGame(state, 0.1);
     expect(state.itemStats.wood.crafted).toBe(1);
   });
 
-  it("recursively self-supplies an upstream ingredient for its own profitable plan", () => {
+  it("uses a paid supplier plan instead of letting the buyer recursively make every ingredient", () => {
     const state = createInitialState({ withStarter: false });
+    expect(enactLaw(state, draft("behavior", { sourceCode: "function decide(ctx) { return earnCoins(); }" })).ok).toBe(true);
     state.resourceNodes = [{ id: "wood-upstream", itemId: "wood", position: { x: 1, y: 1 } }];
     placeCat(state, { x: 1, y: 0 });
     state.discoveryBounties.forEach((bounty) => { bounty.paid = true; });
     state.marketBroadcasts = [];
-    state.unlockedRecipes = ["wood", "fire", "battery"].map((itemId) => RECIPE_BY_OUTPUT.get(itemId)!.id);
-    state.procurementPlans.push({
-      id: "plan-upstream",
-      catId: "cat-0",
-      outputItemId: "battery",
-      recipeId: RECIPE_BY_OUTPUT.get("battery")!.id,
-      terminalOrderId: null,
-      expectedRevenueCents: 5_000,
-      createdAt: 0,
-      status: "active",
-      reason: "external-sale",
-    });
-    state.cats[1].coins = 10_000;
+    state.unlockedRecipes = ["wood", "fire"].map((itemId) => RECIPE_BY_OUTPUT.get(itemId)!.id);
+    state.cats[1].inventory.wood = 1;
+    state.cats[0].coins = 10_000;
     openDemandOrder(state, {
       buyerKind: "cat",
-      buyerCatId: "cat-1",
-      destinationCatId: "cat-1",
+      buyerCatId: "cat-0",
+      destinationCatId: "cat-0",
       itemId: "fire",
       maxDeliveredCents: 1_000,
       reservedCents: 1_000,
       planId: null,
     }, (itemId) => itemPrice(state, itemId));
 
-    advanceGame(state, 1);
-    expect(state.cats[0].action).toMatchObject({ type: "craft", recipeId: "make_wood" });
-    advanceGame(state, 4_999);
-    expect(state.cats[0].action).toMatchObject({ type: "craft", recipeId: "make_fire" });
+    advanceGame(state, 5_000);
+    expect(state.cats[0].action?.type).toBe("wait");
+    expect(state.cats[1].action).toMatchObject({ type: "craft", recipeId: "make_wood" });
+    expect(state.procurementPlans.find((plan) => plan.catId === "cat-1" && plan.outputItemId === "wood"))
+      .toMatchObject({ terminalOrderId: expect.any(String), createdByBehaviorLawId: expect.any(String) });
   });
 
   it("sells player warehouse stock at fixed base x2 without cat tax or price laws", () => {
@@ -206,13 +239,13 @@ describe("deterministic engine", () => {
     enactLaw(state, draft("price", { itemId: "glass", multiplier: 10 }));
     state.cats[0].inventory.glass = 1;
     state.cats[0].inventory.gear = 1;
+    advanceGame(state, 5_000);
     const quote = catStockPurchaseQuote(state, state.cats[0].id);
-    advanceGame(state, 1);
     expect(quote.lines.find((line) => line.itemId === "glass")?.unitPriceCents).toBeGreaterThan(warehouseSellPrice("glass"));
-    expect(state.cats[0].action).toBeNull();
+    expect(state.cats[0].action?.type).toBe("wait");
   });
 
-  it("replaces the one shared logic function and applies it to every cat", () => {
+  it("keeps immutable decision laws independently ordered instead of replacing them", () => {
     const state = createInitialState({ withStarter: false });
     placeCat(state, { x: 1, y: 0 });
     markIntroDiscovered(state);
@@ -220,15 +253,41 @@ describe("deterministic engine", () => {
     state.cats[1].inventory.wood = 1;
     const source = "function decide(ctx) { if (has(\"wood\")) return { type: \"sell\", itemId: \"wood\" }; return weighted(1, 1, 1); }";
     expect(enactLaw(state, draft("behavior", { sourceCode: source })).ok).toBe(true);
-    advanceGame(state, 1);
-    expect(state.laws.filter((law) => law.category === "behavior")).toHaveLength(1);
-    expect(state.cats.every((cat) => cat.action?.type !== "sell")).toBe(true);
-    expect(state.laws.find((law) => law.category === "behavior")?.invalidCount).toBeGreaterThan(0);
+    advanceGame(state, 5_000);
+    expect(state.laws).toHaveLength(1);
+    expect(state.cats.every((cat) => ["craft", "pass", "wait", undefined].includes(cat.action?.type))).toBe(true);
 
     const replacement = "function decide(ctx) { return weighted(2, 0.5, 0.25); }";
     expect(enactLaw(state, draft("behavior", { sourceCode: replacement })).ok).toBe(true);
-    expect(state.laws.filter((law) => law.category === "behavior")).toHaveLength(1);
-    expect(state.lawHistory.some((law) => law.category === "behavior" && law.status === "repealed")).toBe(true);
+    expect(state.laws).toHaveLength(2);
+    expect(state.lawHistory).toHaveLength(2);
+  });
+
+  it("does not plan or act outside the active shared behavior law", () => {
+    const state = createInitialState({ withStarter: false });
+    expect(enactLaw(state, draft("behavior", { sourceCode: PASSIVE_SOURCE })).ok).toBe(true);
+
+    advanceGame(state, 30_000);
+
+    expect(state.laws.filter((law) => law.status === "active")).toHaveLength(1);
+    expect(state.cats.every((cat) => cat.action?.type === "wait")).toBe(true);
+    expect(state.procurementPlans).toHaveLength(0);
+    expect(state.demandOrders).toHaveLength(0);
+    expect(state.shipmentContracts).toHaveLength(0);
+    expect(state.discoveredItems).toHaveLength(0);
+    expect(state.logisticsStatus).toHaveLength(0);
+  });
+
+  it("attributes every new plan and action to the one active shared behavior function", () => {
+    const state = createInitialState({ worldSeed: 37 });
+    advanceGame(state, 5_000);
+
+    const behavior = state.laws.find((law) => law.id === "starter-law-local-greedy")!;
+    expect(behavior).toBeDefined();
+    expect(state.procurementPlans.length).toBeGreaterThan(0);
+    expect(state.procurementPlans.every((plan) => plan.createdByBehaviorLawId === behavior.id)).toBe(true);
+    const activeLawIds = new Set(state.laws.filter((law) => law.status === "active").map((law) => law.id));
+    expect(state.cats.filter((cat) => cat.action?.type !== "wait").every((cat) => activeLawIds.has(cat.action?.lawId ?? ""))).toBe(true);
   });
 
   it("lets the shared function intervene inside local candidate scoring", () => {
@@ -242,8 +301,8 @@ describe("deterministic engine", () => {
       return choose();
     }`;
     expect(enactLaw(state, draft("behavior", { sourceCode: source })).ok).toBe(true);
-    advanceGame(state, 1);
-    expect(state.cats[0].action).toBeNull();
+    advanceGame(state, 5_000);
+    expect(state.cats[0].action?.type).toBe("wait");
   });
 
   it("atomically buys and resells simultaneous stock from cats in stable order", () => {
@@ -311,7 +370,6 @@ describe("deterministic engine", () => {
     expect(order).not.toBeNull();
     expect(removeCat(state, state.cats[0].id).ok).toBe(true);
     expect(state.demandOrders).toHaveLength(0);
-    expect(state.orderSignals).toHaveLength(0);
     expect(removeCat(state, "cat-0")).toMatchObject({ ok: false, error: "cat-not-found" });
     expect(removeCat(state, state.cats[0].id)).toMatchObject({ ok: false, error: "keep-one-cat" });
   });
@@ -382,5 +440,60 @@ describe("deterministic engine", () => {
     expect(controller.state.simTime).toBe(5_000);
     controller.setSpeed(1);
     expect(controller.getSpeedMultiplier()).toBe(1);
+  });
+
+  it("interprets every active decision law exactly once for each cat that just completed", () => {
+    const state = createInitialState({ withStarter: false });
+    const source = "function decide(ctx) { adjust('craft', '*', 1, 1); return choose(); }";
+    expect(enactLaw(state, draft("behavior", { sourceCode: source })).ok).toBe(true);
+    expect(enactLaw(state, draft("behavior", { sourceCode: source })).ok).toBe(true);
+    const decisionLaws = state.laws;
+
+    advanceGame(state, 4_999);
+    expect(decisionLaws.map((law) => law.hitCount)).toEqual([0, 0]);
+    advanceGame(state, 1);
+    expect(decisionLaws.map((law) => law.hitCount)).toEqual([1, 1]);
+    advanceGame(state, 4_999);
+    expect(decisionLaws.map((law) => law.hitCount)).toEqual([1, 1]);
+    advanceGame(state, 1);
+    expect(decisionLaws.map((law) => law.hitCount)).toEqual([2, 2]);
+  });
+
+  it("does not let one completed cat trigger a staggered cat's decision", () => {
+    const state = createInitialState({ withStarter: false });
+    placeCat(state, { x: 1, y: 0 });
+    const source = "function decide(ctx) { return choose(); }";
+    expect(enactLaw(state, draft("behavior", { sourceCode: source })).ok).toBe(true);
+    const law = state.laws[0]!;
+    state.cats[1].action!.endsAt = 7_000;
+
+    advanceGame(state, 5_000);
+    expect(law.hitCount).toBe(1);
+    expect(state.cats[1].action?.endsAt).toBe(7_000);
+    advanceGame(state, 1_999);
+    expect(law.hitCount).toBe(1);
+    advanceGame(state, 1);
+    expect(law.hitCount).toBe(2);
+  });
+
+  it("does not wake cats for received stock or law enact, reorder and repeal", () => {
+    const state = createInitialState({ withStarter: false });
+    const source = "function decide(ctx) { return choose(); }";
+    const first = enactLaw(state, draft("behavior", { sourceCode: source })).law!;
+    const second = enactLaw(state, draft("behavior", { sourceCode: source })).law!;
+    advanceGame(state, 1_000);
+    const originalEnd = state.cats[0].action?.endsAt;
+
+    state.cats[0].inventory.wood = 1; // Receiving a shipment mutates inventory immediately.
+    expect(reorderLaw(state, second.id, 1)).toBe(true);
+    state.treasuryCoins = 500;
+    expect(repealLaw(state, first.id).ok).toBe(true);
+    expect(state.cats[0].action?.endsAt).toBe(originalEnd);
+    expect(second.hitCount).toBe(0);
+
+    advanceGame(state, 3_999);
+    expect(second.hitCount).toBe(0);
+    advanceGame(state, 1);
+    expect(second.hitCount).toBe(1);
   });
 });

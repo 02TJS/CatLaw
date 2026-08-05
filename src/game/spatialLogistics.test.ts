@@ -4,6 +4,7 @@ import {
   advanceGame,
   buildingPlacementFailure,
   createInitialState,
+  decideIdleCats,
   dismantleBuilding,
   itemPrice,
   placeOwnedBuilding,
@@ -12,6 +13,7 @@ import {
 } from "./engine";
 import { acceptProfitableOrders, openDemandOrder, propagateOrderSignals } from "./market";
 import type { CatState } from "./types";
+import { resourceHarvestTiles } from "./world";
 
 function testCat(id: number, x: number, y: number): CatState {
   return { id: `cat-${id}`, createdIndex: id, position: { x, y }, inventory: {}, coins: 0, debtCents: 0, escrowReservedCents: 0, action: null, lastDecision: "", decisionTrace: [] };
@@ -25,7 +27,11 @@ describe("spatial logistics and buildings", () => {
     state.resourceNodes = [];
     state.discoveredItems = ITEMS.slice(0, 15).map((item) => item.id);
     state.discoveryBounties.forEach((bounty) => { bounty.paid = true; });
-    state.laws = [];
+    const allLaws = createInitialState({ worldSeed: 1 }).laws.map((law) => structuredClone(law));
+    state.laws = allLaws.filter((law) => law.locked);
+    decideIdleCats(state);
+    state.cats.forEach((entry) => { entry.action = null; });
+    state.laws = allLaws;
     state.cats[0].inventory.wood = 1;
     const order = openDemandOrder(state, {
       buyerKind: "cat", buyerCatId: "cat-2", destinationCatId: "cat-2", itemId: "wood",
@@ -35,10 +41,15 @@ describe("spatial logistics and buildings", () => {
     propagateOrderSignals(state);
     acceptProfitableOrders(state, (itemId) => itemPrice(state, itemId));
     expect(order.status).toBe("contracted");
-    state.dirtyDecisions = true;
-
-    advanceGame(state, 1);
+    state.cats[0].decisionSerial = 2;
+    state.floatingEvents = [];
+    decideIdleCats(state);
     expect(state.cats[0].action).toMatchObject({ type: "pass", itemId: "wood", direction: "east" });
+    const speech = state.floatingEvents.find((event) => event.kind === "speech" && event.catId === "cat-0");
+    expect(speech?.text).toContain("把🪵木材运到东边的2号猫");
+    expect(speech?.text).toContain("1.01金币");
+    expect(speech?.text).toContain("履行有偿运输合同");
+    expect(speech?.text).toContain("喵");
     advanceGame(state, 5_000);
     expect(state.itemStats.wood.passed).toBe(1);
     expect(state.cats[1].action).toMatchObject({ type: "pass", itemId: "wood", direction: "east" });
@@ -99,11 +110,13 @@ describe("spatial logistics and buildings", () => {
     expect(state.playerBuildingInventory.factory).toBe(1);
   });
 
-  it("rejects resource centers, harvest zones, and unknown building goods", () => {
+  it("lets factories use resource-adjacent harvest cells but rejects centers and unknown goods", () => {
     const state = createInitialState({ worldSeed: 45 });
     const node = state.resourceNodes[0];
     expect(buildingPlacementFailure(state, "factory", node.position)).toContain("资源");
-    expect(buildingPlacementFailure(state, "factory", { x: node.position.x + 1, y: node.position.y })).toContain("采集格");
+    const harvestTile = resourceHarvestTiles(node).find((position) => !state.cats.some((cat) => cat.position.x === position.x && cat.position.y === position.y))!;
+    expect(buildingPlacementFailure(state, "factory", harvestTile)).toBeNull();
+    expect(buildingPlacementFailure(state, "reactor", harvestTile)).toContain("只有工厂");
     expect(buildingPlacementFailure(state, "wood", { x: 4, y: 4 })).toContain("不能放置");
   });
 });

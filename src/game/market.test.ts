@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { RECIPE_BY_ID, RECIPE_BY_OUTPUT, TUTORIAL_RECIPE_IDS } from "./catalog";
+import { FOUNDATION_RECIPE_IDS, RECIPE_BY_ID, RECIPE_BY_OUTPUT } from "./catalog";
 import {
   advanceGame,
   buyBuildingOffer,
@@ -24,6 +24,7 @@ import {
   publishBountySignal,
   propagateOrderSignals,
   refreshCatMarket,
+  productionOpportunitiesForCat,
   settleContractLeg,
   signalsForCat,
 } from "./market";
@@ -46,7 +47,7 @@ function cat(createdIndex: number, x: number, y: number): CatState {
 
 function lineState(length: number): GameState {
   const state = createInitialState({ withStarter: false, worldSeed: 7 });
-  const systemLaws = createInitialState({ worldSeed: 7 }).laws.filter((law) => law.category === "system");
+  const systemLaws = createInitialState({ worldSeed: 7 }).laws.filter((law) => law.locked);
   state.cats = Array.from({ length }, (_, index) => cat(index, index, 0));
   state.nextCatIndex = length;
   state.resourceNodes = [];
@@ -54,9 +55,12 @@ function lineState(length: number): GameState {
   state.lawHistory = structuredClone(systemLaws);
   state.discoveryBounties.forEach((bounty) => { bounty.paid = true; });
   state.marketBroadcasts = [];
-  state.discoveredItems = TUTORIAL_RECIPE_IDS.map((id) => RECIPE_BY_ID.get(id)!.output);
+  state.discoveredItems = FOUNDATION_RECIPE_IDS.map((id) => RECIPE_BY_ID.get(id)!.output);
   state.unlockedRecipes = [RECIPE_BY_OUTPUT.get("wood")!.id];
   state.dirtyDecisions = false;
+  decideIdleCats(state);
+  state.cats.forEach((entry) => { entry.action = null; });
+  state.laws.forEach((law) => { law.hitCount = 0; });
   return state;
 }
 
@@ -80,8 +84,7 @@ describe("self-interested broadcast market", () => {
   it("makes a cat-authored order globally visible immediately without copying it per cat", () => {
     const state = lineState(3);
     const order = orderWood(state)!;
-    expect(state.orderSignals.filter((signal) => signal.orderId === order.id)).toHaveLength(1);
-    expect(state.orderSignals[0].catId).toBe("*");
+    expect(state.marketBroadcasts.filter((signal) => signal.subjectId === order.id && signal.kind === "demand-open")).toHaveLength(1);
     expect(signalsForCat(state, "cat-0").some((signal) => signal.orderId === order.id)).toBe(true);
     expect(signalsForCat(state, "cat-2").some((signal) => signal.orderId === order.id)).toBe(true);
     expect(broadcastsForCat(state, "cat-2").find((entry) => entry.subjectId === order.id)).toMatchObject({
@@ -91,18 +94,18 @@ describe("self-interested broadcast market", () => {
     expect(propagateOrderSignals(state)).toBe(false);
   });
 
-  it("keeps the global broadcast immediate while exposing at most two orders per item to each cat", () => {
+  it("shows every same-item order in the global broadcast up to the total observation cap", () => {
     const state = lineState(2);
     state.cats[0].coins = 10_000;
     const orders = [orderWood(state)!, orderWood(state)!, orderWood(state)!];
-    expect(state.orderSignals.filter((signal) => orders.some((order) => order.id === signal.orderId))).toHaveLength(3);
+    expect(state.marketBroadcasts.filter((signal) => orders.some((order) => order.id === signal.subjectId) && signal.kind === "demand-open")).toHaveLength(3);
     const initiallyVisible = signalsForCat(state, "cat-1").filter((signal) => orders.some((order) => order.id === signal.orderId));
-    expect(initiallyVisible).toHaveLength(2);
+    expect(initiallyVisible).toHaveLength(3);
 
     expect(cancelDemandOrder(state, initiallyVisible[0].orderId, "test rotation")).toBe(true);
     const visibleAfterClose = signalsForCat(state, "cat-1").filter((signal) => orders.some((order) => order.id === signal.orderId));
     expect(visibleAfterClose).toHaveLength(2);
-    expect(visibleAfterClose.some((signal) => !initiallyVisible.some((entry) => entry.orderId === signal.orderId))).toBe(true);
+    expect(visibleAfterClose.every((signal) => initiallyVisible.some((entry) => entry.orderId === signal.orderId))).toBe(true);
   });
 
   it("closes an order with an immediate global lifecycle broadcast", () => {
@@ -111,7 +114,6 @@ describe("self-interested broadcast market", () => {
     expect(cancelDemandOrder(state, order.id, "预算失效")).toBe(true);
     expect(signalsForCat(state, "cat-0").some((signal) => signal.orderId === order.id)).toBe(false);
     expect(signalsForCat(state, "cat-2").some((signal) => signal.orderId === order.id)).toBe(false);
-    expect(state.orderSignals.some((signal) => signal.orderId === order.id)).toBe(false);
     expect(broadcastsForCat(state, "cat-2").find((entry) => entry.subjectId === order.id)).toMatchObject({
       kind: "demand-cancelled",
       sourceCatId: "cat-0",
@@ -124,19 +126,23 @@ describe("self-interested broadcast market", () => {
     state.unlockedRecipes.push(RECIPE_BY_OUTPUT.get("plank")!.id);
     state.cats[0].coins = 10_000;
     state.cats[3].coins = 10_000;
+    state.cats[3].inventory.wood = 2;
     const order = openDemandOrder(state, {
       buyerKind: "cat", buyerCatId: "cat-0", destinationCatId: "cat-0",
       itemId: "plank", maxDeliveredCents: 10_000, reservedCents: 10_000, planId: null,
     }, price(state))!;
-    refreshCatMarket(state, state.cats[3], price(state));
-    expect(state.procurementPlans.some((plan) => plan.catId === "cat-3" && plan.terminalOrderId === order.id)).toBe(true);
+    // The connected seller evaluates the global order directly; a different
+    // cat must not be refreshed first and allowed to reserve the same wood for
+    // an unrelated speculative plan.
+    refreshCatMarket(state, state.cats[1], price(state));
+    const quotedSeller = state.cats.find((cat) => cat.id === order.committedSellerCatId)!;
+    expect(quotedSeller).toBeDefined();
+    expect(state.procurementPlans.some((plan) => plan.catId === quotedSeller.id && plan.terminalOrderId === order.id)).toBe(true);
     expect(findTransportRoute(state, "cat-3", "cat-0")).toEqual(["cat-3", "cat-2", "cat-1", "cat-0"]);
   });
 
   it("lets an order producer quote above input opportunity cost and locks that price into the contract", () => {
     const state = lineState(2);
-    const taxLaw = createInitialState({ worldSeed: 7 }).laws.find((law) => law.category === "tax")!;
-    state.laws.push(structuredClone(taxLaw));
     state.unlockedRecipes.push(
       RECIPE_BY_OUTPUT.get("sand")!.id,
       RECIPE_BY_OUTPUT.get("fire")!.id,
@@ -144,19 +150,19 @@ describe("self-interested broadcast market", () => {
     );
     state.cats[0].coins = 10_000;
     state.cats[1].coins = 10_000;
+    state.cats[1].inventory = { sand: 2, fire: 1 };
     const order = openDemandOrder(state, {
       buyerKind: "cat", buyerCatId: "cat-0", destinationCatId: "cat-0",
-      itemId: "glass", maxDeliveredCents: 400, reservedCents: 400, planId: null,
+      itemId: "glass", maxDeliveredCents: 10_000, reservedCents: 10_000, planId: null,
     }, price(state))!;
 
     refreshCatMarket(state, state.cats[1], price(state));
     const plan = state.procurementPlans.find((entry) => entry.terminalOrderId === order.id)!;
-    expect(plan).toMatchObject({ outputItemId: "glass", expectedRevenueCents: 326, status: "active" });
+    expect(plan).toMatchObject({ outputItemId: "glass", expectedRevenueCents: order.quotedSellerCents, status: "active" });
 
     state.cats[1].inventory.glass = 1;
     acceptProfitableOrders(state, price(state));
-    expect(state.shipmentContracts[0]).toMatchObject({ orderId: order.id, sellerPriceCents: 326 });
-    expect(state.orderSignals.some((signal) => signal.orderId === order.id)).toBe(false);
+    expect(state.shipmentContracts[0]).toMatchObject({ orderId: order.id, sellerPriceCents: order.quotedSellerCents });
   });
 
   it("lets a cat claim only a locally valid public bounty without selecting a global owner", () => {
@@ -169,6 +175,20 @@ describe("self-interested broadcast market", () => {
     refreshCatMarket(state, state.cats[0], price(state));
     expect(state.procurementPlans).toHaveLength(1);
     expect(state.procurementPlans[0]).toMatchObject({ catId: "cat-0", outputItemId: "wood", reason: "bounty" });
+  });
+
+  it("does not claim a bounty when the shared law scores that opportunity at zero or below", () => {
+    const state = lineState(1);
+    state.discoveryBounties.forEach((bounty) => { bounty.paid = bounty.itemId !== "wood"; bounty.claimedByCatId = null; });
+    publishBountySignal(state, "wood", "open", "cat-0");
+    state.resourceNodes = [{ id: "wood-node", itemId: "wood", position: { x: 0, y: 0 } }];
+
+    refreshCatMarket(state, state.cats[0], price(state), [
+      { actionType: "craft", itemId: "wood", multiplier: 1, bonus: -1_000 },
+    ]);
+
+    expect(state.procurementPlans).toHaveLength(0);
+    expect(state.discoveryBounties.find((entry) => entry.itemId === "wood")?.claimedByCatId).toBeNull();
   });
 
   it("announces and closes a bounty globally while the ledger pays it only once", () => {
@@ -187,7 +207,7 @@ describe("self-interested broadcast market", () => {
     expect(broadcastsForCat(state, "cat-2")[0]).toMatchObject({ kind: "bounty-closed", sourceCatId: "cat-0" });
   });
 
-  it("keeps post-tutorial bounties visible but waits for positive price guidance", () => {
+  it("treats every unlocked discovery bounty as an economic opportunity without a catalog-position gate", () => {
     const state = lineState(2);
     state.unlockedRecipes.push(RECIPE_BY_OUTPUT.get("cable")!.id);
     state.discoveryBounties.forEach((bounty) => {
@@ -196,22 +216,33 @@ describe("self-interested broadcast market", () => {
     });
     publishBountySignal(state, "cable", "open", "cat-0");
     state.cats[1].coins = 10_000;
+    state.cats[1].inventory = { metal: 1, thread: 1 };
 
     refreshCatMarket(state, state.cats[1], price(state));
     expect(bountyBroadcastsForCat(state, "cat-1")).toEqual([
       expect.objectContaining({ itemId: "cable", kind: "bounty-open" }),
     ]);
-    expect(state.procurementPlans.some((plan) => plan.outputItemId === "cable")).toBe(false);
-
-    const starterPriceLaw = createInitialState({ worldSeed: 7 }).laws.find((law) => law.category === "price")!;
-    state.laws.push({
-      ...structuredClone(starterPriceLaw),
-      id: "cable-guidance",
-      priceItemId: "cable",
-      priceMultiplier: 2,
-    });
-    refreshCatMarket(state, state.cats[1], price(state));
     expect(state.procurementPlans.some((plan) => plan.outputItemId === "cable" && plan.reason === "bounty")).toBe(true);
+  });
+
+  it("ranks production by net asset gain per burden instead of catalog order", () => {
+    const state = lineState(1);
+    state.unlockedRecipes.push(RECIPE_BY_OUTPUT.get("paper")!.id, RECIPE_BY_OUTPUT.get("glass")!.id);
+    state.cats[0].inventory = { wood: 1, water: 1, sand: 2, fire: 1 };
+    state.discoveryBounties.forEach((bounty) => {
+      bounty.paid = !["paper", "glass"].includes(bounty.itemId);
+      bounty.claimedByCatId = null;
+      if (bounty.itemId === "paper") bounty.amountCents = 1;
+      if (bounty.itemId === "glass") bounty.amountCents = 100_000;
+    });
+    publishBountySignal(state, "paper", "open", "cat-0");
+    publishBountySignal(state, "glass", "open", "cat-0");
+
+    const ranked = productionOpportunitiesForCat(state, state.cats[0], price(state))
+      .filter((entry) => entry.reason === "bounty");
+    expect(ranked[0].itemId).toBe("glass");
+    refreshCatMarket(state, state.cats[0], price(state));
+    expect(state.procurementPlans.at(-1)).toMatchObject({ outputItemId: "glass", reason: "bounty" });
   });
 
   it("broadcasts building offers and their purchase closure from the seller cat", () => {
@@ -227,7 +258,10 @@ describe("self-interested broadcast market", () => {
     });
     expect(buyBuildingOffer(state, offer.id)).toEqual({ ok: true });
     expect(buildingOfferBroadcastsForCat(state, "cat-0")).toEqual([]);
-    expect(broadcastsForCat(state, "cat-0")[0]).toMatchObject({ kind: "building-offer-closed", sourceCatId: "cat-1" });
+    const broadcasts = broadcastsForCat(state, "cat-0");
+    expect(broadcasts.find((entry) => entry.subjectId === offer.id)).toMatchObject({ kind: "building-offer-closed", sourceCatId: "cat-1" });
+    expect(broadcasts.find((entry) => entry.kind === "warehouse-stock" && entry.itemId === "factory"))
+      .toMatchObject({ sourceCatId: "cat-1", amountCents: 1 });
   });
 
   it("shares order information across a broken chain but refuses physical delivery without a route", () => {
@@ -254,7 +288,6 @@ describe("self-interested broadcast market", () => {
     expect(state.shipmentContracts).toHaveLength(1);
     expect(order.status).toBe("contracted");
     expect(signalsForCat(state, "cat-3").some((signal) => signal.orderId === order.id)).toBe(false);
-    expect(state.orderSignals.some((signal) => signal.orderId === order.id)).toBe(false);
     expect(broadcastsForCat(state, "cat-3").find((entry) => entry.subjectId === order.id)).toMatchObject({ kind: "demand-contracted" });
     expect((state.cats[2].inventory.wood ?? 0) + (state.cats[3].inventory.wood ?? 0)).toBe(1);
     expect(cancelDemandOrder(state, order.id, "成交后反悔")).toBe(false);
@@ -292,7 +325,7 @@ describe("self-interested broadcast market", () => {
     expect(second.delivered).toBe(true);
     expect(state.cats[0].inventory.wood).toBe(1);
     expect(state.cats[1].coins).toBe(contract.feesByCatId["cat-1"]);
-    expect(state.laws.find((law) => law.id === "starter-law-cent-settlement")?.hitCount).toBe(2);
+    expect(state.laws.some((law) => law.id === "starter-law-cent-settlement")).toBe(false);
   });
 
   it("rejects free passing even when generated shared logic requests it", () => {
@@ -309,10 +342,7 @@ describe("self-interested broadcast market", () => {
       examples: [],
       warnings: [],
       enactedAt: 0,
-      category: "behavior",
-      taxRate: null,
-      priceItemId: null,
-      priceMultiplier: null,
+      program: { version: 2 },
       hitCount: 0,
       invalidCount: 0,
       consecutiveFaults: 0,
@@ -328,6 +358,8 @@ describe("self-interested broadcast market", () => {
 
   it("lists and atomically sells a cat-owned building into the player building inventory", () => {
     const state = lineState(1);
+    state.laws.push(structuredClone(createInitialState({ worldSeed: state.worldSeed }).laws
+      .find((law) => law.id === "starter-law-local-greedy")!));
     state.cats[0].inventory.factory = 1;
     state.treasuryCoins = 1_000_000;
     const before = state.treasuryCoins;
@@ -343,14 +375,14 @@ describe("self-interested broadcast market", () => {
     expect(state.treasuryCoins).toBeLessThan(before);
   });
 
-  it("presents cents, credit and discovery bounty as locked system laws", () => {
+  it("presents credit and discovery bounty as locked unified laws while cents remain an engine rule", () => {
     const state = createInitialState({ worldSeed: 11 });
-    const systemLaws = state.laws.filter((law) => law.category === "system");
-    expect(systemLaws.map((law) => law.title)).toEqual(["分币结算法", "猫咪信用法", "全品类首次发现悬赏法"]);
+    const systemLaws = state.laws.filter((law) => law.locked);
+    expect(systemLaws.map((law) => law.title)).toEqual(["猫咪信用法", "全品类首次发现悬赏法"]);
     expect(systemLaws.every((law) => law.locked && law.status === "active")).toBe(true);
     expect(reorderLaw(state, systemLaws[0].id, 1)).toBe(false);
     expect(repealLaw(state, systemLaws[1].id)).toMatchObject({ ok: false, error: "基础经济法不可废止" });
-    advanceGame(state, 5_000);
+    advanceGame(state, 10_000);
     expect(state.discoveryBounties.some((bounty) => bounty.paid)).toBe(true);
     expect(state.laws.find((law) => law.id === "starter-law-discovery-bounty")?.hitCount).toBeGreaterThan(0);
   });

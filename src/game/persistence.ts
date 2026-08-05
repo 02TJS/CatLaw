@@ -1,12 +1,16 @@
 import { deleteDB, openDB } from "idb";
 import { CATALOG_VERSION, INTRO_RECIPE_IDS, ITEMS, RECIPE_BY_ID } from "./catalog";
-import { createInitialState } from "./engine";
+import { compactGameStateHistory, createInitialState, scheduleInternalWait } from "./engine";
 import { LEGACY_SAVE_DIFFICULTY, normalizeDifficulty } from "./difficulty";
 import { validateLawSource } from "./lawInterpreter";
+import { appendLegacyEffects, freshLawPolicy, normalizeProgram } from "./lawProgram";
 import { ensureMarketBroadcasts } from "./market";
+import { normalizeSpeechFrequency, safeSpeechTemplates } from "./speech";
 import { createStarterScenario } from "./starterScenario";
-import type { GameState, ItemStats, Position, ResourceNode } from "./types";
+import type { GameState, ItemStats, LawProgram, LawVersion, Position, ResourceNode } from "./types";
 import { generateParcelResourceNodes, normalizeWorldSeed, parcelBounds, parcelForPosition, parcelKey, positionKey } from "./world";
+import { normalizeAchievementState } from "./achievements";
+import { normalizeProductionHistory } from "./productionHistory";
 
 const DB_NAME = "cat-law-workshop";
 const STORE_NAME = "saves";
@@ -21,11 +25,15 @@ async function database() {
 }
 
 export async function saveGame(state: GameState): Promise<void> {
-  const db = await database();
   const snapshot = structuredClone(state);
   snapshot.floatingEvents = [];
-  await db.put(STORE_NAME, snapshot, SAVE_KEY);
-  db.close();
+  compactGameStateHistory(snapshot);
+  const db = await database();
+  try {
+    await db.put(STORE_NAME, snapshot, SAVE_KEY);
+  } finally {
+    db.close();
+  }
 }
 
 export async function loadGame(fallbackSeed?: number): Promise<GameState> {
@@ -79,10 +87,7 @@ export async function loadGame(fallbackSeed?: number): Promise<GameState> {
     const checked = validateLawSource(law.sourceCode);
     return {
       ...law,
-      category: law.category ?? "behavior",
-      taxRate: law.taxRate ?? null,
-      priceItemId: law.priceItemId ?? null,
-      priceMultiplier: law.priceMultiplier ?? null,
+      program: normalizeProgram(law.program, law.sourceCode),
       status: checked.ok && checked.hash === law.astHash ? law.status : "quarantined",
       consecutiveFaults: 0,
     };
@@ -92,16 +97,18 @@ export async function loadGame(fallbackSeed?: number): Promise<GameState> {
 }
 
 export function migrateSaveSnapshot(raw: any, fallbackSeed?: number): GameState {
-  if (!raw || ![1, 2, 3, 4, 5, 6, 7, 8].includes(raw.schemaVersion ?? 0) || !Array.isArray(raw.cats)) return createInitialState({ worldSeed: fallbackSeed });
+  if (!raw || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14].includes(raw.schemaVersion ?? 0) || !Array.isArray(raw.cats)) return createInitialState({ worldSeed: fallbackSeed });
   const legacy = raw.schemaVersion === 1;
   const needsResourceRegionMigration = raw.schemaVersion < 3;
   const needsMarketMigration = raw.schemaVersion < 4;
   const needsBuildingMarketMigration = raw.schemaVersion < 5;
   const needsDifficultyMigration = raw.schemaVersion < 6;
+  const needsStarterLawMigration = raw.schemaVersion < 12;
+  const needsReliableMarketMigration = raw.schemaVersion < 14;
   const worldSeed = normalizeWorldSeed(raw.worldSeed ?? (legacy ? legacySeed(raw) : fallbackSeed ?? 0));
   const fallback = createInitialState({ worldSeed, difficulty: needsDifficultyMigration ? LEGACY_SAVE_DIFFICULTY : normalizeDifficulty(raw.difficulty) });
   const state = { ...fallback, ...structuredClone(raw) } as GameState;
-  state.schemaVersion = 8;
+  state.schemaVersion = 14;
   state.difficulty = needsDifficultyMigration
     ? LEGACY_SAVE_DIFFICULTY
     : normalizeDifficulty(raw.difficulty, fallback.difficulty);
@@ -109,8 +116,11 @@ export function migrateSaveSnapshot(raw: any, fallbackSeed?: number): GameState 
   state.paused = false;
   state.catalogVersion = CATALOG_VERSION;
   state.simulationSpeed = 1;
+  state.speechFrequency = normalizeSpeechFrequency(raw.speechFrequency);
   state.floatingEvents = [];
-  state.dirtyDecisions = true;
+  state.dirtyDecisions = false;
+  state.lawbookRevision = Number.isInteger(raw.lawbookRevision) ? raw.lawbookRevision : 0;
+  state.commandAudit = Array.isArray(raw.commandAudit) ? raw.commandAudit.slice(-2_000) : [];
   state.treasuryCoins = Number.isFinite(state.treasuryCoins) ? state.treasuryCoins * (needsMarketMigration ? 100 : 1) : 0;
   state.totalSales = Number.isFinite(state.totalSales) ? state.totalSales * (needsMarketMigration ? 100 : 1) : 0;
   state.cats = state.cats.map((cat, index) => ({
@@ -123,10 +133,14 @@ export function migrateSaveSnapshot(raw: any, fallbackSeed?: number): GameState 
     inventory: cat.inventory ?? {},
     action: cat.action ?? null,
     decisionTrace: cat.decisionTrace ?? [],
+    decisionSerial: Number.isInteger(cat.decisionSerial) && Number(cat.decisionSerial) >= 0 ? Number(cat.decisionSerial) : 0,
+    lastSpeechAt: Number.isFinite(cat.lastSpeechAt) ? cat.lastSpeechAt : null,
+    lawPolicy: cat.lawPolicy ?? freshLawPolicy(),
   }));
   for (const cat of state.cats) {
-    if (cat.action?.type !== "sell") continue;
-    for (const [itemId, quantity] of Object.entries(cat.action.reserved ?? {})) {
+    const legacyAction = cat.action as ({ type?: string; reserved?: Record<string, number> } | null);
+    if (legacyAction?.type !== "sell") continue;
+    for (const [itemId, quantity] of Object.entries(legacyAction.reserved ?? {})) {
       cat.inventory[itemId] = (cat.inventory[itemId] ?? 0) + quantity;
     }
     cat.action = null;
@@ -137,6 +151,18 @@ export function migrateSaveSnapshot(raw: any, fallbackSeed?: number): GameState 
   normalizeResourceRegions(state, needsResourceRegionMigration);
   const emptyItemStats = Object.fromEntries(ITEMS.map((entry) => [entry.id, { crafted: 0, passed: 0, sold: 0, revenue: 0 }])) as Record<string, ItemStats>;
   state.itemStats = { ...emptyItemStats, ...(state.itemStats ?? {}) };
+  state.recentProductionEvents = Array.isArray(raw.recentProductionEvents)
+    ? raw.recentProductionEvents.filter((event: any) => ITEMS.some((item) => item.id === event?.itemId)
+      && Number.isFinite(event?.at) && event.at >= state.simTime - 60_000 / state.simulationSpeed)
+      .map((event: any) => ({
+        itemId: event.itemId,
+        at: event.at,
+        catId: String(event.catId ?? state.cats[0]?.id ?? "cat-0"),
+        valueCents: Number.isFinite(event.valueCents) && event.valueCents >= 0 ? Math.round(event.valueCents) : undefined,
+      }))
+    : [];
+  normalizeAchievementState(state, Array.isArray(raw.achievements), Number.isFinite(raw.totalProductionValueCents));
+  normalizeProductionHistory(state, raw.productionHistory);
   if (needsMarketMigration) {
     for (const stats of Object.values(state.itemStats)) stats.revenue *= 100;
     for (const cat of state.cats) {
@@ -150,14 +176,12 @@ export function migrateSaveSnapshot(raw: any, fallbackSeed?: number): GameState 
     state.buildingOrders = [];
     state.procurementPlans = [];
     state.demandOrders = [];
-    state.orderSignals = [];
     state.shipmentContracts = [];
     state.marketEvents = [];
     state.nextProcurementPlanIndex = 0;
     state.nextDemandOrderIndex = 0;
     state.nextContractIndex = 0;
     state.nextMarketEventIndex = 0;
-    state.nextMarketTickAt = Math.floor(state.simTime / 1_000) * 1_000 + 1_000;
     state.discoveryBounties = fallback.discoveryBounties.map((bounty) => ({
       ...bounty,
       paid: state.discoveredItems?.includes(bounty.itemId) ?? false,
@@ -165,13 +189,9 @@ export function migrateSaveSnapshot(raw: any, fallbackSeed?: number): GameState 
   } else {
     state.procurementPlans = Array.isArray(state.procurementPlans) ? state.procurementPlans : [];
     state.demandOrders = Array.isArray(state.demandOrders) ? state.demandOrders : [];
-    state.orderSignals = Array.isArray(state.orderSignals) ? state.orderSignals : [];
     state.shipmentContracts = Array.isArray(state.shipmentContracts) ? state.shipmentContracts : [];
     state.discoveryBounties = Array.isArray(state.discoveryBounties) ? state.discoveryBounties : fallback.discoveryBounties;
     state.marketEvents = Array.isArray(state.marketEvents) ? state.marketEvents.slice(-64) : [];
-    state.nextMarketTickAt = Number.isFinite(state.nextMarketTickAt) && state.nextMarketTickAt > state.simTime
-      ? state.nextMarketTickAt
-      : Math.floor(state.simTime / 1_000) * 1_000 + 1_000;
   }
   state.nextProcurementPlanIndex = Number.isInteger(state.nextProcurementPlanIndex) ? state.nextProcurementPlanIndex : state.procurementPlans.length;
   state.nextDemandOrderIndex = Number.isInteger(state.nextDemandOrderIndex) ? state.nextDemandOrderIndex : state.demandOrders.length;
@@ -206,6 +226,7 @@ export function migrateSaveSnapshot(raw: any, fallbackSeed?: number): GameState 
   else {
     state.buildingOffers = Array.isArray(state.buildingOffers) ? state.buildingOffers : [];
     state.playerBuildingInventory = state.playerBuildingInventory ?? {};
+    state.playerWarehousePurchases = state.playerWarehousePurchases ?? {};
     state.nextBuildingOfferIndex = Number.isInteger(state.nextBuildingOfferIndex)
       ? state.nextBuildingOfferIndex
       : state.buildingOffers.length;
@@ -223,41 +244,128 @@ export function migrateSaveSnapshot(raw: any, fallbackSeed?: number): GameState 
     ...INTRO_RECIPE_IDS,
     ...(state.unlockedRecipes ?? []).filter((id) => RECIPE_BY_ID.has(id)),
   ])];
+  if (needsReliableMarketMigration) migrateReliableMarket(state);
   ensureMarketBroadcasts(state);
-  const starterLaws = new Map(createStarterScenario(state.worldSeed).laws.map((law) => [law.id, law]));
-  state.laws = (state.laws ?? []).map((law) => {
-    const replacement = starterLaws.get(law.id);
+  const starter = createStarterScenario(state.worldSeed, state.difficulty).laws;
+  const starterLaws = new Map(starter.map((law) => [law.id, law]));
+  const migrateLaw = (law: any, replaceStarter = true): LawVersion | null => {
+    // Integer-cent settlement is an engine invariant in schema 9, not a law.
+    if (law?.id === "starter-law-cent-settlement") return null;
+    const replacement = replaceStarter ? starterLaws.get(law?.id) : undefined;
     if (replacement) {
-      return { ...structuredClone(replacement), hitCount: law.hitCount ?? 0, invalidCount: law.invalidCount ?? 0, status: law.status };
+      return {
+        ...structuredClone(replacement),
+        hitCount: law.hitCount ?? 0,
+        invalidCount: law.invalidCount ?? 0,
+        status: law.status ?? replacement.status,
+      };
     }
-    const checked = validateLawSource(law.sourceCode);
+    const rawSourceCode = typeof law?.sourceCode === "string" ? law.sourceCode : "function decide(ctx) { return null; }";
+    const sourceCode = appendLegacyEffects(rawSourceCode, law?.program);
+    const checked = validateLawSource(sourceCode);
+    const program: LawProgram = normalizeProgram(law?.program, sourceCode);
     return {
-      ...law,
-      category: law.category ?? "behavior",
-      locked: law.locked ?? false,
-      taxRate: law.taxRate ?? null,
-      priceItemId: law.priceItemId ?? null,
-      priceMultiplier: law.priceMultiplier ?? null,
-      status: checked.ok && checked.hash === law.astHash ? law.status : "quarantined",
+      id: String(law?.id ?? `migrated-law-${state.simTime}`),
+      title: String(law?.title ?? "迁移法规"),
+      playerText: String(law?.playerText ?? ""),
+      summary: String(law?.summary ?? ""),
+      sourceCode,
+      astHash: checked.hash,
+      program,
+      examples: Array.isArray(law?.examples) ? law.examples : [],
+      warnings: Array.isArray(law?.warnings) ? law.warnings : [],
+      speechTemplates: safeSpeechTemplates(law?.speechTemplates),
+      enactedAt: Number.isFinite(law?.enactedAt) ? law.enactedAt : state.simTime,
+      locked: Boolean(law?.locked),
+      hitCount: Number.isFinite(law?.hitCount) ? law.hitCount : 0,
+      invalidCount: Number.isFinite(law?.invalidCount) ? law.invalidCount : 0,
       consecutiveFaults: 0,
+      status: checked.ok && (!law?.astHash || checked.hash === law.astHash)
+        ? law?.status ?? "active"
+        : "quarantined",
     };
+  };
+  const rawActiveLaws = Array.isArray(state.laws) ? state.laws : [];
+  const starterStats = new Map(rawActiveLaws
+    .filter((law: any) => starterLaws.has(law?.id))
+    .map((law: any) => [law.id, law]));
+  const playerLaws = rawActiveLaws
+    .filter((law: any) => !String(law?.id ?? "").startsWith("starter-law-"))
+    .map((law: any) => migrateLaw(law, false))
+    .filter((law): law is LawVersion => Boolean(law));
+  const normalizedStarterLaws = starter.map((fresh) => {
+    const previous = starterStats.get(fresh.id);
+    return {
+      ...structuredClone(fresh),
+      hitCount: Number.isFinite(previous?.hitCount) ? previous.hitCount : 0,
+      invalidCount: Number.isFinite(previous?.invalidCount) ? previous.invalidCount : 0,
+      status: needsStarterLawMigration ? "active" : previous?.status ?? fresh.status,
+    } as LawVersion;
   });
-  const requiredSystemLaws = createStarterScenario(state.worldSeed).laws.filter((law) => law.category === "system");
-  let systemInsertionIndex = state.laws.reduce((last, law, index) => law.category === "behavior" ? index + 1 : last, 0);
-  for (const required of requiredSystemLaws) {
-    if (state.laws.some((law) => law.id === required.id)) continue;
-    state.laws.splice(systemInsertionIndex, 0, structuredClone(required));
-    systemInsertionIndex += 1;
+  // Player-authored laws remain highest priority. Schema 11 and older replace
+  // every obsolete starter-* fragment as one atomic upgrade, fixing saves that
+  // previously received only the two locked economic laws.
+  state.laws = [...playerLaws, ...normalizedStarterLaws];
+  state.lawHistory = (Array.isArray(state.lawHistory) ? state.lawHistory : [])
+    .map((law) => migrateLaw(law, false)).filter((law): law is LawVersion => Boolean(law));
+  for (const required of starter) {
+    if (!state.lawHistory.some((law) => law.id === required.id && law.astHash === required.astHash)) {
+      state.lawHistory.push(structuredClone(required));
+    }
   }
-  state.lawHistory = Array.isArray(state.lawHistory) ? state.lawHistory : [];
-  for (const required of requiredSystemLaws) {
-    if (!state.lawHistory.some((law) => law.id === required.id)) state.lawHistory.push(structuredClone(required));
-  }
+  for (const cat of state.cats) if (!cat.action) scheduleInternalWait(state, cat);
+  compactGameStateHistory(state);
   return state;
+}
+
+function migrateReliableMarket(state: GameState): void {
+  const cancelledOrderIds = new Set<string>();
+  for (const order of state.demandOrders) {
+    if (order.status !== "open") continue;
+    if (order.buyerKind === "treasury") state.treasuryCoins += Math.max(0, order.reservedCents);
+    order.status = "cancelled";
+    order.closedAt = state.simTime;
+    order.closeReason = "schema 14：旧市场报价未通过整包融资校验";
+    order.committedSellerCatId = null;
+    order.quotedSellerCents = undefined;
+    order.quotedRouteCatIds = undefined;
+    order.quotedFeesByCatId = undefined;
+    order.quoteFinancingReserveCents = undefined;
+    order.quoteRevision = undefined;
+    cancelledOrderIds.add(order.id);
+  }
+  // In schema 13 the only live escrow was attached to open orders. Clear it
+  // once, rather than trusting possibly inconsistent per-order legacy sums.
+  for (const cat of state.cats) cat.escrowReservedCents = 0;
+  for (const plan of state.procurementPlans) {
+    if (plan.status !== "active") continue;
+    plan.status = "cancelled";
+    plan.phase = "quoting";
+    plan.blockedReason = "schema 14：等待重新取得可靠报价";
+    if (plan.reason === "bounty") {
+      const bounty = state.discoveryBounties.find((entry) => entry.itemId === plan.outputItemId
+        && !entry.paid && entry.claimedByCatId === plan.catId);
+      if (bounty) bounty.claimedByCatId = null;
+    }
+  }
+  state.marketBroadcasts = state.marketBroadcasts.filter((broadcast) => !cancelledOrderIds.has(broadcast.subjectId));
+  for (const cat of state.cats) {
+    if (cat.action?.type !== "pass") continue;
+    const liveContract = cat.action.contractId
+      ? state.shipmentContracts.find((contract) => contract.id === cat.action?.contractId && contract.status !== "delivered")
+      : undefined;
+    if (liveContract) continue;
+    for (const [itemId, quantity] of Object.entries(cat.action.reserved ?? {})) {
+      cat.inventory[itemId] = (cat.inventory[itemId] ?? 0) + quantity;
+    }
+    cat.action = null;
+    cat.lastDecision = "schema 14：无有效合同的旧运输已取消并退回货物";
+  }
 }
 
 function migrateBuildingMarket(state: GameState): void {
   state.playerBuildingInventory = {};
+  state.playerWarehousePurchases = {};
   for (const building of state.buildings ?? []) {
     state.playerBuildingInventory[building.itemId] = (state.playerBuildingInventory[building.itemId] ?? 0) + 1;
   }
@@ -274,7 +382,6 @@ function migrateBuildingMarket(state: GameState): void {
       demand.status = "cancelled";
       demand.closedAt = state.simTime;
       demand.closeReason = "0.8.0 取消旧式自动部署订单";
-      state.orderSignals = state.orderSignals.filter((signal) => signal.orderId !== demand.id);
     }
   }
   state.buildingOrders = retainedOrders;

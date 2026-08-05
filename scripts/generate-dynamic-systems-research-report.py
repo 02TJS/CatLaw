@@ -1,0 +1,194 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import hashlib
+import html
+import json
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+PRICE_RESULTS = ROOT / "output" / "price-theory-results.json"
+PROGRESSION_RESULTS = ROOT / "output" / "deepseek-to-35-headless.json"
+OUTPUT = ROOT / "CatWorkshop-Dynamic-Systems-Research.html"
+
+
+def sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def esc(value: object) -> str:
+    return html.escape(str(value), quote=True)
+
+
+price = json.loads(PRICE_RESULTS.read_text(encoding="utf-8"))
+progression = json.loads(PROGRESSION_RESULTS.read_text(encoding="utf-8"))
+aggregates = {(entry["stage"], entry["mode"]): entry for entry in price["lpAggregates"]}
+seed = progression["seedResults"][0]
+stages = {entry["name"]: entry for entry in seed["stages"]}
+
+
+def stability_row(name: str) -> str:
+    stage = stages[name]
+    stability = stage.get("stability")
+    if not stability:
+        return ""
+    minutes = stability["observationSimulatedMs"] / 60_000
+    total = sum(stability["windowTargetCraftTotals"])
+    frozen = stability["frozenEconomy"]
+    frozen_count = sum(len(frozen[key]) for key in frozen)
+    return (
+        "<tr>"
+        f"<td>{esc(name)}</td>"
+        f"<td>{stability['stableThrough']}</td>"
+        f"<td>{minutes:g} 分钟</td>"
+        f"<td>{' / '.join(str(value) for value in stability['windowTargetCraftTotals'])}</td>"
+        f"<td>{total / minutes:.2f}</td>"
+        f"<td>{'是' if stability['lastWindowActive'] else '否'}</td>"
+        f"<td>{frozen_count}</td>"
+        "</tr>"
+    )
+
+
+stage_rows = "".join(stability_row(name) for name in [
+    "开局自然达到10",
+    "仅购买11—15图纸后达到15",
+    "自然16–19稳定且第20项不能稳定制作",
+    "选择性价格推进并稳定制作至22",
+])
+
+
+def lp_row(stage: int, mode: str, label: str) -> str:
+    entry = aggregates[(stage, mode)]
+    lam = entry["lambdaPerMinute"]
+    return (
+        "<tr>"
+        f"<td>{label}</td><td>{lam['min']:.3f}</td><td>{lam['median']:.3f}</td>"
+        f"<td>{lam['p95']:.3f}</td><td>{lam['max']:.3f}</td>"
+        f"<td>{entry['maxDualityGap']:.3e}</td><td>{entry['maxKktResidual']:.3e}</td>"
+        "</tr>"
+    )
+
+
+lp_rows = "".join([
+    lp_row(10, "equal-pieces", "前10项，等净产出件数"),
+    lp_row(10, "equal-work", "前10项，等包含劳动"),
+    lp_row(15, "equal-pieces", "前15项，等净产出件数"),
+    lp_row(15, "equal-work", "前15项，等包含劳动"),
+])
+
+
+spatial_rows = "".join(
+    "<tr>"
+    f"<td>{entry['index'] + 1}</td><td>{esc(entry['emoji'])} {esc(entry['name'])}</td>"
+    f"<td>{entry['workDifficulty5']}</td>"
+    f"<td>{entry['minimumDeliveredActionsDifficulty5InitialWorlds']['median']:.0f}</td>"
+    f"<td>{entry['minimumDeliveredActionsDifficulty5InitialWorlds']['p95']:.0f}</td>"
+    f"<td>{entry['minimumDeliveredActionsDifficulty5InitialWorlds']['median'] - entry['workDifficulty5']:.0f}</td>"
+    "</tr>"
+    for entry in price["items"][:15]
+)
+
+
+document = f"""<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>猫咪工坊闭环动态模型调研与本地证据分析</title>
+<style>
+:root{{--ink:#18211c;--muted:#5f6962;--line:#dce2dd;--soft:#f5f7f5;--green:#176a43;--green-bg:#eaf5ee;--blue:#225f88;--blue-bg:#edf6fb;--amber:#805b12;--amber-bg:#fbf4e4;--red:#96382f;--red-bg:#faecea}}*{{box-sizing:border-box}}html{{scroll-behavior:smooth}}body{{margin:0;background:#eef2ee;color:var(--ink);font:15px/1.72 "Segoe UI","Microsoft YaHei",sans-serif}}.shell{{display:grid;grid-template-columns:260px minmax(0,1fr);width:min(1480px,calc(100% - 28px));margin:22px auto 60px;background:#fff;border:1px solid var(--line);box-shadow:0 14px 44px #26382b1a}}nav{{position:sticky;top:0;height:100vh;padding:28px 19px;border-right:1px solid var(--line);overflow:auto;background:#fbfcfb}}nav h2{{font-size:17px;margin:0 0 14px}}nav a{{display:block;color:#445149;text-decoration:none;padding:7px 9px;border-radius:7px}}nav a:hover{{background:var(--soft);color:var(--green)}}main{{min-width:0;padding:40px 48px 72px}}header{{padding-bottom:30px;border-bottom:1px solid var(--line)}}section{{scroll-margin-top:20px;padding-top:28px;margin-top:10px;border-top:1px solid var(--line)}}section:first-of-type{{border-top:0}}h1{{font-size:35px;line-height:1.18;margin:5px 0 14px}}h2{{font-size:24px;margin:0 0 13px}}h3{{font-size:18px;margin:24px 0 9px}}p{{margin:9px 0}}.eyebrow{{color:var(--green);font-weight:750;letter-spacing:.09em}}.lede{{font-size:18px;color:#39443d;max-width:1000px}}.callout{{padding:14px 17px;border-left:5px solid var(--green);background:var(--green-bg);margin:15px 0}}.info{{border-left-color:var(--blue);background:var(--blue-bg)}}.warn{{border-left-color:var(--amber);background:var(--amber-bg)}}.no{{border-left-color:var(--red);background:var(--red-bg)}}.formula{{font:14px/1.65 Consolas,"Segoe UI",monospace;background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:13px 16px;overflow:auto;white-space:pre-wrap}}.cards{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px;margin:16px 0}}.card{{border:1px solid var(--line);border-radius:8px;padding:13px;background:#fff}}.card b{{display:block;color:var(--green);font-size:23px}}.card span{{color:var(--muted)}}.table-wrap{{overflow:auto;border:1px solid var(--line);border-radius:8px;margin:13px 0}}table{{border-collapse:collapse;width:100%;min-width:780px}}th,td{{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:9px;text-align:left;vertical-align:top}}th{{background:#eff4f0;position:sticky;top:0}}tr:last-child td{{border-bottom:0}}th:last-child,td:last-child{{border-right:0}}code{{font:12px Consolas,monospace;color:#465149;word-break:break-all}}.flow{{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin:16px 0}}.flow span{{border:1px solid var(--line);border-radius:7px;padding:8px 10px;background:var(--soft)}}.flow i{{color:var(--muted)}}.source{{padding:12px 0;border-bottom:1px solid var(--line)}}.source:last-child{{border-bottom:0}}.source a{{color:var(--blue)}}.source small{{display:block;color:var(--muted)}}.small{{font-size:13px;color:var(--muted)}}ul,ol{{padding-left:24px}}li{{margin:6px 0}}@media(max-width:980px){{.shell{{display:block}}nav{{position:relative;height:auto;border-right:0;border-bottom:1px solid var(--line)}}nav div{{columns:2}}main{{padding:28px}}.cards{{grid-template-columns:repeat(2,1fr)}}}}@media(max-width:620px){{.shell{{width:100%;margin:0;border:0}}main{{padding:22px 16px}}nav div{{columns:1}}.cards{{grid-template-columns:1fr}}h1{{font-size:28px}}}}
+</style></head><body><div class="shell"><nav><h2>报告目录</h2><div>
+<a href="#verdict">1. 结论</a><a href="#scope">2. 调研范围</a><a href="#models">3. 模型比较</a><a href="#choice">4. 推荐架构</a><a href="#formal">5. 形式化定义</a><a href="#local">6. 本地结果</a><a href="#gap">7. LP 与游戏差距</a><a href="#properties">8. 可验证性质</a><a href="#method">9. 实施方法</a><a href="#section10">10. HTML 第十节建议</a><a href="#risks">11. 风险与边界</a><a href="#sources">12. 资料来源</a>
+</div></nav><main>
+<header><div class="eyebrow">CAT WORKSHOP · DYNAMIC SYSTEMS RESEARCH</div><h1>闭环动态模型调研与本地证据分析</h1><p class="lede">研究目标不是再造一个价格公式，而是回答：静态 LP 已证明存在长期平均生产流以后，为什么共享 DeepSeek 法规仍可能不能稳定实现它，以及应该用什么成熟数学工具验证“稳定制作”。</p>
+<div class="callout"><strong>核心判断：</strong>本项目最合适的新增层是“有色定时 Petri 网的离散参考模型 + 监督控制描述共享法规与经济门槛 + 时间逻辑描述稳定验收”。Timed Automata 用于验证时钟和结算顺序；max-plus 只用于固定流水线的周期上界；不应把完整游戏强行写成随机 MDP。</div></header>
+
+<section id="verdict"><h2>1. 结论</h2><ol><li><b>LP 保留：</b>它仍然是物理可行性的流体上界和瓶颈价格来源。</li><li><b>新增离散参考模型：</b>用有色定时 Petri 网表达猫、商品、库存、订单、合同和 5 秒动作；颜色用于区分 65 种商品、猫 ID、订单 ID 和合同 ID。</li><li><b>法规视为监督器：</b>所有猫共用的法规程序不是生产技术，而是根据观察选择或禁止可控动作的闭环控制器；经济门槛是不可绕过的安全监督器。</li><li><b>稳定性视为时间性质：</b>“三窗口、至少三次、至少两个窗口活跃、末窗仍产出、无冻结和无库存透支”应直接写成轨迹谓词，而不是以累计制作量近似。</li><li><b>最终证明分级：</b>LP 不可行说明物理不可能；离散模型不可达说明排程/库存不可能；模型可达但游戏失败说明法规控制失败；进入递归闭环才可称稳定。</li></ol></section>
+
+<section id="scope"><h2>2. 调研范围与证据等级</h2><p>本次查询了经典论文的 Crossref 元数据和 DOI 落地页、CPN Tools 与 UPPAAL 官方页面，并对照本地源码、价格 LP 结果和稳定生产机器报告。参考文献中的“适用点”是基于其公开模型定义与本项目映射，不把引用次数当作正确性证明。</p>
+<div class="cards"><div class="card"><b>7</b><span>核心理论/工具来源</span></div><div class="card"><b>1,000</b><span>本地固定世界种子</span></div><div class="card"><b>4,000</b><span>已求解稳态 LP</span></div><div class="card"><b>22/35</b><span>现有严格稳定证据上限</span></div></div>
+<p class="small">本地稳定 22 证据来自固定模型夹具、难度 5、种子 1；它不是当前真实 DeepSeek 通关证明，也不能替代多种子 35 验收。</p></section>
+
+<section id="models"><h2>3. 候选数学模型比较</h2><div class="table-wrap"><table><thead><tr><th>模型</th><th>能表达什么</th><th>在本游戏中的用途</th><th>不适合直接承担什么</th><th>建议</th></tr></thead><tbody>
+<tr><td>普通/有色 Petri 网</td><td>并发、资源占用、互斥、令牌守恒、死锁和可达性</td><td>库存、猫工位、订单、合同、商品类型</td><td>精确连续时钟需要扩展</td><td><b>主结构模型</b></td></tr>
+<tr><td>有色定时 Petri 网</td><td>带类型令牌、转换延迟、事件并发和完成顺序</td><td>65 种商品、5 秒动作、逐跳运输、合同托管</td><td>任意 JavaScript 法规的全状态符号证明</td><td><b>首选参考模型</b></td></tr>
+<tr><td>Timed Automata</td><td>时钟、截止时间、实时可达性和时间逻辑</td><td>动作完成、暂停/恢复、同刻结算顺序</td><td>大量无界整数库存表达笨重</td><td>验证调度核心</td></tr>
+<tr><td>监督控制理论</td><td>在不可控事件存在时禁用部分可控事件，并要求安全和非阻塞</td><td>共享法规、经济门槛、合同优先级</td><td>不直接计算商品价格或库存数量</td><td>描述控制层</td></tr>
+<tr><td>max-plus / Timed Event Graph</td><td>固定同步流水线的周期、吞吐率和关键回路</td><td>已固定路线与固定配方的局部生产线</td><td>分支选择、信用、订单竞价、任意法规评分</td><td>局部分析工具</td></tr>
+<tr><td>时间展开 MILP/CP-SAT</td><td>有限窗口内的整数动作、库存与排程可行性</td><td>证明“存在一条满足三窗口标准的排程”</td><td>不能证明当前法规会选择它</td><td>可行性下层</td></tr>
+<tr><td>MDP/随机博弈</td><td>随机转移、策略期望收益</td><td>将来若加入随机产量、故障或随机需求</td><td>当前固定种子和无随机法规的确定性引擎</td><td>首版不引入</td></tr>
+</tbody></table></div>
+<div class="callout warn"><strong>为什么不是单一模型：</strong>Petri 网擅长离散资源，Timed Automata 擅长时钟，监督控制擅长动作门控，LP 擅长连续上界。把它们分层比制造一个既难求解又不可解释的统一方程更严谨。</div></section>
+
+<section id="choice"><h2>4. 推荐的五层架构</h2><div class="flow"><span>配方 DAG / Leontief</span><i>→</i><span>空间稳态 LP</span><i>→</i><span>有色定时 Petri 网</span><i>→</i><span>共享法规监督器</span><i>→</i><span>时间逻辑验收</span></div>
+<ol><li><b>技术层：</b><code>W_i = 1 + Σ a_ji W_j</code>，只计算包含劳动。</li><li><b>流体层：</b>多商品网络流 LP 给出长期上界、资源/猫容量租金和位置影子价。</li><li><b>离散层：</b>每件商品是令牌；每只猫同一时刻只有一个动作；运输每跳是独立转换。</li><li><b>控制层：</b>固定法规哈希 <code>fnv1a-3d8b3782</code> 产生评分/候选动作，经济门槛拒绝亏损和无合同传递。</li><li><b>性质层：</b>用有限时间轨迹谓词验证首次、重复和稳定制作，并记录冻结与库存来源。</li></ol></section>
+
+<section id="formal"><h2>5. 与当前游戏一一对应的形式化定义</h2><h3>5.1 Petri 网中的库所</h3><div class="table-wrap"><table><thead><tr><th>库所</th><th>令牌颜色</th><th>对应本地状态</th></tr></thead><tbody>
+<tr><td><code>Inventory(v,i)</code></td><td>猫 ID、商品 ID、数量</td><td><code>CatState.inventory</code></td></tr><tr><td><code>Idle(v)</code> / <code>Working(v,a,t)</code></td><td>猫、动作、完成时间</td><td><code>CatState.action</code> 与事件队列</td></tr><tr><td><code>OpenOrder(o)</code></td><td>订单 ID、买家、商品、保证金</td><td><code>DemandOrder</code></td></tr><tr><td><code>Contract(c,leg)</code></td><td>合同、托管商品、路径段</td><td><code>ShipmentContract</code></td></tr><tr><td><code>Cash(v)</code> / <code>Debt(v)</code></td><td>整数分</td><td>现金、债务、保证金</td></tr><tr><td><code>Site(b,p)</code></td><td>建筑类型、坐标</td><td>工厂、实验室、反应堆等</td></tr><tr><td><code>Broadcast(m)</code></td><td>广播类型、商品、金额、来源</td><td>立即全局广播的市场信息</td></tr>
+</tbody></table></div>
+<h3>5.2 转换与守卫</h3><div class="formula">StartCraft(v,r):  Idle(v) + required inventory + legal site
+                   → Working(v, craft(r), t+duration)
+
+FinishCraft(v,r): Working(...) → Idle(v) + output token + statistics event
+
+StartPass(v,c,leg): valid contract + custody token + next adjacent cat
+                    → Working(v, pass, t+duration)
+
+FinishPass(v,c,leg): Working(...) → next custodian + fee settlement + next leg
+
+Decide(v): proposed action = π_L(localObservation(v), globalBroadcasts)
+           accepted action = EconomicGate(state, proposed action)</div>
+<p>动作完成、合同结算、订单关闭广播和下一轮决策必须保留本地引擎的确定性优先序。全局广播是信息事件，不消耗猫动作；商品运输仍严格限于相邻猫。</p></section>
+
+<section id="local"><h2>6. 本地结果：已有理论上界与真实闭环证据</h2><h3>6.1 1000 种子稳态 LP</h3><div class="table-wrap"><table><thead><tr><th>模型</th><th>最小 λ/分钟</th><th>中位</th><th>P95</th><th>最大</th><th>最大对偶间隙</th><th>最大 KKT 残差</th></tr></thead><tbody>{lp_rows}</tbody></table></div>
+<p>4000 个 LP 全部成功。整体最大原始-对偶间隙为 <code>5.551e-16</code>，最大 KKT 残差为 <code>1.998e-15</code>。这证明流体问题的数值最优性，不证明当前法规能够实现该流量。</p>
+<h3>6.2 空间运输造成的离散动作差</h3><div class="table-wrap"><table><thead><tr><th>#</th><th>商品</th><th>技术 W</th><th>最少到货动作中位</th><th>P95</th><th>中位空间增量</th></tr></thead><tbody>{spatial_rows}</tbody></table></div>
+<p>砖、纸、工具、玻璃和金属的中位空间增量都是 4 次动作，齿轮为 8 次；这说明离散模型必须显式保留输入汇聚和逐跳运输，不能只复用配方 W。</p>
+<h3>6.3 固定夹具的严格稳定窗口</h3><div class="table-wrap"><table><thead><tr><th>阶段</th><th>稳定至</th><th>观察期</th><th>三窗口目标制作总量</th><th>粗制作/分钟</th><th>末窗活跃</th><th>冻结项</th></tr></thead><tbody>{stage_rows}</tbody></table></div>
+<p>本地结果说明共享法规闭环可以形成重复生产，但当前机器证据只到第 22 项；稳定 30/35、20 个种子和真实 DeepSeek 玩家过程仍未闭环。</p></section>
+
+<section id="gap"><h2>7. 一个必须修正的口径差异</h2><div class="callout no"><strong>当前 LP 的 λ 与稳定报告的“制作量”不能直接相除比较。</strong>LP 的 <code>z</code> 表示每种目标商品的净吸收量；稳定报告统计每一次制作完成，包括随后作为配料被消耗的中间品。因此 15 项窗口中的 176 次制作不等于 176 件净终端产出。</div>
+<p>这正是第十节需要离散模型的具体原因。建议同时输出两套统计：</p><ol><li><b>Gross craft：</b>现有制作完成计数，用于玩家可见的生产活跃性。</li><li><b>Net surplus：</b>期末自有库存 + 在途自有货物 + 玩家仓库 - 期初对应存量，并扣除玩家买入来源。</li><li><b>Material balance：</b>每件商品满足“期初 + 同期生产 + 合法流入 = 期末 + 配料消耗 + 合法流出”。</li></ol>
+<p>只有 gross craft 和 net/material balance 同时通过，才排除了循环统计和历史库存冲量。</p></section>
+
+<section id="properties"><h2>8. 应验证的性质</h2><div class="table-wrap"><table><thead><tr><th>性质</th><th>形式</th><th>本游戏解释</th><th>工具</th></tr></thead><tbody>
+<tr><td>守恒</td><td><code>in + production = out + consumption + Δinventory</code></td><td>不能复制物品或丢失托管货物</td><td>Petri 不变量</td></tr>
+<tr><td>动作互斥</td><td><code>G ¬(twoActionsSameCat)</code></td><td>每只猫同时一个动作</td><td>Timed Automata / LTL</td></tr>
+<tr><td>合同完整性</td><td><code>G(contracted → F delivered)</code></td><td>已成交合同最终交付，除非系统明确允许永久阻塞</td><td>Liveness / 非阻塞监督</td></tr>
+<tr><td>无托管消费</td><td><code>G(custody → ¬craftInput ∧ ¬playerSale)</code></td><td>中转猫不能消费合同货物</td><td>安全性质</td></tr>
+<tr><td>稳定生产</td><td>三窗口计数、末窗活跃、无连续暴跌</td><td>用户已经定义的稳定标准</td><td>MTL/轨迹监视器</td></tr>
+<tr><td>经济非冻结</td><td><code>G(openObligation → F progressedOrCancelled)</code></td><td>无力支付不能造成永久订单/悬赏/合同僵尸</td><td>非阻塞性</td></tr>
+<tr><td>来源隔离</td><td>玩家买入令牌保留 provenance</td><td>玩家商品不能冒充猫自主制造</td><td>有色令牌</td></tr>
+<tr><td>递归稳定</td><td><code>F G K_N</code> 或进入重复 SCC</td><td>系统进入能持续循环的状态集合</td><td>可达图/SCC/不变集</td></tr>
+</tbody></table></div>
+<p>有限观察报告应称为“有界稳定证书”；只有找到闭环正不变集合或重复强连通分量，才能做更强的无限期稳定陈述。</p></section>
+
+<section id="method"><h2>9. 推荐实施与研究顺序</h2><ol><li><b>先做轨迹导出，不改引擎：</b>每个原子事件记录前后库存摘要、动作、法规哈希、订单/合同 ID、现金变化和来源标签。</li><li><b>建立 Petri 参考解释器：</b>从同一状态执行同一事件，逐事件比较游戏与模型；先覆盖前 15 项和无建筑场景。</li><li><b>增加守恒审计：</b>为 65 项生成物料平衡表，任何不平衡立即失败。</li><li><b>时间展开可行性：</b>用 MILP/CP-SAT 求“给定种子与固定建筑布局，是否存在满足稳定标准的整数排程”。这给出法规之外的可实现性证书。</li><li><b>闭环对比：</b>同一初始状态运行真实共享法规；若排程可行而法规失败，输出动作机会损失、订单空转和资源饥饿原因。</li><li><b>周期与 SCC：</b>对压缩状态做循环检测；库存用目标相关截断值，超过阈值归为“充足”，避免无界状态爆炸。</li><li><b>从 15→22→30→35 分层：</b>每次只加入实际需要的商品、建筑和合同类型，使用组合式验证，不一次展开全部 65 项。</li></ol>
+<div class="callout info"><strong>适合 5090_Lian 的计算：</strong>时间展开 MILP、多个种子独立可达性和轨迹审计适合 CPU 多进程；这类稀疏组合问题通常不因 GPU 而自然加速。现有 128 线程环境可按种子和阶段并行。</div></section>
+
+<section id="section10"><h2>10. 对原 HTML 第十节的具体改写建议</h2><p>原第十节不应只说“LP 是上界、模拟再验证”，而应明确四级证据：</p><div class="table-wrap"><table><thead><tr><th>证据级别</th><th>结论</th><th>不能推出</th></tr></thead><tbody>
+<tr><td>A. 流体 LP 可行</td><td>长期平均物料与容量上存在上界方案</td><td>不能推出整数排程和法规实现</td></tr>
+<tr><td>B. 时间展开整数模型可行</td><td>有限观察期存在合法离散排程</td><td>不能推出共享法规会选中它</td></tr>
+<tr><td>C. 固定法规轨迹通过</td><td>指定种子、状态和法规哈希下满足有界稳定标准</td><td>不能推出所有种子或无限期稳定</td></tr>
+<tr><td>D. 进入闭环不变集/重复 SCC</td><td>在抽象精确范围内可持续循环</td><td>仍需说明抽象边界和玩家操作范围</td></tr>
+</tbody></table></div>
+<div class="formula">任何实际轨迹的长期平均流量满足 LP 约束，因此：λ_game ≤ λ_LP。
+
+但 LP 可行 ⇏ 存在整数时间排程 ⇏ 当前法规会实现该排程。
+
+稳定通过应写成：Reach(S₀, L, U, t₀) ∧ Stable_N(trace[t₀,t₀+H])，
+其中观察期内法规 L 与玩家操作 U 固定。</div></section>
+
+<section id="risks"><h2>11. 风险、复杂度与不应承诺的内容</h2><ul><li><b>状态爆炸：</b>65 种商品 × 猫 × 订单/合同 ID 不能直接完全展开；必须按阶段切片、对称归并、库存截断和部分序约简。</li><li><b>任意法规：</b>固定法规在有限观察期可精确执行和审计，但对所有可能法规、所有无界库存做通用无限期证明并不现实。</li><li><b>公平性：</b>确定性优先级可能长期饿死高创建序号猫。需要区分“调度器公平”与“法规选择公平”。</li><li><b>模型版本：</b>证明必须绑定世界种子、目录版本、难度、共享行为哈希、解释器版本和玩家操作账本。</li><li><b>历史证据：</b>稳定 22 机器报告来自固定夹具；当前工作区版本已到 0.14.2，因此应将其视为本地基线而非最新完整验收。</li></ul></section>
+
+<section id="sources"><h2>12. 调研资料与本地产物</h2>
+<div class="source"><b>Murata, 1989, Petri nets: Properties, analysis and applications</b><small>并发、可达性、活性、有界性和不变量的经典综述。</small><a href="https://doi.org/10.1109/5.24143">DOI 10.1109/5.24143</a></div>
+<div class="source"><b>Ramadge &amp; Wonham, 1987, Supervisory Control of a Class of Discrete Event Processes</b><small>把允许/禁止可控事件与非阻塞目标形式化，适合描述法规和经济门槛。</small><a href="https://doi.org/10.1137/0325013">DOI 10.1137/0325013</a></div>
+<div class="source"><b>Alur &amp; Dill, 1994, A theory of timed automata</b><small>实时状态机、时钟区域和时间性质验证的基础。</small><a href="https://doi.org/10.1016/0304-3975(94)90010-8">DOI 10.1016/0304-3975(94)90010-8</a></div>
+<div class="source"><b>Jensen &amp; Kristensen, 2009, Timed Coloured Petri Nets / Formal Definition</b><small>有色令牌和时间戳，直接适配商品、猫、订单与合同 ID。</small><a href="https://doi.org/10.1007/b95112_10">Timed CPN</a> · <a href="https://doi.org/10.1007/b95112_11">Formal Definition</a></div>
+<div class="source"><b>Baccelli, Cohen, Olsder &amp; Quadrat, Synchronization and Linearity</b><small>max-plus 方法适合固定同步流水线的周期和吞吐分析。</small><a href="https://doi.org/10.1016/0166-218X(94)90156-2">DOI 10.1016/0166-218X(94)90156-2</a></div>
+<div class="source"><b>CPN Tools 官方站</b><small>官方说明其用于编辑、仿真和分析 Colored Petri Nets。</small><a href="https://cpntools.org/">cpntools.org</a></div>
+<div class="source"><b>UPPAAL 官方站</b><small>官方说明其用于以 timed automata 网络建模、验证和确认实时系统。</small><a href="https://www.uppaal.org/">uppaal.org</a></div>
+<h3>本地机器证据</h3><ul><li><code>output/price-theory-results.json</code>，SHA-256 <code>{sha256(PRICE_RESULTS)}</code>。</li><li><code>output/deepseek-to-35-headless.json</code>，SHA-256 <code>{sha256(PROGRESSION_RESULTS)}</code>。</li><li><code>CatWorkshop-Price-Theory-and-Calculation.html</code>：技术价格、空间成本和 4000 个 LP 证书。</li><li><code>CatWorkshop-0.13.0-Acceptance-Report.html</code>：稳定至 22、统一法规哈希和未完成项。</li></ul><p class="small">调研与报告日期：2026-08-04。报告未调用真实 DeepSeek，未修改价格、法规、库存、配方、建筑或世界状态。</p></section>
+</main></div></body></html>"""
+
+OUTPUT.write_text(document, encoding="utf-8")
+print(json.dumps({"output": str(OUTPUT), "bytes": OUTPUT.stat().st_size, "sources": 7}, ensure_ascii=False))

@@ -13,7 +13,6 @@ import {
   externalNetCentsAt,
   netWorthCents,
   planForCatPublic,
-  productionOrderBudgetCents,
   readyContractForCat,
   signalsForCat,
 } from "../game/market";
@@ -28,9 +27,6 @@ export function Inspector({ cat, controller, totalItems, onRemoved }: { cat?: Ca
   const inventory = Object.entries(cat.inventory).filter(([, quantity]) => quantity > 0).sort((a, b) => b[1] - a[1]);
   const resourceItemId = harvestResourceAt(state, cat.position);
   const productionPlan = planForCatPublic(state, cat.id);
-  const productionOrderBudget = productionPlan
-    ? productionOrderBudgetCents(state, productionPlan.recipeId, (itemId) => itemPrice(state, itemId))
-    : 0;
   const ownOrders = state.demandOrders.filter((order) => order.buyerKind === "cat" && order.buyerCatId === cat.id && order.status === "open");
   const localSignals = signalsForCat(state, cat.id);
   const bountySignals = bountyBroadcastsForCat(state, cat.id);
@@ -127,7 +123,7 @@ export function Inspector({ cat, controller, totalItems, onRemoved }: { cat?: Ca
 
     <div className="section-heading"><h3>市场</h3><span>猫咪署名 · 全局即时广播</span></div>
     <section className="detail-block" data-testid="cat-market">
-      <Detail label="自己的订单" value={ownOrders.length ? ownOrders.map((order) => `${order.id}:${order.itemId}@${formatMoney(order.maxDeliveredCents)}`).join(" · ") : "无"} />
+      <Detail label="自己的订单" value={ownOrders.length ? ownOrders.map((order) => `${order.id}:${order.itemId} 到货${formatMoney(order.maxDeliveredCents)} · 预留${formatMoney(order.reservedCents)} · ${order.committedSellerCatId ?? "待报价"}`).join(" · ") : "无"} />
       <Detail label="听到的订单" value={localSignals.length ? localSignals.slice(0, 4).map((signal) => {
         const demand = state.demandOrders.find((entry) => entry.id === signal.orderId);
         const source = broadcasts.find((entry) => entry.kind === "demand-open" && entry.subjectId === signal.orderId)?.sourceCatId;
@@ -145,7 +141,10 @@ export function Inspector({ cat, controller, totalItems, onRemoved }: { cat?: Ca
     <section className="detail-block action-block" data-testid="cat-action-detail">
       <Detail label="生产计划" value={productionPlan ? `${ITEM_BY_ID.get(productionPlan.outputItemId)?.emoji ?? ""} ${productionPlan.outputItemId} · ${productionPlan.reason}` : "无"} />
       <Detail label="预计收入" value={productionPlan ? formatMoney(productionPlan.expectedRevenueCents) : "—"} />
-      <Detail label="满缺料作业报价" value={productionPlan ? formatMoney(productionOrderBudget) : "—"} />
+      <Detail label="计划阶段" value={productionPlan?.phase ?? "—"} />
+      <Detail label="可靠原料包" value={productionPlan ? formatMoney(productionPlan.bundleCostCents ?? 0) : "—"} />
+      <Detail label="融资预留" value={productionPlan ? formatMoney(productionPlan.financingReserveCents ?? 0) : "—"} />
+      <Detail label="预计净收益" value={productionPlan ? formatMoney(productionPlan.expectedProfitCents ?? 0) : "—"} />
       <Detail label="当前动作" value={cat.action ? `${actionName(cat.action.type)} ${ITEM_BY_ID.get(cat.action.itemId)?.emoji ?? ""} ${cat.action.itemId}` : "待机"} />
       <Detail label="剩余时间" value={cat.action ? `${Math.max(0, (cat.action.endsAt - state.simTime) / 1_000).toFixed(1)} 秒` : "—"} />
       <Detail label="决策理由" value={cat.lastDecision} />
@@ -166,6 +165,6 @@ function formatSignedMoney(cents: number): string {
   return `${sign}${(Math.abs(cents) / 100).toFixed(2)} 🪙`;
 }
 
-function actionName(type: "craft" | "pass" | "sell") {
-  return type === "craft" ? "制作" : type === "pass" ? "运输" : "出售";
+function actionName(type: "craft" | "pass" | "wait") {
+  return type === "craft" ? "制作" : type === "pass" ? "运输" : "内部等待";
 }

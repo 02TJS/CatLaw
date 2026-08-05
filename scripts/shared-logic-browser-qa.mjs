@@ -17,6 +17,7 @@ const sourceCode = `function decide(ctx) {
 }`;
 
 await page.route("**/api/laws/compile", async (route) => {
+  const request = route.request().postDataJSON();
   await route.fulfill({
     status: 200,
     contentType: "application/json",
@@ -28,10 +29,18 @@ await page.route("**/api/laws/compile", async (route) => {
       astHash: "browser-worker-will-rehash",
       examples: [],
       warnings: [],
-      category: "behavior",
-      taxRate: null,
-      priceItemId: null,
-      priceMultiplier: null,
+      program: { version: 2 },
+      compileAudit: {
+        requestId: "browser-fixture",
+        model: "deepseek-v4-flash",
+        attempts: 1,
+        startedAt: new Date(0).toISOString(),
+        durationMs: 1,
+        promptSha256: "fixture",
+        responseSha256: "fixture",
+        usage: {},
+        sharedBehaviorHash: request.sharedBehavior.astHash,
+      },
       validation: { syntax: true, safety: true, examplesPassed: 0, examplesTotal: 0, messages: [] },
     }),
   });
@@ -52,7 +61,7 @@ try {
   await page.screenshot({ path: path.join(outputDir, "mixed-scoring-preview.png"), fullPage: true });
 
   await page.getByTestId("enact-law").click();
-  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).decisionModel.sharedLogic?.title === "矿石直送与木材评分");
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).laws.some((law) => law.title === "矿石直送与木材评分"));
   const targetCatId = await page.evaluate(() => {
     const state = window.__CAT_WORKSHOP__.state();
     for (const cat of state.cats) {
@@ -79,7 +88,7 @@ try {
   fs.writeFileSync(path.join(outputDir, "mixed-scoring-state.json"), JSON.stringify(state, null, 2));
   await page.screenshot({ path: path.join(outputDir, "mixed-scoring-enacted.png"), fullPage: true });
   assert(errors.length === 0, `browser errors: ${errors.join(" | ")}`);
-  console.log(JSON.stringify({ ok: true, sharedLogic: state.decisionModel.sharedLogic, targetCatId, targetAction: targetCat.action, errors }));
+  console.log(JSON.stringify({ ok: true, sharedBehaviorHash: state.decisionModel.sharedBehaviorHash, targetCatId, targetAction: targetCat.action, errors }));
 } finally {
   await browser.close();
 }

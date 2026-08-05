@@ -1,6 +1,7 @@
 import {
   CATALOG_ANALYSIS,
   DEPLOYABLE_BUILDING_IDS,
+  ITEMS,
   ITEM_BY_ID,
   RECIPES,
   RECIPE_BY_ID,
@@ -24,18 +25,23 @@ import type {
   ProcurementPlan,
   ShipmentContract,
 } from "./types";
+import { recordProductionPlan } from "./productionHistory";
 import { positionKey } from "./world";
+import { recordWarehousePurchase } from "./warehouse";
 
 // Broadcasts are immediate. This interval only wakes idle cats for a periodic
 // market review, so one normal action duration is sufficient.
 export const MARKET_SIGNAL_INTERVAL_MS = 5_000;
-export const MAX_SIGNALS_PER_CAT = 32;
-export const MAX_SIGNALS_PER_ITEM = 2;
+export const MAX_SIGNALS_PER_CAT = ITEMS.length;
+// Order information is a direct global broadcast. The only visibility bound
+// is the total observation budget; physical goods still move one adjacent-cat
+// hop at a time. Keeping a separate two-orders-per-item cap silently hid valid
+// lower bids and prevented parallel suppliers from accepting them.
+export const MAX_SIGNALS_PER_ITEM = MAX_SIGNALS_PER_CAT;
 export const BASE_CREDIT_CENTS = 2_500;
 export const LOAN_RATE = 0.02;
-
-const PRICE_SENSITIVE_JOB_RECIPE_IDS = new Set(RECIPES.slice(21, 30).map((recipe) => recipe.id));
-const JOB_PRICE_PASS_THROUGH = 1.5;
+const MAX_CARRIER_FEE_CENTS = 25;
+const MIN_PLAN_PROFIT_CENTS = 1;
 
 
 const DIRECTIONS: Array<[Direction, number, number]> = [
@@ -45,16 +51,30 @@ const DIRECTIONS: Array<[Direction, number, number]> = [
   ["west", -1, 0],
 ];
 
+function stableIdCompare(left: string, right: string): number {
+  const leftMatch = left.match(/^(.*?)(\d+)$/);
+  const rightMatch = right.match(/^(.*?)(\d+)$/);
+  if (leftMatch && rightMatch && leftMatch[1] === rightMatch[1]) {
+    const numeric = Number(leftMatch[2]) - Number(rightMatch[2]);
+    if (numeric !== 0) return numeric;
+  }
+  return left.localeCompare(right);
+}
+
 export function recordSystemLawHit(state: GameState, lawId: string): void {
   const law = state.laws.find((entry) => entry.id === lawId && entry.status === "active");
   if (law) law.hitCount += 1;
 }
 
-export function createDiscoveryBounties(difficulty: GameState["difficulty"] = 2): DiscoveryBounty[] {
+export function createDiscoveryBounties(
+  difficulty: GameState["difficulty"] = 2,
+  _laws: GameState["laws"] = [],
+): DiscoveryBounty[] {
+  const multiplier = difficultyProfile(difficulty).bountyMultiplier;
   return RECIPES.map((recipe) => {
     return {
       itemId: recipe.output,
-      amountCents: Math.round((CATALOG_ANALYSIS.basePrices[recipe.output] ?? 1) * 100 * difficultyProfile(difficulty).bountyMultiplier),
+      amountCents: Math.round((CATALOG_ANALYSIS.basePrices[recipe.output] ?? 1) * 100 * multiplier),
       claimedByCatId: null,
       paid: false,
     };
@@ -70,10 +90,49 @@ function publishMarketBroadcast(
     id: `broadcast-${state.nextMarketBroadcastIndex++}`,
     publishedAt: state.simTime,
   };
-  state.marketBroadcasts = state.marketBroadcasts.filter((entry) => entry.subjectId !== broadcast.subjectId);
-  state.marketBroadcasts.push(broadcast);
+  // Production events have unique subjects, so scanning and reallocating the
+  // whole broadcast log cannot remove anything. Stable subjects are replaced
+  // in place; this keeps global broadcasts cheap during accelerated tests.
+  if (broadcast.kind === "production-event") {
+    state.marketBroadcasts.push(broadcast);
+  } else {
+    const existing = state.marketBroadcasts.findIndex((entry) => entry.subjectId === broadcast.subjectId);
+    if (existing >= 0) state.marketBroadcasts[existing] = broadcast;
+    else state.marketBroadcasts.push(broadcast);
+  }
   state.dirtyDecisions = true;
   return broadcast;
+}
+
+export function publishProductionBroadcast(state: GameState, catId: string, itemId: ItemId): void {
+  publishMarketBroadcast(state, {
+    kind: "production-event",
+    subjectId: `production:${itemId}:${state.simTime}:${state.nextMarketBroadcastIndex}`,
+    itemId,
+    sourceCatId: catId,
+    amountCents: 1,
+    reason: null,
+  });
+  publishMarketBroadcast(state, {
+    kind: "production-total",
+    subjectId: `production-total:${itemId}`,
+    itemId,
+    sourceCatId: catId,
+    amountCents: state.itemStats[itemId]?.crafted ?? 0,
+    reason: null,
+  });
+}
+
+export function publishWarehouseBroadcast(state: GameState, sourceCatId: string, itemId: ItemId): void {
+  if (!state.cats.some((cat) => cat.id === sourceCatId)) return;
+  publishMarketBroadcast(state, {
+    kind: "warehouse-stock",
+    subjectId: `warehouse:${itemId}`,
+    itemId,
+    sourceCatId,
+    amountCents: state.playerBuildingInventory[itemId] ?? 0,
+    reason: "玩家仓库由交易参与猫即时广播",
+  });
 }
 
 function latestBroadcast(state: GameState, subjectId: string, kinds: readonly MarketBroadcastKind[]): MarketBroadcast | undefined {
@@ -141,11 +200,31 @@ export function ensureMarketBroadcasts(state: GameState): void {
       reason: offer.closeReason,
     });
   }
+  const relay = state.cats[0];
+  if (!relay) return;
+  for (const { id: item } of ITEMS) {
+    const crafted = state.itemStats[item]?.crafted ?? 0;
+    const production = latestBroadcast(state, `production-total:${item}`, ["production-total"]);
+    if (crafted > 0 && production?.amountCents !== crafted) {
+      publishMarketBroadcast(state, {
+        kind: "production-total",
+        subjectId: `production-total:${item}`,
+        itemId: item,
+        sourceCatId: relay.id,
+        amountCents: crafted,
+        reason: "存档统计由首只猫重新广播",
+      });
+    }
+    const stock = state.playerBuildingInventory[item] ?? 0;
+    const warehouse = latestBroadcast(state, `warehouse:${item}`, ["warehouse-stock"]);
+    if ((stock > 0 || warehouse) && warehouse?.amountCents !== stock) publishWarehouseBroadcast(state, relay.id, item);
+  }
 }
 
 export function bountyBroadcastsForCat(state: GameState, _catId: string): MarketBroadcast[] {
   const latestByItem = new Map<ItemId, MarketBroadcast>();
-  for (const broadcast of broadcastsForCat(state, _catId)) {
+  for (let index = state.marketBroadcasts.length - 1; index >= 0; index -= 1) {
+    const broadcast = state.marketBroadcasts[index];
     if (broadcast.kind !== "bounty-open" && broadcast.kind !== "bounty-closed") continue;
     if (!latestByItem.has(broadcast.itemId)) latestByItem.set(broadcast.itemId, broadcast);
   }
@@ -154,7 +233,8 @@ export function bountyBroadcastsForCat(state: GameState, _catId: string): Market
 
 export function buildingOfferBroadcastsForCat(state: GameState, _catId: string): MarketBroadcast[] {
   const latestByOffer = new Map<string, MarketBroadcast>();
-  for (const broadcast of broadcastsForCat(state, _catId)) {
+  for (let index = state.marketBroadcasts.length - 1; index >= 0; index -= 1) {
+    const broadcast = state.marketBroadcasts[index];
     if (broadcast.kind !== "building-offer-open" && broadcast.kind !== "building-offer-closed") continue;
     if (!latestByOffer.has(broadcast.subjectId)) latestByOffer.set(broadcast.subjectId, broadcast);
   }
@@ -167,7 +247,7 @@ export function buildingOfferReservedQuantity(state: GameState, catId: string, i
 }
 
 export function activeTaxRate(state: GameState): number {
-  return state.laws.find((law) => law.status === "active" && law.category === "tax" && law.taxRate !== null)?.taxRate ?? 0;
+  return state.cats[0]?.lawPolicy?.taxRate ?? 0;
 }
 
 export function externalNetCents(state: GameState, itemId: ItemId, priceOf: (itemId: ItemId) => number): number {
@@ -180,7 +260,7 @@ export function externalNetCents(state: GameState, itemId: ItemId, priceOf: (ite
 /** Net liquidation value at a cat's current site, including landmark sale bonus and tax. */
 export function externalNetCentsAt(state: GameState, itemId: ItemId, priceOf: (itemId: ItemId) => number, cat: CatState): number {
   const gross = Math.ceil(priceOf(itemId) * (1 + landmarkEffectsAt(state, cat.position).saleValueBonus));
-  const rate = activeTaxRate(state);
+  const rate = cat.lawPolicy?.taxRate ?? activeTaxRate(state);
   const tax = rate > 0 ? Math.min(gross, Math.ceil(gross * rate)) : 0;
   return Math.max(0, gross - tax);
 }
@@ -198,9 +278,9 @@ export function netWorthCents(state: GameState, cat: CatState, priceOf: (itemId:
 }
 
 export function creditLimitCents(state: GameState, cat: CatState, priceOf: (itemId: ItemId) => number): number {
-  return difficultyProfile(state.difficulty).baseCreditCents
+  return (cat.lawPolicy?.creditBaseCents ?? 0)
     + landmarkEffectsAt(state, cat.position).creditBonusCents
-    + Math.max(0, netWorthCents(state, cat, priceOf));
+    + Math.round(Math.max(0, netWorthCents(state, cat, priceOf)) * (cat.lawPolicy?.creditNetWorthFactor ?? 0));
 }
 
 export function creditAvailableCents(state: GameState, cat: CatState, priceOf: (itemId: ItemId) => number): number {
@@ -226,7 +306,6 @@ function pushLifecycle(
   reason: string,
   sourceCatId?: string,
 ): void {
-  state.orderSignals = state.orderSignals.filter((signal) => signal.orderId !== order.id);
   state.marketEvents.push({
     id: `market-event-${state.nextMarketEventIndex++}`,
     orderId: order.id,
@@ -294,15 +373,6 @@ export function openDemandOrder(
     closeReason: null,
   };
   state.demandOrders.push(order);
-  state.orderSignals.push({
-    orderId: order.id,
-    catId: "*",
-    routeCatIds: [order.destinationCatId],
-    hops: 0,
-    estimatedFreightCents: 0,
-    effectiveBidCents: order.maxDeliveredCents,
-    receivedAt: state.simTime,
-  });
   publishMarketBroadcast(state, {
     kind: "demand-open",
     subjectId: order.id,
@@ -317,7 +387,7 @@ export function openDemandOrder(
 function signalSort(left: OrderSignal, right: OrderSignal): number {
   return right.effectiveBidCents - left.effectiveBidCents
     || left.hops - right.hops
-    || left.orderId.localeCompare(right.orderId)
+    || stableIdCompare(left.orderId, right.orderId)
     || left.routeCatIds.join("/").localeCompare(right.routeCatIds.join("/"));
 }
 
@@ -347,12 +417,23 @@ export function propagateOrderSignals(_state: GameState): boolean {
 
 export function signalsForCat(state: GameState, _catId: string): OrderSignal[] {
   const latestByOrder = new Map<string, MarketBroadcast>();
-  for (const broadcast of broadcastsForCat(state, _catId)) {
+  for (let index = state.marketBroadcasts.length - 1; index >= 0; index -= 1) {
+    const broadcast = state.marketBroadcasts[index];
     if (!broadcast.kind.startsWith("demand-")) continue;
     if (!latestByOrder.has(broadcast.subjectId)) latestByOrder.set(broadcast.subjectId, broadcast);
   }
   const openIds = new Set([...latestByOrder.values()].filter((entry) => entry.kind === "demand-open").map((entry) => entry.subjectId));
-  return trimSignalCache(state, state.orderSignals.filter((signal) => openIds.has(signal.orderId))).sort(signalSort);
+  return trimSignalCache(state, state.demandOrders
+    .filter((order) => order.status === "open" && openIds.has(order.id))
+    .map((order) => ({
+      orderId: order.id,
+      catId: "*",
+      routeCatIds: [order.destinationCatId],
+      hops: 0,
+      estimatedFreightCents: 0,
+      effectiveBidCents: order.maxDeliveredCents,
+      receivedAt: order.createdAt,
+    }))).sort(signalSort);
 }
 
 function planForCat(state: GameState, catId: string): ProcurementPlan | undefined {
@@ -362,46 +443,25 @@ function planForCat(state: GameState, catId: string): ProcurementPlan | undefine
 function estimatedInputCost(state: GameState, recipeId: string, priceOf: (itemId: ItemId) => number): number {
   const recipe = RECIPE_BY_ID.get(recipeId);
   if (!recipe) return Number.POSITIVE_INFINITY;
-  return effectiveRecipeInputs(recipe, state.difficulty).reduce((sum, input) => sum + input.quantity * (externalNetCents(state, input.itemId, priceOf) + 25), 0);
-}
-
-function requiredWorkingCapitalCents(
-  state: GameState,
-  cat: CatState,
-  recipeId: string,
-  priceOf: (itemId: ItemId) => number,
-): number {
-  const recipe = RECIPE_BY_ID.get(recipeId);
-  if (!recipe) return Number.POSITIVE_INFINITY;
-  return effectiveRecipeInputs(recipe, state.difficulty).reduce((sum, input) => {
-    const owned = unofferedOwnedQuantity(state, cat, input.itemId);
-    const missing = Math.max(0, input.quantity - owned);
-    return sum + missing * productionOrderBidCents(state, recipe.id, input.itemId, priceOf);
-  }, 0);
+  return effectiveRecipeInputs(recipe, state.difficulty).reduce((sum, input) => (
+    sum + input.quantity * externalNetCents(state, input.itemId, priceOf)
+  ), 0);
 }
 
 /**
- * Existing order-market price formation for material jobs. On difficulty five,
- * goods 22-30 pass an aggressive output-price signal through to the bids for
- * every required input job. This uses ordinary order escrow and cat credit:
- * there is no extra balance, certification or hard gate. A richer cat can
- * still pay, while a modest price signal plus retained/transported stock keeps
- * the supply chain liquid.
+ * Read-only compatibility estimate for inspectors and older callers. Real
+ * plans never fund orders from this estimate: they atomically lock a named
+ * supplier, route, freight schedule and whole-basket financing certificate.
  */
 export function productionOrderBidCents(
   state: GameState,
-  recipeId: string,
+  _recipeId: string,
   inputItemId: ItemId,
   priceOf: (itemId: ItemId) => number,
 ): number {
-  const recipe = RECIPE_BY_ID.get(recipeId);
-  const ordinaryBid = externalNetCents(state, inputItemId, priceOf) + 100;
-  if (!recipe || state.difficulty !== 5 || !PRICE_SENSITIVE_JOB_RECIPE_IDS.has(recipe.id)) return ordinaryBid;
-  const jobCount = effectiveRecipeInputs(recipe, state.difficulty).reduce((sum, input) => sum + input.quantity, 0);
-  const baseOutputCents = (CATALOG_ANALYSIS.basePrices[recipe.output] ?? 1) * 100;
-  const advertisedPremiumCents = Math.max(0, priceOf(recipe.output) - baseOutputCents);
-  const jobPremiumCents = Math.ceil(advertisedPremiumCents * JOB_PRICE_PASS_THROUGH / Math.max(1, jobCount));
-  return ordinaryBid + jobPremiumCents;
+  // Compatibility estimate for inspectors. Plans use a firm seller/route
+  // quote and never commit money from this estimate.
+  return externalNetCents(state, inputItemId, priceOf) + MIN_PLAN_PROFIT_CENTS;
 }
 
 export function productionOrderBudgetCents(
@@ -417,7 +477,252 @@ export function productionOrderBudgetCents(
 }
 
 export function hasPriceSensitiveJobDemand(state: GameState, recipeId: string): boolean {
-  return state.difficulty === 5 && PRICE_SENSITIVE_JOB_RECIPE_IDS.has(recipeId);
+  const recipe = RECIPE_BY_ID.get(recipeId);
+  return Boolean(recipe && state.unlockedRecipes.includes(recipe.id));
+}
+
+function maximumLoanFeeCents(principalCents: number): number {
+  return principalCents > 0 ? Math.max(1, Math.ceil(principalCents * LOAN_RATE)) : 0;
+}
+
+interface QuoteAllocations {
+  stock: Map<string, number>;
+  production: Map<string, ItemId>;
+  financing: Map<string, number>;
+  visitingCats: Set<string>;
+}
+
+interface FirmInputQuote {
+  itemId: ItemId;
+  sellerCatId: string;
+  sellerPriceCents: number;
+  routeCatIds: string[];
+  feesByCatId: Record<string, number>;
+  deliveredCents: number;
+  financingReserveCents: number;
+  allocations: QuoteAllocations;
+  supplyBundle?: FundedBundleCertificate;
+}
+
+interface FundedBundleCertificate {
+  quotes: FirmInputQuote[];
+  ownedInputCostCents: number;
+  deliveredInputCostCents: number;
+  bundleCostCents: number;
+  financingReserveCents: number;
+  reservationCents: number;
+  alternativeGainCents: number;
+  terminalRevenueCents: number;
+  expectedProfitCents: number;
+}
+
+function freshQuoteAllocations(): QuoteAllocations {
+  return { stock: new Map(), production: new Map(), financing: new Map(), visitingCats: new Set() };
+}
+
+function cloneQuoteAllocations(source: QuoteAllocations): QuoteAllocations {
+  return {
+    stock: new Map(source.stock),
+    production: new Map(source.production),
+    financing: new Map(source.financing),
+    visitingCats: new Set(source.visitingCats),
+  };
+}
+
+function overwriteQuoteAllocations(target: QuoteAllocations, source: QuoteAllocations): void {
+  target.stock = new Map(source.stock);
+  target.production = new Map(source.production);
+  target.financing = new Map(source.financing);
+}
+
+function routeSettlement(
+  state: GameState,
+  seller: CatState,
+  destination: CatState,
+  priceOf: (itemId: ItemId) => number,
+): { routeCatIds: string[]; feesByCatId: Record<string, number>; freightCents: number } | null {
+  const routeCatIds = findTransportRoute(state, seller.id, destination.id);
+  if (!routeCatIds) return null;
+  const intermediates = routeCatIds.slice(1, -1)
+    .map((id) => state.cats.find((cat) => cat.id === id))
+    .filter((cat): cat is CatState => Boolean(cat));
+  if (intermediates.some((cat) => outstandingCarrierLegs(state, cat.id) >= 2)) return null;
+  const feesByCatId = Object.fromEntries(intermediates.map((cat) => [cat.id, carrierFeeCents(state, cat, priceOf)]));
+  return {
+    routeCatIds,
+    feesByCatId,
+    freightCents: Object.values(feesByCatId).reduce((sum, fee) => sum + fee, 0),
+  };
+}
+
+function alternativeActionGainCents(
+  _state: GameState,
+  _cat: CatState,
+  _excludedRecipeId: string,
+  _priceOf: (itemId: ItemId) => number,
+): number {
+  // Preference laws define which of the non-loss candidates the cat values.
+  // A merely hypothetical, law-rejected action is not a contractual burden and
+  // therefore is not charged again here. Locked carrier/terminal commitments
+  // are already priced into their firm quotes.
+  return 0;
+}
+
+function quoteInputBundle(
+  state: GameState,
+  buyer: CatState,
+  recipe: NonNullable<ReturnType<typeof RECIPE_BY_ID.get>>,
+  priceOf: (itemId: ItemId) => number,
+  allocations: QuoteAllocations,
+): Omit<FundedBundleCertificate, "alternativeGainCents" | "terminalRevenueCents" | "expectedProfitCents"> | null {
+  const quotes: FirmInputQuote[] = [];
+  let ownedInputCostCents = 0;
+  for (const input of effectiveRecipeInputs(recipe, state.difficulty)) {
+    const ownStockKey = `${buyer.id}:${input.itemId}`;
+    const alreadyAllocated = allocations.stock.get(ownStockKey) ?? 0;
+    const owned = Math.min(
+      input.quantity,
+      Math.max(0, unofferedOwnedQuantity(state, buyer, input.itemId) - alreadyAllocated),
+    );
+    if (owned > 0) allocations.stock.set(ownStockKey, alreadyAllocated + owned);
+    ownedInputCostCents += owned * externalNetCentsAt(state, input.itemId, priceOf, buyer);
+    for (let unit = owned; unit < input.quantity; unit += 1) {
+      const quote = firmQuoteForInput(state, buyer, input.itemId, priceOf, allocations);
+      if (!quote) return null;
+      quotes.push(quote);
+    }
+  }
+  const deliveredInputCostCents = quotes.reduce((sum, quote) => sum + quote.deliveredCents, 0);
+  const financingReserveCents = quotes.reduce((sum, quote) => sum + quote.financingReserveCents, 0);
+  return {
+    quotes,
+    ownedInputCostCents,
+    deliveredInputCostCents,
+    bundleCostCents: ownedInputCostCents + deliveredInputCostCents,
+    financingReserveCents,
+    reservationCents: deliveredInputCostCents + financingReserveCents,
+  };
+}
+
+function firmQuoteForInput(
+  state: GameState,
+  destination: CatState,
+  itemId: ItemId,
+  priceOf: (itemId: ItemId) => number,
+  allocations: QuoteAllocations,
+): FirmInputQuote | null {
+  const candidates: FirmInputQuote[] = [];
+  // Existing unreserved stock is both firmer and never more expensive than
+  // recursively commissioning the same cat to recreate that unit. Resolve
+  // this common hot path before exploring the recipe tree.
+  for (const seller of [...state.cats].sort((left, right) => left.createdIndex - right.createdIndex)) {
+    if (seller.id === destination.id) continue;
+    const stockKey = `${seller.id}:${itemId}`;
+    const allocatedStock = allocations.stock.get(stockKey) ?? 0;
+    if (unreservedOwnedQuantity(state, seller, itemId) <= allocatedStock) continue;
+    const settlement = routeSettlement(state, seller, destination, priceOf);
+    if (!settlement) continue;
+    const next = cloneQuoteAllocations(allocations);
+    next.stock.set(stockKey, allocatedStock + 1);
+    const sellerPriceCents = externalNetCentsAt(state, itemId, priceOf, seller) + MIN_PLAN_PROFIT_CENTS;
+    const deliveredCents = sellerPriceCents + settlement.freightCents;
+    candidates.push({
+      itemId,
+      sellerCatId: seller.id,
+      sellerPriceCents,
+      routeCatIds: settlement.routeCatIds,
+      feesByCatId: settlement.feesByCatId,
+      deliveredCents,
+      financingReserveCents: maximumLoanFeeCents(deliveredCents),
+      allocations: next,
+    });
+  }
+  const bestStockDeliveredCents = candidates.reduce((best, quote) => Math.min(best, quote.deliveredCents), Number.POSITIVE_INFINITY);
+  for (const seller of [...state.cats].sort((left, right) => left.createdIndex - right.createdIndex)) {
+    if (seller.id === destination.id) continue;
+    const settlement = routeSettlement(state, seller, destination, priceOf);
+    if (!settlement) continue;
+    const stockKey = `${seller.id}:${itemId}`;
+    const allocatedStock = allocations.stock.get(stockKey) ?? 0;
+    if (unreservedOwnedQuantity(state, seller, itemId) > allocatedStock) continue;
+    const productionLowerBound = externalNetCentsAt(state, itemId, priceOf, seller)
+      + MIN_PLAN_PROFIT_CENTS + settlement.freightCents;
+    if (productionLowerBound >= bestStockDeliveredCents) continue;
+    const recipe = RECIPE_BY_OUTPUT.get(itemId);
+    if (!recipe || !localRecipeIsUsable(state, seller, itemId) || allocations.visitingCats.has(seller.id)) continue;
+    const active = planForCat(state, seller.id);
+    if (active) continue;
+    // A workstation may quote several sequential units of the same output.
+    // It still cannot promise two different active recipes at once.  Delivery
+    // settlement reserves those same-item promises in stable order, so the
+    // first completed unit can no longer be mutually blocked by later units.
+    const allocatedOutput = allocations.production.get(seller.id);
+    if (allocatedOutput && allocatedOutput !== itemId) continue;
+    if (state.demandOrders.some((order) => order.status === "open"
+      && order.committedSellerCatId === seller.id && order.itemId !== itemId)) continue;
+
+    const next = cloneQuoteAllocations(allocations);
+    next.production.set(seller.id, itemId);
+    next.visitingCats.add(seller.id);
+    const bundle = quoteInputBundle(state, seller, recipe, priceOf, next);
+    next.visitingCats.delete(seller.id);
+    const previouslyAllocatedFinancing = next.financing.get(seller.id) ?? 0;
+    if (!bundle || buyingPowerCents(state, seller, priceOf)
+      < previouslyAllocatedFinancing + bundle.reservationCents) continue;
+    next.financing.set(seller.id, previouslyAllocatedFinancing + bundle.reservationCents);
+    const alternativeGainCents = alternativeActionGainCents(state, seller, recipe.id, priceOf);
+    const sellerPriceCents = Math.max(
+      externalNetCentsAt(state, itemId, priceOf, seller) + MIN_PLAN_PROFIT_CENTS,
+      bundle.bundleCostCents + bundle.financingReserveCents + alternativeGainCents + MIN_PLAN_PROFIT_CENTS,
+    );
+    const deliveredCents = sellerPriceCents + settlement.freightCents;
+    candidates.push({
+      itemId,
+      sellerCatId: seller.id,
+      sellerPriceCents,
+      routeCatIds: settlement.routeCatIds,
+      feesByCatId: settlement.feesByCatId,
+      deliveredCents,
+      financingReserveCents: maximumLoanFeeCents(deliveredCents),
+      allocations: next,
+      supplyBundle: {
+        ...bundle,
+        alternativeGainCents,
+        terminalRevenueCents: sellerPriceCents,
+        expectedProfitCents: sellerPriceCents
+          - bundle.bundleCostCents - bundle.financingReserveCents - alternativeGainCents,
+      },
+    });
+  }
+  const selected = candidates.sort((left, right) => (
+    left.deliveredCents - right.deliveredCents
+      || (state.cats.find((cat) => cat.id === left.sellerCatId)?.createdIndex ?? Number.MAX_SAFE_INTEGER)
+        - (state.cats.find((cat) => cat.id === right.sellerCatId)?.createdIndex ?? Number.MAX_SAFE_INTEGER)
+      || left.sellerCatId.localeCompare(right.sellerCatId)
+  ))[0];
+  if (!selected) return null;
+  overwriteQuoteAllocations(allocations, selected.allocations);
+  return selected;
+}
+
+function bundleFundingCertificate(
+  state: GameState,
+  cat: CatState,
+  recipe: NonNullable<ReturnType<typeof RECIPE_BY_ID.get>>,
+  terminalRevenueCents: number,
+  priceOf: (itemId: ItemId) => number,
+): FundedBundleCertificate | null {
+  const allocations = freshQuoteAllocations();
+  allocations.visitingCats.add(cat.id);
+  const inputs = quoteInputBundle(state, cat, recipe, priceOf, allocations);
+  if (!inputs || buyingPowerCents(state, cat, priceOf) < inputs.reservationCents) return null;
+  const alternativeGainCents = alternativeActionGainCents(state, cat, recipe.id, priceOf);
+  const expectedProfitCents = terminalRevenueCents
+    - inputs.bundleCostCents
+    - inputs.financingReserveCents
+    - alternativeGainCents;
+  if (expectedProfitCents < MIN_PLAN_PROFIT_CENTS) return null;
+  return { ...inputs, alternativeGainCents, terminalRevenueCents, expectedProfitCents };
 }
 
 function createPlan(
@@ -425,23 +730,121 @@ function createPlan(
   cat: CatState,
   outputItemId: ItemId,
   terminalOrderId: string | null,
-  expectedRevenueCents: number,
+  funding: FundedBundleCertificate,
   reason: ProcurementPlan["reason"],
+  createdByBehaviorLawId: string,
+  priceOf: (itemId: ItemId) => number,
 ): ProcurementPlan | null {
   const recipe = RECIPE_BY_OUTPUT.get(outputItemId);
   if (!recipe || !state.unlockedRecipes.includes(recipe.id) || siteFailure(state, cat, recipe)) return null;
+  if (funding.reservationCents > buyingPowerCents(state, cat, priceOf)) return null;
+  if (terminalOrderId) {
+    const terminal = state.demandOrders.find((order) => order.id === terminalOrderId && order.status === "open");
+    if (!terminal || terminal.committedSellerCatId !== cat.id) return null;
+    if (state.procurementPlans.some((plan) => plan.status !== "cancelled" && plan.terminalOrderId === terminalOrderId)) return null;
+  }
+  const transaction = {
+    procurementPlanLength: state.procurementPlans.length,
+    demandOrderLength: state.demandOrders.length,
+    broadcastLength: state.marketBroadcasts.length,
+    nextProcurementPlanIndex: state.nextProcurementPlanIndex,
+    nextDemandOrderIndex: state.nextDemandOrderIndex,
+    nextMarketBroadcastIndex: state.nextMarketBroadcastIndex,
+    dirtyDecisions: state.dirtyDecisions,
+    productionHistory: structuredClone(state.productionHistory),
+    escrowByCatId: new Map(state.cats.map((entry) => [entry.id, entry.escrowReservedCents])),
+  };
+  const rollback = (): null => {
+    state.procurementPlans.splice(transaction.procurementPlanLength);
+    state.demandOrders.splice(transaction.demandOrderLength);
+    state.marketBroadcasts.splice(transaction.broadcastLength);
+    state.nextProcurementPlanIndex = transaction.nextProcurementPlanIndex;
+    state.nextDemandOrderIndex = transaction.nextDemandOrderIndex;
+    state.nextMarketBroadcastIndex = transaction.nextMarketBroadcastIndex;
+    state.dirtyDecisions = transaction.dirtyDecisions;
+    state.productionHistory = transaction.productionHistory;
+    for (const entry of state.cats) {
+      entry.escrowReservedCents = transaction.escrowByCatId.get(entry.id) ?? entry.escrowReservedCents;
+    }
+    return null;
+  };
+  const planId = `plan-${state.nextProcurementPlanIndex}`;
+  const orders: DemandOrder[] = funding.quotes.map((quote, index) => ({
+    id: `order-${state.nextDemandOrderIndex + index}`,
+    buyerKind: "cat",
+    buyerCatId: cat.id,
+    destinationCatId: cat.id,
+    itemId: quote.itemId,
+    maxDeliveredCents: quote.deliveredCents,
+    reservedCents: quote.deliveredCents + quote.financingReserveCents,
+    planId,
+    createdAt: state.simTime,
+    status: "open",
+    closedAt: null,
+    closeReason: null,
+    committedSellerCatId: quote.sellerCatId,
+    quotedSellerCents: quote.sellerPriceCents,
+    quotedRouteCatIds: [...quote.routeCatIds],
+    quotedFeesByCatId: { ...quote.feesByCatId },
+    quoteFinancingReserveCents: quote.financingReserveCents,
+    quoteRevision: state.lawbookRevision,
+  }));
   const plan: ProcurementPlan = {
-    id: `plan-${state.nextProcurementPlanIndex++}`,
+    id: planId,
     catId: cat.id,
     outputItemId,
     recipeId: recipe.id,
     terminalOrderId,
-    expectedRevenueCents,
+    expectedRevenueCents: funding.terminalRevenueCents,
     createdAt: state.simTime,
+    createdByBehaviorLawId,
     status: "active",
     reason,
+    phase: orders.length > 0 ? "funded" : "ready",
+    terminalRevenueCents: funding.terminalRevenueCents,
+    alternativeGainCents: funding.alternativeGainCents,
+    bundleCostCents: funding.bundleCostCents,
+    financingReserveCents: funding.financingReserveCents,
+    expectedProfitCents: funding.expectedProfitCents,
+    budgetSlackCents: funding.expectedProfitCents,
+    bundleOrderIds: orders.map((order) => order.id),
+    blockedReason: orders.length > 0 ? "等待整包原料合同送达" : null,
+    quoteRevision: state.lawbookRevision,
   };
+  state.nextProcurementPlanIndex += 1;
+  state.nextDemandOrderIndex += orders.length;
+  cat.escrowReservedCents += funding.reservationCents;
   state.procurementPlans.push(plan);
+  state.demandOrders.push(...orders);
+  for (const order of orders) {
+    publishMarketBroadcast(state, {
+      kind: "demand-open",
+      subjectId: order.id,
+      itemId: order.itemId,
+      sourceCatId: cat.id,
+      amountCents: order.maxDeliveredCents,
+      reason: "整包融资后锁定的可靠到货报价",
+    });
+  }
+  for (let index = 0; index < funding.quotes.length; index += 1) {
+    const quote = funding.quotes[index];
+    if (!quote.supplyBundle) continue;
+    const supplier = state.cats.find((entry) => entry.id === quote.sellerCatId);
+    if (!supplier || state.procurementPlans.some((entry) => entry.status === "active"
+      && entry.terminalOrderId === orders[index].id)) return rollback();
+    const supplierPlan = createPlan(
+      state,
+      supplier,
+      quote.itemId,
+      orders[index].id,
+      quote.supplyBundle,
+      "order",
+      createdByBehaviorLawId,
+      priceOf,
+    );
+    if (!supplierPlan) return rollback();
+  }
+  recordProductionPlan(state, plan, orders);
   return plan;
 }
 
@@ -454,57 +857,40 @@ function cancelPlan(state: GameState, plan: ProcurementPlan, reason: string): vo
   for (const order of state.demandOrders.filter((entry) => entry.planId === plan.id && entry.status === "open")) {
     cancelDemandOrder(state, order.id, reason);
   }
+  if (plan.terminalOrderId) {
+    const terminal = state.demandOrders.find((entry) => entry.id === plan.terminalOrderId && entry.status === "open");
+    if (terminal?.committedSellerCatId === plan.catId) {
+      terminal.committedSellerCatId = null;
+      terminal.quotedSellerCents = undefined;
+      terminal.quotedRouteCatIds = undefined;
+      terminal.quotedFeesByCatId = undefined;
+      terminal.quoteFinancingReserveCents = undefined;
+      terminal.quoteRevision = undefined;
+    }
+  }
 }
 
-function ensurePlanOrders(state: GameState, plan: ProcurementPlan, priceOf: (itemId: ItemId) => number): void {
+function ensurePlanOrders(state: GameState, plan: ProcurementPlan, _priceOf: (itemId: ItemId) => number): void {
   const cat = state.cats.find((entry) => entry.id === plan.catId);
   const recipe = RECIPE_BY_ID.get(plan.recipeId);
   if (!cat || !recipe || siteFailure(state, cat, recipe)) {
-    cancelPlan(state, plan, "生产位置或配方失效");
+    cancelPlan(state, plan, "生产位置或配方已经失效");
     return;
   }
-  for (const input of effectiveRecipeInputs(recipe, state.difficulty)) {
-    const maxDeliveredCents = productionOrderBidCents(state, recipe.id, input.itemId, priceOf);
-    // Price-law changes never mutate an order in place. Close the old global
-    // ID and let the plan publish a fresh one with a newly locked bid.
-    for (const stale of state.demandOrders.filter((order) => order.status === "open"
-      && order.planId === plan.id && order.itemId === input.itemId
-      && (order.maxDeliveredCents !== maxDeliveredCents || order.reservedCents !== maxDeliveredCents))) {
-      cancelDemandOrder(state, stale.id, "价格法变化：旧订单作废并重新报价");
-    }
-    const inbound = state.shipmentContracts.filter((contract) => contract.status !== "delivered"
-      && contract.buyerKind === "cat" && contract.buyerCatId === cat.id && contract.itemId === input.itemId).length;
-    const open = state.demandOrders.filter((order) => order.status === "open" && order.planId === plan.id && order.itemId === input.itemId).length;
-    // A plan protects its inputs from sale and third-party orders, but those
-    // same inputs are available to the cat executing that plan. Only public
-    // building offers must be excluded when calculating its own shortage.
-    const missing = Math.max(0, input.quantity - unofferedOwnedQuantity(state, cat, input.itemId) - inbound - open);
-    for (let index = 0; index < missing; index += 1) {
-      const created = openDemandOrder(state, {
-        buyerKind: "cat",
-        buyerCatId: cat.id,
-        destinationCatId: cat.id,
-        itemId: input.itemId,
-        maxDeliveredCents,
-        reservedCents: maxDeliveredCents,
-        planId: plan.id,
-      }, priceOf);
-      if (!created) break;
-    }
+  const bundleOrders = (plan.bundleOrderIds ?? [])
+    .map((id) => state.demandOrders.find((order) => order.id === id))
+    .filter((order): order is DemandOrder => Boolean(order));
+  if (bundleOrders.length !== (plan.bundleOrderIds ?? []).length
+    || bundleOrders.some((order) => order.status === "cancelled")) {
+    cancelPlan(state, plan, "可靠报价中的原料订单已经失效");
+    return;
   }
-}
-
-const BOUNTY_PRIORITY: ItemId[] = [
-  "wood", "stone", "sand", "water", "fiber", "ore", "fire", "metal",
-  "plank", "brick", "gear", "thread", "paper", "tools", "glass",
-];
-const TUTORIAL_BOUNTY_ITEMS = new Set(RECIPES.slice(0, 15).map((recipe) => recipe.output));
-
-function bountyHasPriceGuidance(state: GameState, itemId: ItemId): boolean {
-  if (TUTORIAL_BOUNTY_ITEMS.has(itemId)) return true;
-  return state.laws.some((law) => law.status === "active" && law.category === "price"
-    && (law.priceItemId === itemId || law.priceItemId === "*")
-    && (law.priceMultiplier ?? 1) > 1);
+  const ready = effectiveRecipeInputs(recipe, state.difficulty)
+    .every((input) => availableInputQuantityForPlan(state, cat, plan, input.itemId) >= input.quantity);
+  plan.phase = ready
+    ? "ready"
+    : bundleOrders.some((order) => order.status === "contracted") ? "procuring" : "funded";
+  plan.blockedReason = ready ? null : "等待整包原料合同送达";
 }
 
 function localRecipeIsUsable(state: GameState, cat: CatState, itemId: ItemId): boolean {
@@ -548,72 +934,422 @@ export function findTransportRoute(state: GameState, sellerCatId: string, destin
   return null;
 }
 
-function tryCreateOrderPlanForCat(state: GameState, cat: CatState, priceOf: (itemId: ItemId) => number): boolean {
-  for (const signal of signalsForCat(state, cat.id)) {
-    const order = state.demandOrders.find((entry) => entry.id === signal.orderId && entry.status === "open");
-    if (!order || order.destinationCatId === cat.id || !localRecipeIsUsable(state, cat, order.itemId)) continue;
-    const route = findTransportRoute(state, cat.id, order.destinationCatId);
-    if (!route || route.length < 2) continue;
-    if (state.procurementPlans.some((plan) => plan.status === "active" && plan.terminalOrderId === order.id)) continue;
-    const recipe = RECIPE_BY_OUTPUT.get(order.itemId)!;
-    const inputCost = estimatedInputCost(state, recipe.id, priceOf);
-    const ask = Math.max(externalNetCents(state, recipe.output, priceOf) + 1, inputCost + 1);
-    const estimatedFreight = Math.max(0, route.length - 2);
-    if (signal.effectiveBidCents - estimatedFreight < ask) continue;
-    if (buyingPowerCents(state, cat, priceOf) < requiredWorkingCapitalCents(state, cat, recipe.id, priceOf)) continue;
-    return Boolean(createPlan(state, cat, recipe.output, order.id, ask, "order"));
-  }
-  return false;
+export interface ProductionOpportunity {
+  itemId: ItemId;
+  recipeId: string;
+  reason: ProcurementPlan["reason"];
+  terminalOrderId: string | null;
+  finishedGoodValueCents: number;
+  bountyCents: number;
+  conservativeBountyValueCents: number;
+  orderRevenueCents: number;
+  ingredientOpportunityCostCents: number;
+  procurementAndTransportCostCents: number;
+  financingCostCents: number;
+  coordinationRiskCostCents: number;
+  expectedRevenueCents: number;
+  netAssetGainCents: number;
+  burdenUnits: number;
+  assetGainRate: number;
+  fundingCertificate?: FundedBundleCertificate;
 }
 
-function tryCreateBountyPlanForCat(state: GameState, cat: CatState, priceOf: (itemId: ItemId) => number): boolean {
-  const priority = new Map(BOUNTY_PRIORITY.map((itemId, index) => [itemId, index]));
-  const catalog = new Map(RECIPES.map((recipe, index) => [recipe.output, index]));
-  const candidates = bountyBroadcastsForCat(state, cat.id)
-    .filter((broadcast) => localRecipeIsUsable(state, cat, broadcast.itemId)
-      && bountyHasPriceGuidance(state, broadcast.itemId))
-    .sort((left, right) => (priority.get(left.itemId) ?? catalog.get(left.itemId) ?? 999)
-      - (priority.get(right.itemId) ?? catalog.get(right.itemId) ?? 999));
-  for (const broadcast of candidates) {
-    const recipe = RECIPE_BY_OUTPUT.get(broadcast.itemId)!;
-    const revenue = externalNetCentsAt(state, recipe.output, priceOf, cat) + broadcast.amountCents;
-    if (revenue <= estimatedInputCost(state, recipe.id, priceOf)) continue;
-    if (buyingPowerCents(state, cat, priceOf) < requiredWorkingCapitalCents(state, cat, recipe.id, priceOf)) continue;
-    if (!claimDiscoveryBounty(state, cat.id, recipe.output)) continue;
-    const plan = createPlan(state, cat, recipe.output, null, revenue, "bounty");
-    if (!plan) {
-      const bounty = state.discoveryBounties.find((entry) => entry.itemId === recipe.output && entry.claimedByCatId === cat.id && !entry.paid);
-      if (bounty) bounty.claimedByCatId = null;
-      continue;
-    }
-    return true;
-  }
-  return false;
+export interface ProductionScoreAdjustment {
+  actionType: "craft" | "pass" | "sell" | "*";
+  itemId: ItemId | "*";
+  multiplier: number;
+  bonus: number;
 }
 
-function tryCreateExternalPlanForCat(state: GameState, cat: CatState, priceOf: (itemId: ItemId) => number): boolean {
-  // Finished stock now waits for the player to purchase it. It must not stop a
-  // cat from opening its next profitable production plan.
-  if (signalsForCat(state, cat.id).length > 0) return false;
-  if (bountyBroadcastsForCat(state, cat.id).some((broadcast) => (
-    state.unlockedRecipes.includes(RECIPE_BY_OUTPUT.get(broadcast.itemId)?.id ?? "")
-  ))) {
-    return false;
+export interface ProductionOpportunityDiagnostic {
+  itemId: ItemId;
+  catId: string;
+  unlocked: boolean;
+  siteFailure: string | null;
+  locallyUsable: boolean;
+  bountyBroadcastOpen: boolean;
+  bountyClaimedByCatId: string | null;
+  buyingPowerCents: number;
+  requiredWorkingCapitalCents: number;
+  inventoryOpportunity: ProductionOpportunity | null;
+  bountyOpportunity: ProductionOpportunity | null;
+  rejectionReasons: string[];
+}
+
+interface OpportunityTerms {
+  reason: ProcurementPlan["reason"];
+  terminalOrderId: string | null;
+  bountyCents?: number;
+  orderGrossCents?: number;
+  outboundTransportCostCents?: number;
+  outboundTransportBurden?: number;
+}
+
+/**
+ * Compare every locally executable production plan on one economic scale.
+ * Catalog position and foundation-list membership are deliberately absent: a cat
+ * values the finished good, a still-available discovery bounty and an order
+ * premium, then subtracts consumed assets, procurement/transport friction and
+ * expected borrowing cost. The remainder is divided by embodied work and
+ * transport burden so a later recipe only wins when it is genuinely better.
+ */
+function evaluateProductionOpportunity(
+  state: GameState,
+  cat: CatState,
+  recipe: NonNullable<ReturnType<typeof RECIPE_BY_ID.get>>,
+  priceOf: (itemId: ItemId) => number,
+  terms: OpportunityTerms,
+): ProductionOpportunity | null {
+  const inputs = effectiveRecipeInputs(recipe, state.difficulty);
+  const finishedGoodValueCents = externalNetCentsAt(state, recipe.output, priceOf, cat);
+  const bountyCents = Math.max(0, terms.bountyCents ?? 0);
+  const conservativeBountyValueCents = bountyCents;
+  const orderRevenueCents = Math.max(0, terms.orderGrossCents ?? 0);
+  const expectedRevenueCents = terms.reason === "order"
+    ? orderRevenueCents
+    : finishedGoodValueCents + conservativeBountyValueCents;
+  const ingredientOpportunityCostCents = inputs.reduce((sum, input) => (
+    sum + input.quantity * externalNetCentsAt(state, input.itemId, priceOf, cat)
+  ), 0);
+  const missingInputUnits = inputs.reduce((sum, input) => (
+    sum + Math.max(0, input.quantity - unofferedOwnedQuantity(state, cat, input.itemId))
+  ), 0);
+  const procurementAndTransportCostCents = missingInputUnits;
+  const financingCostCents = 0;
+  const coordinationRiskCostCents = 0;
+  const netAssetGainCents = expectedRevenueCents - ingredientOpportunityCostCents;
+  const burdenUnits = Math.max(1,
+    (CATALOG_ANALYSIS.workUnits[recipe.output] ?? 1)
+      + missingInputUnits
+      + Math.max(0, terms.outboundTransportBurden ?? 0));
+  return {
+    itemId: recipe.output,
+    recipeId: recipe.id,
+    reason: terms.reason,
+    terminalOrderId: terms.terminalOrderId,
+    finishedGoodValueCents,
+    bountyCents,
+    conservativeBountyValueCents,
+    orderRevenueCents,
+    ingredientOpportunityCostCents,
+    procurementAndTransportCostCents,
+    financingCostCents,
+    coordinationRiskCostCents,
+    expectedRevenueCents,
+    netAssetGainCents,
+    burdenUnits,
+    assetGainRate: netAssetGainCents / burdenUnits,
+  };
+}
+
+/** Read-only QA/inspector evidence for opportunities filtered before ranking. */
+export function productionOpportunityDiagnosticForCat(
+  state: GameState,
+  cat: CatState,
+  priceOf: (itemId: ItemId) => number,
+  itemId: ItemId,
+): ProductionOpportunityDiagnostic {
+  const recipe = RECIPE_BY_OUTPUT.get(itemId);
+  const unlocked = Boolean(recipe && state.unlockedRecipes.includes(recipe.id));
+  const failure = recipe ? siteFailure(state, cat, recipe) : "recipe-not-found";
+  const locallyUsable = Boolean(recipe && localRecipeIsUsable(state, cat, itemId));
+  const bounty = state.discoveryBounties.find((entry) => entry.itemId === itemId && !entry.paid);
+  const bountyBroadcastOpen = bountyBroadcastsForCat(state, cat.id).some((entry) => entry.itemId === itemId);
+  const buyingPower = buyingPowerCents(state, cat, priceOf);
+  const inventoryOpportunity = recipe && locallyUsable
+    ? evaluateProductionOpportunity(state, cat, recipe, priceOf, { reason: "external-sale", terminalOrderId: null })
+    : null;
+  const bountyOpportunity = recipe && locallyUsable && bounty && bountyBroadcastOpen
+    && (bounty.claimedByCatId === null || bounty.claimedByCatId === cat.id)
+    ? evaluateProductionOpportunity(state, cat, recipe, priceOf, {
+      reason: "bounty",
+      terminalOrderId: null,
+      bountyCents: bounty.amountCents,
+    })
+    : null;
+  const terminalRevenue = bountyOpportunity?.expectedRevenueCents ?? inventoryOpportunity?.expectedRevenueCents;
+  const certificate = recipe && locallyUsable && terminalRevenue !== undefined
+    ? bundleFundingCertificate(state, cat, recipe, terminalRevenue, priceOf)
+    : null;
+  const requiredCapital = certificate?.reservationCents ?? Number.POSITIVE_INFINITY;
+  const rejectionReasons: string[] = [];
+  if (!recipe) rejectionReasons.push("recipe-not-found");
+  if (recipe && !unlocked) rejectionReasons.push("recipe-locked");
+  if (failure) rejectionReasons.push(`site:${failure}`);
+  if (recipe?.inputs.length === 0 && resourceItemAt(state, cat.position) !== itemId) rejectionReasons.push("wrong-resource-site");
+  if (requiredCapital > buyingPower) rejectionReasons.push(`working-capital:${requiredCapital - buyingPower}`);
+  if (bounty && !bountyBroadcastOpen) rejectionReasons.push("bounty-not-broadcast");
+  if (bounty?.claimedByCatId && bounty.claimedByCatId !== cat.id) rejectionReasons.push(`bounty-claimed:${bounty.claimedByCatId}`);
+  if (inventoryOpportunity && inventoryOpportunity.netAssetGainCents <= 0) rejectionReasons.push(`inventory-nonprofit:${inventoryOpportunity.netAssetGainCents}`);
+  if (bountyOpportunity && bountyOpportunity.netAssetGainCents <= 0) rejectionReasons.push(`bounty-nonprofit:${bountyOpportunity.netAssetGainCents}`);
+  if (locallyUsable && !inventoryOpportunity && requiredCapital <= buyingPower) rejectionReasons.push("inventory-opportunity-filtered");
+  if (bounty && bountyBroadcastOpen && !bountyOpportunity && requiredCapital <= buyingPower) rejectionReasons.push("bounty-opportunity-filtered");
+  return {
+    itemId,
+    catId: cat.id,
+    unlocked,
+    siteFailure: failure,
+    locallyUsable,
+    bountyBroadcastOpen,
+    bountyClaimedByCatId: bounty?.claimedByCatId ?? null,
+    buyingPowerCents: buyingPower,
+    requiredWorkingCapitalCents: requiredCapital,
+    inventoryOpportunity,
+    bountyOpportunity,
+    rejectionReasons,
+  };
+}
+
+function opportunitySort(left: ProductionOpportunity, right: ProductionOpportunity): number {
+  return right.assetGainRate - left.assetGainRate
+    || right.netAssetGainCents - left.netAssetGainCents
+    || left.itemId.localeCompare(right.itemId)
+    || left.reason.localeCompare(right.reason)
+    || stableIdCompare(left.terminalOrderId ?? "", right.terminalOrderId ?? "");
+}
+
+function adjustedOpportunityScore(
+  opportunity: ProductionOpportunity,
+  adjustments: ReadonlyArray<ProductionScoreAdjustment>,
+): number {
+  let score = opportunity.assetGainRate;
+  // A regulation may change the relative value of ordinary stocking work as
+  // well as bounties and paid orders. It still cannot create money, goods or a
+  // buyer: the resulting plan uses the same inventory, credit and logistics.
+  for (const adjustment of adjustments) {
+    if (adjustment.actionType !== "craft" && adjustment.actionType !== "*") continue;
+    if (adjustment.itemId !== "*" && adjustment.itemId !== opportunity.itemId) continue;
+    const multiplier = Number.isFinite(adjustment.multiplier)
+      ? Math.max(0, Math.min(100, adjustment.multiplier))
+      : 1;
+    const bonus = Number.isFinite(adjustment.bonus)
+      ? Math.max(-1_000_000, Math.min(1_000_000, adjustment.bonus))
+      : 0;
+    score = score * multiplier + bonus;
   }
-  const recipes = state.unlockedRecipes.map((id) => RECIPE_BY_ID.get(id))
-    .filter((recipe): recipe is NonNullable<typeof recipe> => Boolean(recipe && localRecipeIsUsable(state, cat, recipe.output)))
-    .sort((left, right) => {
-      const rateLeft = externalNetCentsAt(state, left.output, priceOf, cat) / (CATALOG_ANALYSIS.workUnits[left.output] || 1);
-      const rateRight = externalNetCentsAt(state, right.output, priceOf, cat) / (CATALOG_ANALYSIS.workUnits[right.output] || 1);
-      return rateRight - rateLeft || right.output.localeCompare(left.output);
+  return score;
+}
+
+function rankProductionOpportunities(
+  opportunities: ProductionOpportunity[],
+  adjustments: ReadonlyArray<ProductionScoreAdjustment>,
+): ProductionOpportunity[] {
+  if (adjustments.length === 0) return opportunities;
+  return [...opportunities].sort((left, right) => (
+    adjustedOpportunityScore(right, adjustments) - adjustedOpportunityScore(left, adjustments)
+    || opportunitySort(left, right)
+  ));
+}
+
+function ensureReliableQuoteForOrder(
+  state: GameState,
+  order: DemandOrder,
+  priceOf: (itemId: ItemId) => number,
+): boolean {
+  if (order.status !== "open") return false;
+  if (order.committedSellerCatId && order.quotedSellerCents !== undefined && order.quotedRouteCatIds) return true;
+  const destination = state.cats.find((cat) => cat.id === order.destinationCatId);
+  if (!destination) return false;
+  const quote = firmQuoteForInput(state, destination, order.itemId, priceOf, freshQuoteAllocations());
+  if (!quote || quote.deliveredCents > order.maxDeliveredCents) return false;
+  order.committedSellerCatId = quote.sellerCatId;
+  order.quotedSellerCents = quote.sellerPriceCents;
+  order.quotedRouteCatIds = [...quote.routeCatIds];
+  order.quotedFeesByCatId = { ...quote.feesByCatId };
+  order.quoteFinancingReserveCents = 0;
+  order.quoteRevision = state.lawbookRevision;
+  publishMarketBroadcast(state, {
+    kind: "demand-open",
+    subjectId: order.id,
+    itemId: order.itemId,
+    sourceCatId: order.destinationCatId,
+    amountCents: quote.deliveredCents,
+    reason: `可靠报价由 ${quote.sellerCatId} 承诺`,
+  });
+  // Locking a quote is market bookkeeping, not authority to make the seller
+  // produce.  A seller without stock will see the committed order during its
+  // next shared-law decision and may then create the quoted production plan.
+  // Plans created as part of an already-authorized atomic bundle are committed
+  // recursively by createPlan() and retain that real law id.
+  return true;
+}
+
+export function productionOpportunitiesForCat(
+  state: GameState,
+  cat: CatState,
+  priceOf: (itemId: ItemId) => number,
+): ProductionOpportunity[] {
+  const opportunities: ProductionOpportunity[] = [];
+  const usableRecipes = state.unlockedRecipes.map((id) => RECIPE_BY_ID.get(id))
+    .filter((recipe): recipe is NonNullable<typeof recipe> => Boolean(recipe && localRecipeIsUsable(state, cat, recipe.output)));
+  const openBountyItems = new Set(bountyBroadcastsForCat(state, cat.id).map((broadcast) => broadcast.itemId));
+  const claimedBountyItems = new Set(state.discoveryBounties.filter((bounty) => (
+    !bounty.paid && bounty.claimedByCatId !== null
+  )).map((bounty) => bounty.itemId));
+
+  for (const recipe of usableRecipes) {
+    // A signed open bounty announces that only the first producer receives the
+    // discovery premium. Once another cat has claimed it, duplicating the same
+    // undiscovered output for speculative inventory has no conservative value.
+    // Order-backed production remains available through the order opportunity
+    // below, and ordinary inventory production resumes after bounty closure.
+    if (claimedBountyItems.has(recipe.output)) continue;
+    const inventoryOpportunity = evaluateProductionOpportunity(state, cat, recipe, priceOf, {
+      reason: "external-sale",
+      terminalOrderId: null,
     });
-  for (const recipe of recipes) {
-    const revenue = externalNetCentsAt(state, recipe.output, priceOf, cat);
-    if (recipe.inputs.length > 0 && revenue <= estimatedInputCost(state, recipe.id, priceOf)) continue;
-    if (buyingPowerCents(state, cat, priceOf) < requiredWorkingCapitalCents(state, cat, recipe.id, priceOf)) continue;
-    return Boolean(createPlan(state, cat, recipe.output, null, revenue, "external-sale"));
+    if (inventoryOpportunity) opportunities.push(inventoryOpportunity);
+  }
+
+  for (const recipe of usableRecipes) {
+    if (!openBountyItems.has(recipe.output)) continue;
+    const bounty = state.discoveryBounties.find((entry) => entry.itemId === recipe.output && !entry.paid
+      && (entry.claimedByCatId === null || entry.claimedByCatId === cat.id));
+    if (!bounty) continue;
+    const bountyOpportunity = evaluateProductionOpportunity(state, cat, recipe, priceOf, {
+      reason: "bounty",
+      terminalOrderId: null,
+      bountyCents: bounty.amountCents,
+    });
+    if (bountyOpportunity) opportunities.push(bountyOpportunity);
+  }
+
+  for (const order of state.demandOrders.filter((entry) => entry.status === "open"
+    && entry.committedSellerCatId === cat.id)) {
+    if (order.destinationCatId === cat.id) continue;
+    if (state.procurementPlans.some((plan) => plan.status !== "cancelled" && plan.terminalOrderId === order.id)) continue;
+    const recipe = usableRecipes.find((entry) => entry.output === order.itemId);
+    if (!recipe) continue;
+    const route = order.quotedRouteCatIds ?? findTransportRoute(state, cat.id, order.destinationCatId);
+    if (!route || route.length < 2) continue;
+    const orderOpportunity = evaluateProductionOpportunity(state, cat, recipe, priceOf, {
+      reason: "order",
+      terminalOrderId: order.id,
+      orderGrossCents: order.quotedSellerCents ?? 0,
+      outboundTransportCostCents: 0,
+      outboundTransportBurden: route.length - 1,
+    });
+    if (orderOpportunity) opportunities.push(orderOpportunity);
+  }
+
+  const profitable = opportunities.filter((entry) => entry.netAssetGainCents > 0 && entry.expectedRevenueCents > 0);
+  const committedOrders = profitable.filter((entry) => entry.reason === "order");
+  return (committedOrders.length > 0 ? committedOrders : profitable).sort(opportunitySort);
+}
+
+function directCraftFundingCandidate(
+  state: GameState,
+  cat: CatState,
+  recipeId: string,
+  priceOf: (itemId: ItemId) => number,
+): { opportunity: ProductionOpportunity; funding: FundedBundleCertificate } | null {
+  const recipe = RECIPE_BY_ID.get(recipeId);
+  if (!recipe || !localRecipeIsUsable(state, cat, recipe.output)) return null;
+  for (const opportunity of productionOpportunitiesForCat(state, cat, priceOf)
+    .filter((entry) => entry.recipeId === recipeId)
+    .sort(opportunitySort)) {
+    const funding = bundleFundingCertificate(state, cat, recipe, opportunity.expectedRevenueCents, priceOf);
+    if (funding) return { opportunity, funding };
+  }
+  return null;
+}
+
+/** Read-only preflight used while the shared law loop selects its first action. */
+export function canFinanceDirectCraft(
+  state: GameState,
+  cat: CatState,
+  recipeId: string,
+  priceOf: (itemId: ItemId) => number,
+): boolean {
+  const active = planForCat(state, cat.id);
+  if (active) return active.recipeId === recipeId;
+  return directCraftFundingCandidate(state, cat, recipeId, priceOf) !== null;
+}
+
+/**
+ * Turn a law's direct craft request into the same fully quoted, non-loss plan
+ * used by choose()/earnCoins().  No inventory or recipe rule is bypassed; if
+ * the complete basket cannot be financed, this function leaves state intact.
+ */
+export function ensureDirectCraftPlan(
+  state: GameState,
+  cat: CatState,
+  recipeId: string,
+  priceOf: (itemId: ItemId) => number,
+  createdByBehaviorLawId: string,
+): boolean {
+  const active = planForCat(state, cat.id);
+  if (active) return active.recipeId === recipeId;
+  const candidate = directCraftFundingCandidate(state, cat, recipeId, priceOf);
+  if (!candidate) return false;
+  const { opportunity, funding } = candidate;
+  if (opportunity.reason === "bounty" && !claimDiscoveryBounty(state, cat.id, opportunity.itemId)) return false;
+  const created = createPlan(
+    state,
+    cat,
+    opportunity.itemId,
+    opportunity.terminalOrderId,
+    funding,
+    opportunity.reason,
+    createdByBehaviorLawId,
+    priceOf,
+  );
+  if (created) return true;
+  if (opportunity.reason === "bounty") {
+    const bounty = state.discoveryBounties.find((entry) => entry.itemId === opportunity.itemId
+      && entry.claimedByCatId === cat.id && !entry.paid);
+    if (bounty) bounty.claimedByCatId = null;
   }
   return false;
+}
+
+function tryCreateBestProductionPlanForCat(
+  state: GameState,
+  cat: CatState,
+  priceOf: (itemId: ItemId) => number,
+  adjustments: ReadonlyArray<ProductionScoreAdjustment>,
+  createdByBehaviorLawId: string,
+): boolean {
+  const ranked = rankProductionOpportunities(productionOpportunitiesForCat(state, cat, priceOf), adjustments);
+  for (const opportunity of ranked) {
+    // A shared law may deliberately make an otherwise profitable opportunity
+    // unattractive for this workstation. Negative/zero scores mean "do not
+    // volunteer", rather than merely sorting the job to the end and claiming
+    // its one-shot bounty anyway.
+    if (opportunity.reason !== "order" && adjustedOpportunityScore(opportunity, adjustments) <= 0) continue;
+    const recipe = RECIPE_BY_ID.get(opportunity.recipeId);
+    if (!recipe) continue;
+    const funding = bundleFundingCertificate(state, cat, recipe, opportunity.expectedRevenueCents, priceOf);
+    if (!funding) continue;
+    if (opportunity.reason === "bounty" && !claimDiscoveryBounty(state, cat.id, opportunity.itemId)) continue;
+    const plan = createPlan(
+      state,
+      cat,
+      opportunity.itemId,
+      opportunity.terminalOrderId,
+      funding,
+      opportunity.reason,
+      createdByBehaviorLawId,
+      priceOf,
+    );
+    if (plan) return true;
+    if (opportunity.reason === "bounty") {
+      const bounty = state.discoveryBounties.find((entry) => entry.itemId === opportunity.itemId
+        && entry.claimedByCatId === cat.id && !entry.paid);
+      if (bounty) bounty.claimedByCatId = null;
+    }
+  }
+  return false;
+}
+
+function refreshActivePlanEconomics(
+  _state: GameState,
+  _cat: CatState,
+  _plan: ProcurementPlan,
+  _priceOf: (itemId: ItemId) => number,
+): void {
+  // A funded plan is a commitment. Later law/price changes affect only the next
+  // plan; they cannot rewrite the frozen revenue or input quote certificate.
 }
 
 function outstandingCarrierLegs(state: GameState, catId: string): number {
@@ -626,16 +1362,52 @@ export function carrierFeeCents(state: GameState, cat: CatState, priceOf: (itemI
   const bestLiquidation = Object.entries(cat.inventory).reduce((best, [itemId, quantity]) => (
     quantity > 0 ? Math.max(best, externalNetCents(state, itemId, priceOf)) : best
   ), 0);
-  const base = Math.max(1, Math.min(25, Math.floor(bestLiquidation / 100) + 1));
+  const base = Math.max(1, Math.min(MAX_CARRIER_FEE_CENTS, Math.floor(bestLiquidation / 100) + 1));
   return Math.ceil(base * (1 + landmarkEffectsAt(state, cat.position).carrierFeeBonus));
 }
 
+function promisedOrderOutputQuantity(
+  state: GameState,
+  catId: string,
+  itemId: ItemId,
+  exceptOrderId: string | null = null,
+): number {
+  return state.demandOrders.filter((order) => order.status === "open"
+    && order.id !== exceptOrderId
+    && order.committedSellerCatId === catId
+    && order.itemId === itemId).length;
+}
+
+function earlierPromisedOrderOutputQuantity(state: GameState, order: DemandOrder): number {
+  return state.demandOrders.filter((entry) => entry.status === "open"
+    && entry.committedSellerCatId === order.committedSellerCatId
+    && entry.itemId === order.itemId
+    && (entry.createdAt < order.createdAt
+      || (entry.createdAt === order.createdAt && stableIdCompare(entry.id, order.id) < 0))).length;
+}
+
+function availableStockForCommittedOrder(state: GameState, order: DemandOrder): number {
+  const seller = state.cats.find((cat) => cat.id === order.committedSellerCatId);
+  if (!seller) return 0;
+  return Math.max(0, (seller.inventory[order.itemId] ?? 0)
+    - activePlanProtectedQuantity(state, seller.id, order.itemId)
+    - buildingOfferReservedQuantity(state, seller.id, order.itemId)
+    - earlierPromisedOrderOutputQuantity(state, order));
+}
+
+function activePlanProtectedQuantity(state: GameState, catId: string, itemId: ItemId): number {
+  return state.procurementPlans.filter((plan) => plan.catId === catId && plan.status === "active")
+    .reduce((total, plan) => {
+      const recipe = RECIPE_BY_ID.get(plan.recipeId);
+      return total + (recipe ? effectiveRecipeInputs(recipe, state.difficulty)
+        .find((input) => input.itemId === itemId)?.quantity ?? 0 : 0);
+    }, 0);
+}
+
 export function unreservedOwnedQuantity(state: GameState, cat: CatState, itemId: ItemId): number {
-  const plan = planForCat(state, cat.id);
-  const recipe = plan ? RECIPE_BY_ID.get(plan.recipeId) : undefined;
-  const protectedQuantity = recipe ? effectiveRecipeInputs(recipe, state.difficulty).find((input) => input.itemId === itemId)?.quantity ?? 0 : 0;
-  return Math.max(0, (cat.inventory[itemId] ?? 0) - protectedQuantity
-    - buildingOfferReservedQuantity(state, cat.id, itemId));
+  return Math.max(0, (cat.inventory[itemId] ?? 0) - activePlanProtectedQuantity(state, cat.id, itemId)
+    - buildingOfferReservedQuantity(state, cat.id, itemId)
+    - promisedOrderOutputQuantity(state, cat.id, itemId));
 }
 
 /**
@@ -645,7 +1417,29 @@ export function unreservedOwnedQuantity(state: GameState, cat: CatState, itemId:
  */
 export function unofferedOwnedQuantity(state: GameState, cat: CatState, itemId: ItemId): number {
   return Math.max(0, (cat.inventory[itemId] ?? 0)
-    - buildingOfferReservedQuantity(state, cat.id, itemId));
+    - buildingOfferReservedQuantity(state, cat.id, itemId)
+    - promisedOrderOutputQuantity(state, cat.id, itemId));
+}
+
+/**
+ * Inputs usable by one queued plan after preserving the exact requirements of
+ * every other active plan owned by the same cat.  This prevents the first job
+ * in a queue from consuming cargo financed for the second job merely because
+ * both units share the cat's aggregate inventory record.
+ */
+export function availableInputQuantityForPlan(
+  state: GameState,
+  cat: CatState,
+  plan: ProcurementPlan,
+  itemId: ItemId,
+): number {
+  const reservedForOtherPlans = state.procurementPlans.filter((entry) => entry.catId === cat.id
+    && entry.status === "active" && entry.id !== plan.id).reduce((total, entry) => {
+      const recipe = RECIPE_BY_ID.get(entry.recipeId);
+      return total + (recipe ? effectiveRecipeInputs(recipe, state.difficulty)
+        .find((input) => input.itemId === itemId)?.quantity ?? 0 : 0);
+    }, 0);
+  return Math.max(0, unofferedOwnedQuantity(state, cat, itemId) - reservedForOtherPlans);
 }
 
 export function syncBuildingOfferForCat(state: GameState, cat: CatState, priceOf: (itemId: ItemId) => number): void {
@@ -706,6 +1500,8 @@ export function buyBuildingOffer(state: GameState, offerId: string): { ok: boole
   if (seller.inventory[offer.itemId] <= 0) delete seller.inventory[offer.itemId];
   applyPrivateIncome(seller, offer.askCents);
   state.playerBuildingInventory[offer.itemId] = (state.playerBuildingInventory[offer.itemId] ?? 0) + 1;
+  recordWarehousePurchase(state, offer.itemId, 1);
+  publishWarehouseBroadcast(state, seller.id, offer.itemId);
   offer.status = "purchased";
   offer.closedAt = state.simTime;
   publishMarketBroadcast(state, {
@@ -717,31 +1513,29 @@ export function buyBuildingOffer(state: GameState, offerId: string): { ok: boole
     reason: "purchased-by-player",
   });
   offer.closeReason = "玩家收购并存入仓库";
-  recordSystemLawHit(state, "starter-law-cent-settlement");
   state.dirtyDecisions = true;
   return { ok: true };
 }
 
 function fundContract(state: GameState, order: DemandOrder, totalCents: number, priceOf: (itemId: ItemId) => number): boolean {
-  if (totalCents > order.reservedCents || totalCents > order.maxDeliveredCents) return false;
+  if (totalCents > order.maxDeliveredCents) return false;
   if (order.buyerKind === "treasury") {
+    if (totalCents > order.reservedCents) return false;
     state.treasuryCoins += order.reservedCents - totalCents;
     return true;
   }
   const buyer = state.cats.find((cat) => cat.id === order.buyerCatId);
   if (!buyer) return false;
-  buyer.escrowReservedCents = Math.max(0, buyer.escrowReservedCents - order.reservedCents);
   const cash = Math.min(buyer.coins, totalCents);
-  buyer.coins -= cash;
   const borrowed = totalCents - cash;
+  const financingFee = borrowed > 0 ? maximumLoanFeeCents(borrowed) : 0;
+  const otherReservations = Math.max(0, buyer.escrowReservedCents - order.reservedCents);
+  const remainingCapacity = buyer.coins + creditAvailableCents(state, buyer, priceOf) - otherReservations;
+  if (totalCents + financingFee > remainingCapacity || totalCents + financingFee > order.reservedCents) return false;
+  buyer.escrowReservedCents = otherReservations;
+  buyer.coins -= cash;
   if (borrowed > 0) {
-    const available = creditAvailableCents(state, buyer, priceOf);
-    if (borrowed > available) {
-      buyer.coins += cash;
-      buyer.escrowReservedCents += order.reservedCents;
-      return false;
-    }
-    buyer.debtCents += borrowed + Math.max(1, Math.ceil(borrowed * LOAN_RATE));
+    buyer.debtCents += borrowed + financingFee;
     recordSystemLawHit(state, "starter-law-private-credit");
   }
   return true;
@@ -756,25 +1550,42 @@ function closeAsContracted(state: GameState, order: DemandOrder, sellerCatId: st
 
 export function acceptProfitableOrdersForCat(state: GameState, seller: CatState, priceOf: (itemId: ItemId) => number): void {
   if (seller.action) return;
-  const signals = signalsForCat(state, seller.id);
+  const promisedOrderIds = new Set(state.procurementPlans.filter((plan) => plan.catId === seller.id
+    && plan.status === "completed" && plan.terminalOrderId !== null).map((plan) => plan.terminalOrderId!));
+  const visibleSignals = signalsForCat(state, seller.id);
+  const visibleOrderIds = new Set(visibleSignals.map((signal) => signal.orderId));
+  const promisedSignals = state.demandOrders.filter((order) => (
+    order.status === "open" && promisedOrderIds.has(order.id) && !visibleOrderIds.has(order.id)
+  )).map((order) => ({
+    orderId: order.id,
+    catId: "*",
+    routeCatIds: [order.destinationCatId],
+    hops: 0,
+    estimatedFreightCents: 0,
+    effectiveBidCents: order.maxDeliveredCents,
+    receivedAt: order.createdAt,
+  }));
+  const signals = [...visibleSignals, ...promisedSignals].sort((left, right) => (
+    Number(promisedOrderIds.has(right.orderId)) - Number(promisedOrderIds.has(left.orderId))
+    || left.receivedAt - right.receivedAt
+    || stableIdCompare(left.orderId, right.orderId)
+  ));
   for (const signal of signals) {
       const order = state.demandOrders.find((entry) => entry.id === signal.orderId && entry.status === "open");
+      if (!order || !ensureReliableQuoteForOrder(state, order, priceOf)
+        || order.committedSellerCatId !== seller.id) continue;
       const buildingOrder = order ? state.buildingOrders.find((entry) => entry.demandOrderId === order.id) : undefined;
       const localBuildingSale = Boolean(buildingOrder && order?.destinationCatId === seller.id);
-      if (!order || unreservedOwnedQuantity(state, seller, order.itemId) < 1) continue;
-      const route = findTransportRoute(state, seller.id, order.destinationCatId);
+      const availableForOrder = order ? availableStockForCommittedOrder(state, order) : 0;
+      if (availableForOrder < 1) continue;
+      const route = order.quotedRouteCatIds ?? findTransportRoute(state, seller.id, order.destinationCatId);
       if (!route || (route.length < 2 && !localBuildingSale)) continue;
       const intermediates = route.slice(1, -1).map((id) => state.cats.find((cat) => cat.id === id)).filter((cat): cat is CatState => Boolean(cat));
       if (intermediates.some((cat) => outstandingCarrierLegs(state, cat.id) >= 2)) continue;
-      const producerPlan = state.procurementPlans.find((plan) => plan.catId === seller.id
-        && plan.terminalOrderId === order.id && plan.outputItemId === order.itemId && plan.status !== "cancelled");
-      const sellerPriceCents = Math.max(
-        externalNetCents(state, order.itemId, priceOf) + 1,
-        producerPlan?.expectedRevenueCents ?? 0,
-      );
-      const feesByCatId = Object.fromEntries(intermediates.map((cat) => [cat.id, carrierFeeCents(state, cat, priceOf)]));
+      const sellerPriceCents = order.quotedSellerCents ?? 0;
+      const feesByCatId = order.quotedFeesByCatId ?? {};
       const total = sellerPriceCents + Object.values(feesByCatId).reduce((sum, fee) => sum + fee, 0);
-      if (total > order.maxDeliveredCents || !fundContract(state, order, total, priceOf)) continue;
+      if (sellerPriceCents <= 0 || total > order.maxDeliveredCents || !fundContract(state, order, total, priceOf)) continue;
       const contract: ShipmentContract = {
         id: `contract-${state.nextContractIndex++}`,
         orderId: order.id,
@@ -800,7 +1611,6 @@ export function acceptProfitableOrdersForCat(state: GameState, seller: CatState,
         contract.deliveredAt = state.simTime;
         contract.escrowCents = 0;
         applyPrivateIncome(seller, sellerPriceCents);
-        recordSystemLawHit(state, "starter-law-cent-settlement");
       }
       state.shipmentContracts.push(contract);
       if (buildingOrder) {
@@ -813,12 +1623,34 @@ export function acceptProfitableOrdersForCat(state: GameState, seller: CatState,
 }
 
 export function acceptProfitableOrders(state: GameState, priceOf: (itemId: ItemId) => number): void {
-  for (const seller of [...state.cats].sort((a, b) => a.createdIndex - b.createdIndex)) {
+  const oldestReadyOrderBySeller = new Map<string, number>();
+  for (const order of state.demandOrders) {
+    if (order.status !== "open" || !order.committedSellerCatId
+      || availableStockForCommittedOrder(state, order) < 1) continue;
+    oldestReadyOrderBySeller.set(order.committedSellerCatId, Math.min(
+      oldestReadyOrderBySeller.get(order.committedSellerCatId) ?? Number.POSITIVE_INFINITY,
+      order.createdAt,
+    ));
+  }
+  for (const seller of [...state.cats].sort((a, b) => (
+    (oldestReadyOrderBySeller.get(a.id) ?? Number.POSITIVE_INFINITY)
+      - (oldestReadyOrderBySeller.get(b.id) ?? Number.POSITIVE_INFINITY)
+      || a.createdIndex - b.createdIndex
+  ))) {
     acceptProfitableOrdersForCat(state, seller, priceOf);
   }
 }
 
-export function refreshCatMarket(state: GameState, cat: CatState, priceOf: (itemId: ItemId) => number): void {
+export function refreshCatMarket(
+  state: GameState,
+  cat: CatState,
+  priceOf: (itemId: ItemId) => number,
+  adjustments: ReadonlyArray<ProductionScoreAdjustment> = [],
+  createdByBehaviorLawId = "direct-market-test",
+): void {
+  for (const order of state.demandOrders.filter((entry) => entry.status === "open" && !entry.committedSellerCatId)) {
+    ensureReliableQuoteForOrder(state, order, priceOf);
+  }
   let plan = planForCat(state, cat.id);
   if (plan?.terminalOrderId) {
     const stillBroadcast = signalsForCat(state, cat.id).some((signal) => signal.orderId === plan?.terminalOrderId);
@@ -831,14 +1663,33 @@ export function refreshCatMarket(state: GameState, cat: CatState, priceOf: (item
     cancelPlan(state, plan, "本工位不再满足生产位置要求");
     plan = undefined;
   }
+  if (plan?.reason === "external-sale" && !cat.action) {
+    const opportunities = rankProductionOpportunities(
+      productionOpportunitiesForCat(state, cat, priceOf),
+      adjustments,
+    );
+    const current = opportunities.find((entry) => entry.reason === "external-sale"
+      && entry.itemId === plan?.outputItemId);
+    const best = opportunities[0];
+    // Speculative inventory work has no customer commitment. A selfish cat may
+    // therefore abandon it between actions when a strictly better bounty or
+    // paid order appears. Locked actions and binding shipment contracts remain
+    // untouched; only still-open procurement orders are refunded/cancelled.
+    if (best && (!current
+      || adjustedOpportunityScore(best, adjustments) > adjustedOpportunityScore(current, adjustments))
+      && (best.itemId !== plan.outputItemId || best.reason !== plan.reason)) {
+      cancelPlan(state, plan, `发现更高净资产增益率机会：${best.itemId}`);
+      plan = undefined;
+    }
+  }
   if (!plan) {
-    tryCreateOrderPlanForCat(state, cat, priceOf)
-      || tryCreateBountyPlanForCat(state, cat, priceOf)
-      || tryCreateExternalPlanForCat(state, cat, priceOf);
+    tryCreateBestProductionPlanForCat(state, cat, priceOf, adjustments, createdByBehaviorLawId);
     plan = planForCat(state, cat.id);
   }
-  if (plan) ensurePlanOrders(state, plan, priceOf);
-  acceptProfitableOrdersForCat(state, cat, priceOf);
+  if (plan) {
+    refreshActivePlanEconomics(state, cat, plan, priceOf);
+    ensurePlanOrders(state, plan, priceOf);
+  }
   syncBuildingOfferForCat(state, cat, priceOf);
 }
 
@@ -873,7 +1724,7 @@ export function readyContractForCat(state: GameState, catId: string): ShipmentCo
   return state.shipmentContracts.filter((contract) => contract.status !== "delivered"
     && contract.routeCatIds[contract.currentLeg] === catId
     && contract.custodianCatId === catId)
-    .sort((a, b) => a.acceptedAt - b.acceptedAt || a.id.localeCompare(b.id))[0];
+    .sort((a, b) => a.acceptedAt - b.acceptedAt || stableIdCompare(a.id, b.id))[0];
 }
 
 function directionBetween(from: CatState, to: CatState): Direction | null {
@@ -910,18 +1761,16 @@ export function expectedActionGainCents(
     if (!contract) return -1;
     return contract.currentLeg === 0 ? contract.sellerPriceCents : contract.feesByCatId[cat.id] ?? 1;
   }
-  if (action.type === "sell") return externalNetCentsAt(state, action.itemId, priceOf, cat);
   const recipe = RECIPE_BY_ID.get(action.recipeId);
   if (!recipe) return -1;
   const plan = planForCat(state, cat.id);
-  if (plan && itemDependencyDistance(recipe.output, plan.outputItemId) >= 0) {
-    const cost = estimatedInputCost(state, plan.recipeId, priceOf);
-    return Math.max(1, plan.expectedRevenueCents - cost);
+  if (plan && plan.recipeId === recipe.id && plan.phase === "ready") {
+    return Math.max(MIN_PLAN_PROFIT_CENTS, plan.expectedProfitCents ?? MIN_PLAN_PROFIT_CENTS);
   }
   const heardOrder = signalsForCat(state, cat.id)
     .map((signal) => state.demandOrders.find((order) => order.id === signal.orderId && order.status === "open"))
     .filter((order): order is DemandOrder => Boolean(order && itemDependencyDistance(recipe.output, order.itemId) >= 0))
-    .sort((left, right) => right.maxDeliveredCents - left.maxDeliveredCents || left.id.localeCompare(right.id))[0];
+    .sort((left, right) => right.maxDeliveredCents - left.maxDeliveredCents || stableIdCompare(left.id, right.id))[0];
   if (heardOrder) {
     const targetRecipe = RECIPE_BY_OUTPUT.get(heardOrder.itemId);
     return Math.max(1, heardOrder.maxDeliveredCents - estimatedInputCost(state, targetRecipe?.id ?? "", priceOf));
@@ -938,7 +1787,6 @@ export function planForCatPublic(state: GameState, catId: string): ProcurementPl
 export function settleContractLeg(state: GameState, contractId: string): { delivered: boolean; recipientCatId: string | null; itemId: ItemId } | null {
   const contract = state.shipmentContracts.find((entry) => entry.id === contractId && entry.status !== "delivered");
   if (!contract) return null;
-  recordSystemLawHit(state, "starter-law-cent-settlement");
   const senderId = contract.routeCatIds[contract.currentLeg];
   const sender = state.cats.find((cat) => cat.id === senderId);
   if (sender) {

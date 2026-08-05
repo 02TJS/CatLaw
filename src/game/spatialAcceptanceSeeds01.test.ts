@@ -1,6 +1,6 @@
 import { it } from "vitest";
-import { verifyTeachingGoalRange } from "./spatialAcceptanceTestHelpers";
+import { verifyGreedyFoundationRange } from "./spatialAcceptanceTestHelpers";
 
-it("keeps the teaching goal through item fifteen for seeds 1-25 with player batch sales", () => {
-  verifyTeachingGoalRange(1, 25);
-}, 30_000);
+it("lets asset-greedy cats reach item fifteen for seeds 1-25 after recipe purchases only", () => {
+  verifyGreedyFoundationRange(1, 25);
+}, 60_000);

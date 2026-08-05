@@ -31,20 +31,17 @@ export interface Qa35Operation {
 type RecordOperation = (operation: Omit<Qa35Operation, "sequence" | "atMs">) => void;
 
 export function qualificationPriceLaw(): LawDraft {
-  const sourceCode = "function decide(ctx) { return null; }";
+  const sourceCode = "function decide(ctx) { setPrice('factory', 2); return null; }";
   const checked = validateLawSource(sourceCode);
   return {
-    title: "悬赏计划准入条例",
-    playerText: "全部商品价格仅上调 1%，作为第 16 项以后认领悬赏的最低正向价格指引。",
-    summary: "全品类实际售价为基础价格的 101%；物流优先级由行为法决定。",
+    title: "工厂项目溢价条例",
+    playerText: "把工厂价格提高到基础价的 2 倍，让第 20 项把预期收益传给砖、齿轮、工具和玻璃作业。",
+    summary: "只提高工厂价格；第 16–19 项仍由自然资产贪心完成，后续物流优先级由行为法决定。",
     sourceCode,
     astHash: hashSource(sourceCode),
     examples: [],
     warnings: [],
-    category: "price",
-    taxRate: null,
-    priceItemId: "*",
-    priceMultiplier: 1.01,
+    program: { version: 2 },
     validation: { syntax: checked.ok, safety: checked.ok, examplesPassed: 0, examplesTotal: 0, messages: checked.messages },
   };
 }
@@ -53,7 +50,7 @@ export function logisticsCoordinationLaw(): LawDraft {
   const sourceCode = `function decide(ctx) {
   if (orderCount("*") > 0) {
     adjust("craft", "*", 2.5, 60000);
-    adjust("sell", "*", 0.2, -20000);
+    adjust("pass", "*", 1.4, 10000);
   }
   if (bounty("magnet") > 0 || bounty("wheel") > 0 || bounty("fuel") > 0 || bounty("coolant") > 0 || bounty("antenna") > 0 || bounty("machine_tool") > 0) {
     adjust("craft", "metal", 4, 80000);
@@ -80,10 +77,7 @@ export function logisticsCoordinationLaw(): LawDraft {
     astHash: hashSource(sourceCode),
     examples: [],
     warnings: [],
-    category: "behavior",
-    taxRate: null,
-    priceItemId: null,
-    priceMultiplier: null,
+    program: { version: 2 },
     validation: { syntax: checked.ok, safety: checked.ok, examplesPassed: 0, examplesTotal: 0, messages: checked.messages },
   };
 }
@@ -328,7 +322,7 @@ export function playSeed(
     costCents: 0,
   });
   const spendingStart = state.treasuryCoins;
-  buyRecipeRange(state, 10, 15, record, "phase1");
+  buyRecipeRange(state, 11, 15, record, "phase1");
   while (state.simTime < scaled(300_000) && !allCrafted(state, 15)) {
     const fromMs = state.simTime * state.simulationSpeed;
     advanceGame(state, scaled(30_000));
@@ -373,16 +367,42 @@ export function playSeed(
     crafted: state.itemStats[recipe.output].crafted,
     bountyOpen: state.marketBroadcasts.some((broadcast) => broadcast.kind === "bounty-open" && broadcast.itemId === recipe.output),
   }));
-  const phase2Stalled = phase2Items.every((entry) => entry.crafted === 0 && entry.bountyOpen);
+  const phase2Stalled = phase2Items.slice(0, 4).every((entry) => entry.crafted > 0 && !entry.bountyOpen)
+    && phase2Items[4].crafted === 0 && phase2Items[4].bountyOpen;
   if (!phase2Stalled) throw new Error(`seed ${seed} did not stall at items 16-20`);
   record({
     stage: "phase2",
     kind: "phase-check",
     target: "items:16-20",
-    detail: "连续观察 300 模拟秒：五项产量仍为 0，且五张首次发现悬赏广播保持开放",
+    detail: "连续观察 300 模拟秒：线缆、电池、化学品、底盘已自然完成，工厂仍为 0 且悬赏保持开放",
     costCents: 0,
   });
 
+  const qualificationTreasuryBefore = state.treasuryCoins;
+  const qualificationLaw = enactLaw(state, qualificationPriceLaw());
+  if (!qualificationLaw.ok || !qualificationLaw.law) throw new Error(`enact qualification price law: ${qualificationLaw.error}`);
+  record({
+    stage: "phase3",
+    kind: "law-enact",
+    target: "factory",
+    detail: "工厂 ×2：提高第 20 项预期收益并传导给既有配料作业，不改变第 22–30 项价格",
+    costCents: qualificationTreasuryBefore - state.treasuryCoins,
+    lawId: qualificationLaw.law.id,
+  });
+  const factoryDeadline = state.simTime + scaled(600_000);
+  while (state.simTime < factoryDeadline && state.itemStats.factory.crafted === 0) {
+    const fromMs = state.simTime * state.simulationSpeed;
+    advanceGame(state, Math.min(scaled(30_000), factoryDeadline - state.simTime));
+    captureFirstCrafts();
+    record({
+      stage: "phase3",
+      kind: "time-advance",
+      target: "factory",
+      detail: `工厂价格突破：确定性时钟从 ${fromMs}ms 推进到 ${state.simTime * state.simulationSpeed}ms`,
+      costCents: 0,
+    });
+  }
+  if (state.itemStats.factory.crafted === 0) throw new Error(`seed ${seed} did not break the factory bottleneck with x2 price`);
   const sharedLawTreasuryBefore = state.treasuryCoins;
   const sharedLaw = enactLaw(state, logisticsCoordinationLaw());
   if (!sharedLaw.ok || !sharedLaw.law) throw new Error(`enact logistics coordination law: ${sharedLaw.error}`);
@@ -393,17 +413,6 @@ export function playSeed(
     detail: "颁布 22—30 订单物流协调法：订单触发补料与留存，机械/电子缺口按未结悬赏动态加权",
     costCents: sharedLawTreasuryBefore - state.treasuryCoins,
     lawId: sharedLaw.law.id,
-  });
-  const qualificationTreasuryBefore = state.treasuryCoins;
-  const qualificationLaw = enactLaw(state, qualificationPriceLaw());
-  if (!qualificationLaw.ok || !qualificationLaw.law) throw new Error(`enact qualification price law: ${qualificationLaw.error}`);
-  record({
-    stage: "phase3",
-    kind: "law-enact",
-    target: "all-items",
-    detail: "悬赏准入：全品类仅 ×1.01，满足 16+ 正向价格指引硬门槛，不承担物流调度",
-    costCents: qualificationTreasuryBefore - state.treasuryCoins,
-    lawId: qualificationLaw.law.id,
   });
   buyRecipeRange(state, 21, 27, record);
   const addedCats = addExpansionChain(state, record);
@@ -449,9 +458,10 @@ export function playSeed(
     detail: "前 35 项均有实际制造记录；车辆已出现，工厂范围链路成立",
     costCents: 0,
   });
-  const logisticsItemIds = new Set(RECIPES.slice(21, 30).map((recipe) => recipe.output));
-  const noPerItemPriceLaws22To30 = !state.lawHistory.some((law) => law.category === "price"
-    && law.priceItemId !== "*" && law.priceItemId !== null && logisticsItemIds.has(law.priceItemId));
+  const logisticsItemIds = RECIPES.slice(21, 30).map((recipe) => recipe.output);
+  const noPerItemPriceLaws22To30 = !state.lawHistory.some((law) => logisticsItemIds.some((itemId) => (
+    law.sourceCode.includes(`setPrice('${itemId}'`) || law.sourceCode.includes(`setPrice("${itemId}"`)
+  )));
   return {
     seed,
     difficulty,
@@ -494,7 +504,7 @@ if (entryPath && import.meta.url === `file:///${entryPath}`) {
       })),
       orders: result.state.demandOrders.filter((order) => order.status === "open"),
       contracts: result.state.shipmentContracts.filter((contract) => contract.status !== "delivered"),
-      signals: result.state.orderSignals,
+      demandBroadcasts: result.state.marketBroadcasts.filter((broadcast) => broadcast.kind.startsWith("demand-")),
       cats: result.state.cats.map((cat) => ({ id: cat.id, position: cat.position, inventory: cat.inventory, coins: cat.coins, debt: cat.debtCents, escrow: cat.escrowReservedCents, action: cat.action, decision: cat.lastDecision })),
     }, null, 2)}\n`);
   }

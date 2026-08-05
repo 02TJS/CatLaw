@@ -81,13 +81,14 @@ const targetLabel = (operation: Qa35Operation) => itemIndex.has(operation.target
   : operation.target;
 
 const recipeGroups = [
-  { label: "第 10–15 项", at: 0, operations: operations.filter((op) => op.kind === "recipe-unlock" && [10, 11, 12, 13, 14, 15].includes(itemIndex.get(op.target) ?? 0)) },
+  { label: "第 11–15 项", at: 0, operations: operations.filter((op) => op.kind === "recipe-unlock" && [11, 12, 13, 14, 15].includes(itemIndex.get(op.target) ?? 0)) },
   { label: "第 16–20 项", at: result.phase1.completeAtMs, operations: operations.filter((op) => op.kind === "recipe-unlock" && [16, 17, 18, 19, 20].includes(itemIndex.get(op.target) ?? 0)) },
   { label: "第 21–27 项", at: result.phase1.completeAtMs + result.phase2.observedForMs, operations: operations.filter((op) => op.kind === "recipe-unlock" && (itemIndex.get(op.target) ?? 0) >= 21 && (itemIndex.get(op.target) ?? 0) <= 27) },
   { label: "第 28–35 项", at: operations.find((op) => op.kind === "building-place")?.atMs ?? 0, operations: operations.filter((op) => op.kind === "recipe-unlock" && (itemIndex.get(op.target) ?? 0) >= 28 && (itemIndex.get(op.target) ?? 0) <= 35) },
 ];
 
-const qualificationPriceLaws = operations.filter((operation) => operation.kind === "law-enact" && operation.detail.startsWith("悬赏准入"));
+const qualificationPriceLaws = operations.filter((operation) => operation.kind === "law-enact"
+  && operation.target === "factory" && operation.detail.startsWith("工厂 ×2"));
 const baseLogisticsLaws = operations.filter((operation) => operation.kind === "law-enact" && operation.detail.startsWith("颁布 22—30"));
 const logisticsLaw = state.lawHistory.find((law) => law.id === result.phase3.sharedLawId);
 const buildingOffer = state.buildingOffers.find((offer) => offer.status === "purchased" && offer.itemId === "factory");
@@ -186,7 +187,7 @@ const mapSvg = (() => {
 
 const tracePayload = {
   generatedAt: new Date().toISOString(),
-  version: "0.11.1",
+  version: "0.12.3",
   seed,
   difficulty,
   difficultyProfile: profile,
@@ -240,9 +241,9 @@ const html = `<!doctype html>
 <body>
 <main>
   <header>
-    <span class="badge">猫咪工坊 0.11.1 · ${h(difficultyLabel)} · 确定性操作档案</span>
+    <span class="badge">猫咪工坊 0.12.3 · ${h(difficultyLabel)} · 确定性操作档案</span>
     <h1>${difficulty === 5 ? "最高难度 5" : h(difficultyLabel)}：35 商品具体怎么操作</h1>
-    <p class="lead">这份档案由 <code>scripts/qa-35.mts</code> 的真实种子 ${seed}、${h(difficultyLabel)}运行生成。它逐条记录 ${operations.length} 条公开操作、费用、法规、坐标和模拟时间，并把最终订单、合同、运输与 35 项商品统计反向核对。第 22–30 项仍允许任意调价，但售价溢价会传导到现有配料订单；本局只用全品类 ×1.01 打开悬赏准入，真正的生产顺序由订单物流法、土地、猫链和复合工区决定。</p>
+    <p class="lead">这份档案由 <code>scripts/qa-35.mts</code> 的真实种子 ${seed}、${h(difficultyLabel)}运行生成。它逐条记录 ${operations.length} 条公开操作、费用、法规、坐标和模拟时间，并把最终订单、合同、运输与 35 项商品统计反向核对。第 16–19 项由净资产收益贪心自然完成，第 20 项工厂用单项 ×2 突破；第 22–26 项仅逐项 ×2 不能全部完成，必须用订单物流法组织留存、补料和逐格运输。</p>
     <div class="metrics">
       <div class="metric"><strong>${h(time(result.simTime))}</strong><span>最终检查时刻（模拟时间）</span></div>
       <div class="metric"><strong>${h(difficultyLabel)}</strong><span>本次真实运行档位</span></div>
@@ -270,9 +271,9 @@ const html = `<!doctype html>
     <h2>照着游戏界面复现这次最高难度操作</h2>
     <div class="table-wrap"><table><thead><tr><th>顺序</th><th>界面位置</th><th>具体点击或输入</th><th>完成标志</th></tr></thead><tbody>
       <tr><td>1</td><td>顶栏难度</td><td>新档开始前选择“5 · 极限物流”并确认清档。</td><td>顶栏难度为 5；基础信用 50 金币。</td></tr>
-      <tr><td>2</td><td>配方图</td><td>依次购买第 10–15 项：线、纸、工具、玻璃、金属、齿轮；资金不足就先让外售税积累国库。</td><td>${h(time(result.phase1.completeAtMs))} 前 15 项均有制作记录。</td></tr>
-      <tr><td>3</td><td>配方图</td><td>购买第 16–20 项，保持法条不变观察 300 模拟秒。</td><td>五项 crafted=0 且悬赏仍开放，确认不是等待不足。</td></tr>
-      <tr><td>4</td><td>法典</td><td>先输入“有开放订单时优先制作订单所需物品并留存关键中间品；磁铁到显示器按机械、电气、电子缺口补料”，颁布行为法；再输入“全部商品价格提高 1%”颁布价格法。</td><td>行为法源码含 <code>orderCount / bounty / adjust / choose</code>；价格卡仅显示 ×1.01。</td></tr>
+      <tr><td>2</td><td>配方图</td><td>第 10 项线已免费解锁；只购买第 11–15 项：纸、工具、玻璃、金属、齿轮。</td><td>${h(time(result.phase1.completeAtMs))} 前 15 项均有制作记录。</td></tr>
+      <tr><td>3</td><td>配方图</td><td>购买第 16–20 项，保持法条不变观察 300 模拟秒。</td><td>线缆、电池、化学品、底盘已经制作；工厂仍为 0 且悬赏开放。</td></tr>
+      <tr><td>4</td><td>法典</td><td>输入“只把工厂价格提高到基础价的 2 倍”并颁布；工厂完成后，再输入“有开放订单时优先制作订单所需物品并留存关键中间品；磁铁到显示器按机械、电气、电子缺口补料”颁布行为法。</td><td>价格卡只显示工厂 ×2；行为法源码含 <code>orderCount / bounty / adjust / choose</code>。</td></tr>
       <tr><td>5</td><td>开拓</td><td>购买东侧地块 <code>(1,0)</code>，按“空间建设”表中的坐标补 ${placedCatCount} 只猫，保持上下左右连续。</td><td>广播虽全局可听，实物仍可沿相邻猫合同路线送达。</td></tr>
       <tr><td>6</td><td>仓库</td><td>等待并收购工厂、天线、机床报价；分别放到 ${h(buildingPositionSummary)}。</td><td>三栋设施共同覆盖至少一个高级制造工位。</td></tr>
       <tr><td>7</td><td>配方图 / 法典</td><td>工厂落成后购买第 28–35 项；不再给芯片、存储器、显示器逐项加价，让现行物流法按订单补给沙、化学品、线缆、芯片、玻璃和灯。</td><td>第 28–30 项靠工区条件与物流评分进入生产，不靠单品 ×2。</td></tr>
@@ -285,9 +286,9 @@ const html = `<!doctype html>
   <section class="section" id="stages">
     <h2>三阶段操作与结果</h2>
     <div class="flow">
-      <article class="phase-card"><span class="number">1</span><h3>白手起家到 15</h3><p>只买第 10–15 项配方，随后推进时间。</p><p><strong>${h(time(result.phase1.completeAtMs))}</strong> 前 15 项全部实际制造；没有改法、加猫、扩地或建筑。</p></article>
-      <article class="phase-card"><span class="number">2</span><h3>证明 16–20 会卡住</h3><p>买第 16–20 项，再原样观察 300 秒。</p><p>线缆、电池、化学品、底盘、工厂产量均为 <strong>0</strong>，五张悬赏仍开放。</p></article>
-      <article class="phase-card"><span class="number">3</span><h3>物流法规 + 空间建设到 35</h3><p>颁布一条 ×1.01 准入法和订单物流法，购地，加 ${placedCatCount} 猫，收购并共同布置工厂、天线和机床。</p><p>车辆悬赏在 <strong>${h(time(vehicleClosure ? vehicleClosure.publishedAt * state.simulationSpeed : null))}</strong> 结案；全 35 项在 ${h(time(lastFirst35ClosureMs))} 前结案。</p></article>
+      <article class="phase-card"><span class="number">1</span><h3>白手起家到 15</h3><p>前 10 项自主生产，只买第 11–15 项五张配方，随后推进时间。</p><p><strong>${h(time(result.phase1.completeAtMs))}</strong> 前 15 项全部实际制造；没有改法、加猫、扩地或建筑。</p></article>
+      <article class="phase-card"><span class="number">2</span><h3>自然推进到 19，工厂停滞</h3><p>买第 16–20 项，再原样观察 300 秒。</p><p>线缆、电池、化学品、底盘自然完成；只有工厂产量为 <strong>0</strong>。</p></article>
+      <article class="phase-card"><span class="number">3</span><h3>价格突破 + 物流建设到 35</h3><p>工厂单项 ×2 后完成第 20 项；随后颁布订单物流法，购地，加 ${placedCatCount} 猫，收购并共同布置工厂、天线和机床。</p><p>车辆悬赏在 <strong>${h(time(vehicleClosure ? vehicleClosure.publishedAt * state.simulationSpeed : null))}</strong> 结案；全 35 项在 ${h(time(lastFirst35ClosureMs))} 前结案。</p></article>
     </div>
     <h3>配方购买批次</h3>
     <div class="table-wrap"><table><thead><tr><th>批次</th><th>时刻</th><th>商品</th><th>费用</th></tr></thead><tbody>${recipeGroupRows}</tbody></table></div>
@@ -296,9 +297,9 @@ const html = `<!doctype html>
   <section class="section" id="timeline">
     <h2>关键时间线</h2>
     <div class="timeline">
-      <article><time>00:00</time><h3>购买第 10–15 项</h3><p>11 只教学猫和六个资源区保持原样，只用悬赏、局部递归自供给与有偿订单完成基础产业。</p></article>
+      <article><time>00:00</time><h3>购买第 11–15 项</h3><p>第 10 项线属于开局免费配方；11 只猫和六个资源区保持原样，只用统一资产收益率、悬赏、局部递归自供给与有偿订单完成基础产业。</p></article>
       <article><time>${h(time(result.phase1.completeAtMs))}</time><h3>前 15 项完成；立即购买第 16–20 项</h3><p>继续保持法规、猫数、土地和建筑不变，开始 300 秒反事实观察。</p></article>
-      <article><time>${h(time(result.phase1.completeAtMs + result.phase2.observedForMs))}</time><h3>确认设计卡点并第一次干预</h3><p>颁布订单物流协调法与全品类 ×1.01 准入法；购买 21–27；购买东侧地块并一次性铺设 24 个相邻工位。</p></article>
+      <article><time>${h(time(result.phase1.completeAtMs + result.phase2.observedForMs))}</time><h3>确认工厂卡点并第一次干预</h3><p>只把工厂价格设为 ×2；工厂完成后颁布订单物流协调法，购买 21–27，再购买东侧地块并铺设相邻工位。</p></article>
       <article><time>${h(time(buildingOffer ? buildingOffer.createdAt * state.simulationSpeed : null))}</time><h3>猫咪首次制造并挂牌工厂</h3><p>${h(buildingOffer?.sellerCatId ?? "—")} 报价 ${h(money(buildingOffer?.askCents ?? 0))}；建筑仍是猫的商品，玩家尚未凭空拥有设施。</p></article>
       ${buildingTimeline}
       <article><time>${h(time(vehicleClosure ? vehicleClosure.publishedAt * state.simulationSpeed : null))}</time><h3>车辆出现</h3><p>${h(vehicleClosure?.sourceCatId ?? "—")} 在工厂与机床共同覆盖的工位完成车辆悬赏。</p></article>
@@ -310,14 +311,14 @@ const html = `<!doctype html>
     <h2>我颁布了哪些法规</h2>
     <div class="grid">
       <div class="card"><strong>${baseLogisticsLaws.length} 条基础物流法</strong>读取开放订单和未结悬赏；有订单时提高制作、降低无关外售，并对第 22–30 项所需机械、电气和电子中间品定向加权。</div>
-      <div class="card"><strong>${qualificationPriceLaws.length} 条最低准入价格法</strong>全品类仅 ×1.01，只满足第 16 项以后认领悬赏所需的“正向价格指引”。它不决定生产顺序，也不逐项改价。</div>
+      <div class="card"><strong>${qualificationPriceLaws.length} 条工厂价格法</strong>只把第 20 项工厂设为 ×2，把大型协作项目的预期盈余传给砖、齿轮、工具和玻璃作业；第 16–19 项无需调价。</div>
       <div class="card"><strong>0 条 22–30 单品价格法</strong>磁铁到显示器没有逐项 ×2，也没有用后续临时价格法疏堵；这些商品全部由订单、留存和补料评分完成。</div>
-      <div class="card"><strong>×2 会遇到现有信用瓶颈</strong>以车轮为反例：在本局税法和全品类 ×1.01 背景下，直接把车轮设为 ×2，会令底盘与齿轮两张配料作业报价合计 ${h(money(wheelX2JobBudget))}，高于难度 5 的 ${h(money(profile.baseCreditCents))} 基础信用；×10 时升至 ${h(money(wheelX10JobBudget))}。这仍不是禁令，有现金、净资产或现货的猫可以继续。</div>
+      <div class="card"><strong>高价会遇到现有信用瓶颈</strong>以车轮为反例：直接设为 ×2 时，配料作业报价合计 ${h(money(wheelX2JobBudget))}；×10 时按竞争强度凸性升至 ${h(money(wheelX10JobBudget))}。高价同步增加订单、保证金和信用占用。这仍不是禁令，有现金、净资产或现货的猫可以继续。</div>
       <div class="card"><strong>${enactmentCount} 次成功立法</strong>前 5 次免费，此后第 n 次为 <code>5×(n−5)</code> 金币；立法毛费用 ${h(money(costs.enact))}，废止次数为 ${repealCount}，废止费用 ${h(money(costs.repeal))}。</div>
     </div>
     <h3>基础物流法实际源码</h3>
     <pre class="code">${h(logisticsLaw?.sourceCode ?? "未找到基础物流法源码")}</pre>
-    <p class="callout green"><strong>为什么它有效：</strong>×1.01 只打开“愿意认领悬赏”这道硬门；真正的调度来自订单。难度 5 的第 22–30 项把高于基础价的溢价按 150% 分摊进已有配料订单，所以继续抬价也会提高保证金和信用占用。物流法提高供应制作、减少无关外售，让目标猫用现货或真实合同完成缺料；已经持有的材料不再产生订单。无合同传递、亏损制作和超额信用仍会被引擎拒绝。</p>
+    <p class="callout green"><strong>为什么它有效：</strong>所有已解锁悬赏都进入统一的资产收益率比较。第 22–30 项的价格溢价会按上游岗位竞争强度凸性传入已有配料订单，所以继续抬价也会更快提高保证金和信用占用。物流法把下一份计划转向真实订单和关键中间品；库存或在途货覆盖缺口后会撤销多余订单，因而直接减少待购作业。无合同传递、亏损制作和超额信用仍会被引擎拒绝。</p>
   </section>
 
   <section class="section" id="space">
@@ -332,7 +333,7 @@ const html = `<!doctype html>
   <section class="section" id="economy">
     <h2>经济与市场结果</h2>
     <div class="metrics">
-      <div class="metric"><strong>${h(money(costs.recipe))}</strong><span>第 10–35 项配方</span></div>
+      <div class="metric"><strong>${h(money(costs.recipe))}</strong><span>第 11–35 项配方</span></div>
       <div class="metric"><strong>${h(money(costs.enact))}</strong><span>${enactmentCount} 次立法</span></div>
       <div class="metric"><strong>${h(money(costs.repeal))}</strong><span>${repealCount} 次废止</span></div>
       <div class="metric"><strong>${h(money(costs.parcel))}</strong><span>东侧土地</span></div>
@@ -341,10 +342,10 @@ const html = `<!doctype html>
     </div>
     <p>玩家操作毛支出是 ${h(money(grossCostCents))}；运行期间约 ${h(money(operationInflowsCents))} 回流国库，主要来自现行 50% 外售税，所以最终国库相对测试起点变化 ${h(signedMoney(-netTreasurySpendCents))}。猫咪累计外售 ${h(money(state.totalSales))}，最终私人现金 ${h(money(totalCatCash))}、债务 ${h(money(totalDebt))}。</p>
     <div class="table-wrap"><table class="analysis-table"><thead><tr><th>阻塞</th><th>我观察到的证据</th><th>操作</th><th>因果机制</th></tr></thead><tbody>
-      <tr><td>16–20 无人开工</td><td>300 秒内五项 crafted=0、bountyOpen=true</td><td>全品类只设 ×1.01 准入法</td><td>用最低幅度满足第 16 项后悬赏认领所需的正向玩家价格指引，不用价格决定生产顺序</td></tr>
+      <tr><td>工厂协作收益不足</td><td>300 秒内第 16–19 项已完成，工厂 crafted=0、bountyOpen=true</td><td>只把工厂设为 ×2</td><td>大型项目把更多预期盈余传给四类上游作业，突破第 20 项而不改其他商品价格</td></tr>
       <tr><td>远方原料不能共享</td><td>最终 ${totalPasses.toLocaleString("zh-CN")} 次传递，最长合同路线 ${maxRoute} 只猫</td><td>加 ${placedCatCount} 只相邻猫</td><td>扩大 BFS 可达网络和中转承运容量，物品仍逐格移动</td></tr>
       <tr><td>28–35 缺生产位置</td><td>只有工厂时停在芯片等基础电子商品</td><td>等待三项报价，收购并布置复合工区</td><td>让同一工位同时获得工厂、天线与机床的半径 2 条件</td></tr>
-      <tr><td>22–30 关键料被外售或分散</td><td>机械、电气与电子悬赏同时开放；高价溢价会以 150% 传导到配料订单</td><td>按订单提高制作，降低关键料外售；磁铁到显示器分组补料</td><td>现货不再下单，真实运输直接减少缺料作业；避免用继续加价扩大保证金和信用占用</td></tr>
+      <tr><td>22–30 关键料分散且岗位竞争</td><td>机械、电气与电子悬赏同时开放；高价溢价按竞争强度凸性传入配料订单</td><td>按订单提高制作，磁铁到显示器分组补料</td><td>现货和在途货覆盖缺口后撤销多余订单；真实运输直接减少缺料作业，避免继续加价扩大保证金和信用占用</td></tr>
       <tr><td>中后期长时间等待</td><td>开放订单、在途合同和大宗配料会跨越多个 30 秒检查点</td><td>检查信用、路线和工区后保持两条法规不变</td><td>让已经成交的逐格合同自然结算，避免反复立法打断稳定的物流优先级</td></tr>
     </tbody></table></div>
     <h3>市场规模</h3>
@@ -366,11 +367,11 @@ const html = `<!doctype html>
 
   <section class="section">
     <h2>结论与限制</h2>
-    <div class="grid"><div class="card"><strong>通关不是靠全局调度器</strong>猫只读取自身和曼哈顿 2 内工位；全局广播只传需求信息。最终 ${totalPasses.toLocaleString("zh-CN")} 次逐格传递和最长 ${maxRoute} 猫路线证明实物没有瞬移。</div><div class="card"><strong>真正的三个钥匙</strong>×1.01 只打开 16+ 悬赏认领；物流法和猫链组织有偿物理物流；共同覆盖的工厂、天线与机床打开 28–35 的空间制造条件。</div><div class="card"><strong>22–30 的软瓶颈</strong>玩家仍可自由 ×2 或 ×10；但溢价同步推高配料作业报价。现金和净资产足够时仍能硬顶，普通猫则需要先用物流减少缺料订单。</div><div class="card"><strong>车辆是复合工区产物</strong>车辆在 ${h(time(vehicleClosure ? vehicleClosure.publishedAt * state.simulationSpeed : null))} 出现；制造工位必须同时处于工厂和机床的曼哈顿半径 2 内。</div></div>
+    <div class="grid"><div class="card"><strong>通关不是靠全局调度器</strong>猫只读取自身和曼哈顿 2 内工位；全局广播只传需求信息。最终 ${totalPasses.toLocaleString("zh-CN")} 次逐格传递和最长 ${maxRoute} 猫路线证明实物没有瞬移。</div><div class="card"><strong>真正的三个钥匙</strong>工厂 ×2 只突破第 20 项；物流法和猫链组织有偿物理物流；共同覆盖的工厂、天线与机床打开 28–35 的空间制造条件。</div><div class="card"><strong>22–30 的软瓶颈</strong>玩家仍可自由 ×2 或 ×10；但溢价会凸性推高配料作业报价。现金和净资产足够时仍能硬顶，普通猫则需要先用物流减少缺料订单。</div><div class="card"><strong>车辆是复合工区产物</strong>车辆在 ${h(time(vehicleClosure ? vehicleClosure.publishedAt * state.simulationSpeed : null))} 出现；制造工位必须同时处于工厂和机床的曼哈顿半径 2 内。</div></div>
     <p class="callout"><strong>仍需区分：</strong>本页使用充足测试国库与确定性法条夹具。若要评价生产版经济平衡，还应另做“150 金币正常开局、只靠税收积累”的长时测试；若要评价 DeepSeek 可靠性，还应单独统计真实模型生成成功率、语义正确率和重试率。</p>
   </section>
 
-  <footer>数据源：猫咪工坊 0.11.1 · ${h(difficultyLabel)} · scripts/qa-35.mts · worldSeed=${seed} · simulationSpeed=${state.simulationSpeed} · JSON 伴随记录：output/qa35-difficulty${difficulty}-seed${seed}-record.json</footer>
+  <footer>数据源：猫咪工坊 0.12.3 · ${h(difficultyLabel)} · scripts/qa-35.mts · worldSeed=${seed} · simulationSpeed=${state.simulationSpeed} · JSON 伴随记录：output/qa35-difficulty${difficulty}-seed${seed}-record.json</footer>
 </main>
 <script>
   const rows=[...document.querySelectorAll('#ledger-table tbody tr')];

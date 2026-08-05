@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  BASE_PRICE_FLOORS,
+  BASE_PRICE_TIER_PREMIUMS,
   CATALOG_ANALYSIS,
+  FOUNDATION_RECIPE_IDS,
+  INPUT_PARITY_PRICE_IDS,
   INDUSTRIAL_GATE_RECIPE_IDS,
   INTRO_RECIPE_IDS,
   ITEMS,
   MARKET_CERTIFICATION_ITEM_IDS,
   MARKET_CHALLENGE_RECIPE_IDS,
-  TUTORIAL_RECIPE_IDS,
   RECIPES,
   RECIPE_BY_OUTPUT,
   missingProductionCertifications,
@@ -31,13 +34,32 @@ describe("catalog", () => {
     expect(CATALOG_ANALYSIS.sellPrices.stargate).toBeGreaterThan(CATALOG_ANALYSIS.sellPrices.wood);
   });
 
-  it("defines the market challenge at catalog positions 10–20", () => {
-    expect(INTRO_RECIPE_IDS).toEqual(RECIPES.slice(0, 9).map((recipe) => recipe.id));
-    expect(MARKET_CHALLENGE_RECIPE_IDS).toEqual(RECIPES.slice(9, 15).map((recipe) => recipe.id));
-    expect(TUTORIAL_RECIPE_IDS).toEqual(RECIPES.slice(0, 15).map((recipe) => recipe.id));
-    expect(MARKET_CERTIFICATION_ITEM_IDS).toEqual(["thread", "paper", "tools", "glass", "metal", "gear"]);
+  it("uses permanent early price floors, one proven parity bottleneck, and a profitable advanced value curve", () => {
+    for (const [itemId, floor] of Object.entries(BASE_PRICE_FLOORS)) {
+      expect(CATALOG_ANALYSIS.basePrices[itemId], itemId).toBeGreaterThanOrEqual(floor);
+    }
+    expect(BASE_PRICE_TIER_PREMIUMS).toEqual([1, 1.15, 1.35, 1.65, 2, 2.5, 3.25, 4.25, 5.5]);
+    for (const recipe of RECIPES.filter((entry) => entry.inputs.length > 0)) {
+      const ingredientValue = recipe.inputs.reduce((sum, input) => (
+        sum + CATALOG_ANALYSIS.basePrices[input.itemId] * input.quantity
+      ), 0);
+      if (INPUT_PARITY_PRICE_IDS.includes(recipe.output as typeof INPUT_PARITY_PRICE_IDS[number])) {
+        expect(CATALOG_ANALYSIS.basePrices[recipe.output], recipe.output).toBe(ingredientValue);
+      } else {
+        expect(CATALOG_ANALYSIS.basePrices[recipe.output], recipe.output).toBeGreaterThan(ingredientValue);
+      }
+    }
+    expect(CATALOG_ANALYSIS.basePrices.factory).toBe(64);
+    expect(CATALOG_ANALYSIS.basePrices.stargate).toBeGreaterThan(300_000);
+  });
+
+  it("defines the free foundation, paid challenge, and industrial gate through item 20", () => {
+    expect(INTRO_RECIPE_IDS).toEqual(RECIPES.slice(0, 10).map((recipe) => recipe.id));
+    expect(MARKET_CHALLENGE_RECIPE_IDS).toEqual(RECIPES.slice(10, 15).map((recipe) => recipe.id));
+    expect(FOUNDATION_RECIPE_IDS).toEqual(RECIPES.slice(0, 15).map((recipe) => recipe.id));
+    expect(MARKET_CERTIFICATION_ITEM_IDS).toEqual(["paper", "tools", "glass", "metal", "gear"]);
     expect(INDUSTRIAL_GATE_RECIPE_IDS).toEqual(RECIPES.slice(15, 20).map((recipe) => recipe.id));
-    expect(missingProductionCertifications("make_cable", ["metal", "gear"])).toEqual(["thread", "paper", "tools", "glass"]);
+    expect(missingProductionCertifications("make_cable", ["metal", "gear"])).toEqual(["paper", "tools", "glass"]);
   });
 
   it("assigns the exact factory, lab, and reactor manufacturing gates", () => {

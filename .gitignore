@@ -13,9 +13,12 @@ dist-server/
 test-results/
 coverage/
 output/
+artifacts/
 tmp/
 tmp-*.json
 *.log
+**/__pycache__/
+*.py[cod]
 
 # Electron/Windows packaging output
 release/

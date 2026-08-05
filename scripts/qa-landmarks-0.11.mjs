@@ -48,7 +48,7 @@ try {
     state.treasuryCoins = 100_000;
     state.procurementPlans = [];
     state.demandOrders = [];
-    state.orderSignals = [];
+    state.marketBroadcasts = state.marketBroadcasts.filter((broadcast) => !broadcast.kind.startsWith("demand-"));
     state.marketBroadcasts = [];
     state.shipmentContracts = [];
     state.buildingOrders = [];

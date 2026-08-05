@@ -18,8 +18,9 @@ import {
   unreservedOwnedQuantity,
 } from "./market";
 import { migrateSaveSnapshot } from "./persistence";
+import { resourceHarvestTiles } from "./world";
 
-describe("0.8.0 building market and all-category bounties", () => {
+describe("0.8.0 building market and all-item bounties", () => {
   it("creates exactly 65 one-time bounties at three times each base price", () => {
     const bounties = createDiscoveryBounties();
     expect(bounties).toHaveLength(65);
@@ -75,8 +76,8 @@ describe("0.8.0 building market and all-category bounties", () => {
     seller.inventory.factory = 1;
     seller.debtCents = 500;
     state.laws.unshift({
-      ...state.laws[0], id: "test-tax", title: "全额税", category: "tax", taxRate: 1,
-      priceItemId: null, priceMultiplier: null, locked: false,
+      ...createInitialState({ worldSeed: 84 }).laws[0], id: "test-tax", title: "全额税",
+      sourceCode: "function decide(ctx) { setTax(1); return null; }", program: { version: 2 }, locked: false,
     });
     syncBuildingOffers(state, (itemId) => itemPrice(state, itemId));
     const offer = state.buildingOffers[0];
@@ -170,20 +171,20 @@ describe("0.8.0 building market and all-category bounties", () => {
     expect(state.buildingOffers[0]).toMatchObject({ sellerCatId: cat.id, itemId: "factory", status: "open" });
   });
 
-  it("places only on ordinary unlocked empty ground and dismantles back to inventory", () => {
+  it("places factories beside resources while keeping centers blocked and dismantles back to inventory", () => {
     const state = createInitialState({ withStarter: false, worldSeed: 86 });
     state.playerBuildingInventory.factory = 2;
     const catPosition = state.cats[0].position;
     const node = state.resourceNodes[0];
     expect(buildingPlacementFailure(state, "factory", catPosition)).toContain("猫咪");
     expect(buildingPlacementFailure(state, "factory", node.position)).toContain("资源");
-    expect(buildingPlacementFailure(state, "factory", { x: node.position.x + 1, y: node.position.y })).toContain("采集格");
+    const harvestTile = resourceHarvestTiles(node).find((position) => !state.cats.some((cat) => cat.position.x === position.x && cat.position.y === position.y))!;
+    expect(buildingPlacementFailure(state, "factory", harvestTile)).toBeNull();
+    expect(buildingPlacementFailure(state, "lab", harvestTile)).toContain("只有工厂");
     expect(buildingPlacementFailure(state, "factory", { x: 99, y: 99 })).toContain("已开拓");
-    const ordinary = Array.from({ length: 9 * 9 }, (_, index) => ({ x: index % 9 - 4, y: Math.floor(index / 9) - 4 }))
-      .find((position) => buildingPlacementFailure(state, "factory", position) === null)!;
-    const placed = placeOwnedBuilding(state, "factory", ordinary);
+    const placed = placeOwnedBuilding(state, "factory", harvestTile);
     expect(placed).toMatchObject({ ok: true });
-    expect(buildingPlacementFailure(state, "factory", ordinary)).toContain("建筑");
+    expect(buildingPlacementFailure(state, "factory", harvestTile)).toContain("建筑");
     expect(dismantleBuilding(state, placed.building!.id)).toEqual({ ok: true });
     expect(state.playerBuildingInventory.factory).toBe(2);
   });
@@ -208,7 +209,7 @@ describe("0.8.0 building market and all-category bounties", () => {
     legacy.discoveryBounties = legacy.discoveryBounties.slice(0, 15);
     legacy.discoveredItems = ["wood", "cable"];
     const migrated = migrateSaveSnapshot(legacy);
-    expect(migrated.schemaVersion).toBe(8);
+    expect(migrated.schemaVersion).toBe(14);
     expect(migrated.buildings).toEqual([]);
     expect(migrated.playerBuildingInventory.factory).toBe(1);
     expect(migrated.treasuryCoins).toBe(10_900);

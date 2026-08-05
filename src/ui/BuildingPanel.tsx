@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { DEPLOYABLE_BUILDING_IDS, ITEM_BY_ID, ITEMS } from "../game/catalog";
 import type { GameController } from "../game/controller";
-import { catStockPurchaseQuote, formatMoney, warehouseQuote, warehouseSellPrice } from "../game/engine";
+import { formatMoney, warehouseBulkSellQuote, warehouseQuote, warehouseSellPrice } from "../game/engine";
 import { LANDMARK_BY_ID, LANDMARK_DEFINITIONS } from "../game/landmarks";
 import type { LandmarkId } from "../game/types";
 
@@ -48,56 +48,29 @@ export function BuildingPanel({
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
   const totalStored = Object.values(state.playerBuildingInventory).reduce((sum, quantity) => sum + quantity, 0);
   const stockedKinds = ITEMS.filter((item) => (state.playerBuildingInventory[item.id] ?? 0) > 0).length;
-  const batchQuote = catStockPurchaseQuote(state);
   const lockedItems = new Set(state.lockedWarehouseItemIds);
-  const warehouseSaleQuantity = ITEMS.reduce((sum, item) => sum + (lockedItems.has(item.id) ? 0 : state.playerBuildingInventory[item.id] ?? 0), 0);
-  const warehouseSaleRevenue = ITEMS.reduce((sum, item) => (
-    sum + (lockedItems.has(item.id) ? 0 : (state.playerBuildingInventory[item.id] ?? 0) * warehouseSellPrice(item.id))
-  ), 0);
+  const bulkSellQuote = warehouseBulkSellQuote(state);
 
   return <div className="building-panel warehouse-panel">
     <div className="panel-summary">
       <span>玩家仓库</span>
       <strong>{stockedKinds}/{ITEMS.length} 种 · {totalStored} 件</strong>
     </div>
-    <p className="recipe-note">65 种商品全部陈列。猫咪未被生产计划、订单、合同或建筑报价占用的现货都可收购；货款归卖方猫咪，商品进入仓库。</p>
+    <p className="recipe-note">这里只显示玩家实际拥有的商品。猫咪现货的一键购买与购买并转售已移到主界面国库旁。</p>
 
-    <section className="warehouse-batch-card" data-testid="warehouse-batch-actions">
-      <div className="section-heading"><h3>猫咪现货总台</h3><span>{batchQuote.totalQuantity} 件可收购</span></div>
-      <p className="recipe-note">猫咪不再自行对外出售。普通收购需支付全部成本；收购并转卖只校验成本与本次转卖收入的正差额。锁定品类会收进仓库而不立即转卖。</p>
-      <div className="warehouse-batch-metrics">
-        <span>全部收购成本 <strong>{formatMoney(batchQuote.totalCostCents)}</strong></span>
-        <span>本次可转卖收入 <strong>{formatMoney(batchQuote.resaleRevenueCents)}</strong></span>
-        <span>净额 <strong>{batchQuote.netCents >= 0 ? "+" : "−"}{formatMoney(Math.abs(batchQuote.netCents))}</strong></span>
-        <span>最低国库 <strong>{formatMoney(batchQuote.requiredTreasuryCents)}</strong></span>
-      </div>
-      <div className="warehouse-batch-buttons">
-        <button data-testid="buy-all-cat-stock" disabled={batchQuote.totalQuantity === 0 || state.treasuryCoins < batchQuote.totalCostCents} onClick={() => {
-          const result = controller.buyAllCatStock();
-          setMessage({ ok: result.ok, text: result.ok
-            ? `已收购全部猫咪现货 ${result.quantity} 件，支付 ${formatMoney(result.costCents ?? 0)}。`
-            : result.error ?? "批量收购失败" });
-        }}>一键收购全部 · {formatMoney(batchQuote.totalCostCents)}</button>
-        <button data-testid="buy-all-cat-stock-and-sell" disabled={batchQuote.totalQuantity === 0 || state.treasuryCoins < batchQuote.requiredTreasuryCents} onClick={() => {
-          const result = controller.buyAllCatStockAndSell();
-          setMessage({ ok: result.ok, text: result.ok
-            ? `已收购 ${result.quantity} 件并转卖未锁定商品，收入 ${formatMoney(result.revenueCents ?? 0)}，净额 ${(result.netCents ?? 0) < 0 ? "−" : "+"}${formatMoney(Math.abs(result.netCents ?? 0))}。`
-            : result.error ?? "收购并转卖失败" });
-        }}>收购并转卖 · 到账 {formatMoney(batchQuote.resaleRevenueCents)}</button>
-      </div>
-      <div className="warehouse-liquidation-row">
-        <span>未锁定仓库商品 {warehouseSaleQuantity} 件 · 可得 {formatMoney(warehouseSaleRevenue)}</span>
-        <button data-testid="sell-all-warehouse" disabled={warehouseSaleQuantity === 0} onClick={() => {
-          const result = controller.sellAllUnlockedWarehouseItems();
-          setMessage({ ok: result.ok, text: result.ok
-            ? `已售出 ${result.quantity} 件未锁定商品，国库获得 ${formatMoney(result.revenueCents ?? 0)}。`
-            : result.error ?? "一键出售失败" });
-        }}>一键卖出未锁定商品</button>
-      </div>
+    <section className="warehouse-compact-actions" data-testid="warehouse-batch-actions">
+      <button
+        data-testid="sell-all-warehouse"
+        disabled={bulkSellQuote.totalQuantity === 0}
+        title={`仅出售非锁定商品；当前可售 ${bulkSellQuote.totalQuantity} 件，共 ${formatMoney(bulkSellQuote.totalRevenueCents)}`}
+        onClick={() => {
+        const result = controller.sellAllUnlockedWarehouseItems();
+        setMessage({ ok: result.ok, text: result.ok ? `已出售 ${result.quantity} 件未锁定库存，收入 ${formatMoney(result.revenueCents ?? 0)}。` : result.error ?? "批量出售失败" });
+      }}><strong>出售全部非锁定商品</strong><small>{bulkSellQuote.totalQuantity} 件 · 可得 {formatMoney(bulkSellQuote.totalRevenueCents)}</small></button>
     </section>
 
-    <section className="landmark-engineering" data-testid="landmark-engineering">
-      <div className="section-heading"><h3>地标工程</h3><span>图纸 {state.unlockedLandmarkIds.length}/{LANDMARK_DEFINITIONS.length} · 已建 {state.landmarks.length}</span></div>
+    <details className="landmark-engineering" data-testid="landmark-engineering">
+      <summary><strong>地标工程</strong><span>图纸 {state.unlockedLandmarkIds.length}/{LANDMARK_DEFINITIONS.length} · 已建 {state.landmarks.length}</span></summary>
       <p className="recipe-note">发现全部建材后用国库永久购买图纸，再消耗仓库现货选址建造。范围按曼哈顿距离计算，同类最多叠加 3 层。</p>
       {placingLandmarkId && <div className="placement-mode-card landmark-placement-card" data-testid="landmark-placement-mode">
         <strong>{LANDMARK_BY_ID.get(placingLandmarkId)?.emoji} 正在建造{LANDMARK_BY_ID.get(placingLandmarkId)?.name}</strong>
@@ -156,7 +129,7 @@ export function BuildingPanel({
           </div>;
         })}
       </div>}
-    </section>
+    </details>
 
     {placingItemId && <div className="placement-mode-card" data-testid="building-placement-mode">
       <strong>{ITEM_BY_ID.get(placingItemId)?.emoji} 正在放置{ITEM_BY_ID.get(placingItemId)?.name}</strong>
@@ -172,23 +145,26 @@ export function BuildingPanel({
     {TIER_NAMES.map((tierName, tier) => {
       const tierItems = ITEMS.filter((item) => item.tier === tier);
       const tierStored = tierItems.filter((item) => (state.playerBuildingInventory[item.id] ?? 0) > 0).length;
+      if (tierStored === 0) return null;
       return <section className="tier-section warehouse-tier" key={tierName}>
-        <div className="section-heading"><h3>{tier}. {tierName}</h3><span>陈列 {tierStored}/{tierItems.length}</span></div>
+        <div className="section-heading"><h3>{tier}. {tierName}</h3><span>{tierStored} 种</span></div>
         <div className="warehouse-grid">
-          {tierItems.map((item) => {
+          {tierItems.filter((item) => (state.playerBuildingInventory[item.id] ?? 0) > 0).map((item) => {
             const stored = state.playerBuildingInventory[item.id] ?? 0;
+            const purchased = state.playerWarehousePurchases[item.id] ?? 0;
             const quote = warehouseQuote(state, item.id);
             const deployable = DEPLOYABLE_BUILDING_IDS.includes(item.id as typeof DEPLOYABLE_BUILDING_IDS[number]);
             const affordable = state.treasuryCoins >= quote.unitPriceCents;
             const locked = lockedItems.has(item.id);
             const sellPrice = warehouseSellPrice(item.id);
-            return <article className={`warehouse-item-card ${stored > 0 ? "stocked" : "empty"} ${locked ? "locked" : ""}`} key={item.id} data-testid={`warehouse-item-${item.id}`}>
+            const provenanceLabel = purchased > 0 ? `玩家收购来源 ×${purchased}，仅作仓库信号` : "";
+            return <article className={`warehouse-item-card stocked ${locked ? "locked" : ""}`} key={item.id} data-testid={`warehouse-item-${item.id}`}>
               <span className="warehouse-emoji">{item.emoji}</span>
               <div className="warehouse-item-main">
                 <strong>{item.name}</strong>
-                <small>仓库 ×{stored} · 猫咪现货 {quote.availableQuantity}</small>
-                <small>{quote.availableQuantity > 0 ? `最低 ${formatMoney(quote.unitPriceCents)}` : "等待猫咪产出可售现货"}</small>
+                <small>仓库 ×{stored}{quote.availableQuantity > 0 ? ` · 猫咪另有 ${quote.availableQuantity}` : ""}</small>
                 <small>玩家售价 {formatMoney(sellPrice)}/件 · {locked ? "🔒 已锁定" : "未锁定"}</small>
+                {provenanceLabel && <small className="warehouse-provenance">{provenanceLabel}</small>}
                 <div className="warehouse-actions">
                   <button
                     data-testid={`sell-item-${item.id}`}
@@ -223,7 +199,7 @@ export function BuildingPanel({
                       });
                     }}
                   >{quote.availableQuantity < 1 ? "暂无现货" : affordable ? "收购 1 件" : "国库不足"}</button>
-                  {deployable && stored > 0 && <button className={placingItemId === item.id ? "active" : ""} onClick={() => onStartPlacement(item.id)}>
+                  {deployable && stored > 0 && <button data-testid={`place-building-${item.id}`} className={placingItemId === item.id ? "active" : ""} onClick={() => onStartPlacement(item.id)}>
                     {placingItemId === item.id ? "选地块中" : "放置"}
                   </button>}
                 </div>

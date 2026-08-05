@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>猫咪工坊 0.12.0 · 具体操作指南</title>
+  <title>猫咪工坊 0.12.3 · 具体操作指南</title>
   <style>
     :root { color-scheme:light; --ink:#182230; --muted:#667085; --paper:#fff; --soft:#f7faf8; --line:#dde5e0; --green:#347853; --green2:#eaf6ef; --gold:#a36b08; --gold2:#fff7df; --blue:#2468a8; --danger:#a83b32; }
     * { box-sizing:border-box; }
@@ -72,13 +72,13 @@
   </nav>
 
   <main>
-    <span class="badge">0.12.0 · 离线可读 · 中文逐步说明</span>
+    <span class="badge">0.12.3 · 前10项自主生产 · 离线中文逐步说明</span>
     <h1>🐾 猫咪工坊<br>具体操作指南</h1>
     <p class="lead">这份页面只讲“点哪里、看什么、下一步做什么”。游戏没有强制终局；造出星门后仍可继续经营。</p>
 
     <div class="quick" aria-label="五步快速流程">
-      <div><b>① 让猫开工</b><span>新档已有 11 只猫和开局法，先观察前 9 项自动生产。</span></div>
-      <div><b>② 解锁配方</b><span>进入“配方图”，用国库逐项购买第 10–15 项。</span></div>
+      <div><b>① 让猫开工</b><span>新档已有 11 只猫和开局法，先观察前 10 项自动生产。</span></div>
+      <div><b>② 只买配方</b><span>进入“配方图”，用国库购买第 11–15 项五张配方。</span></div>
       <div><b>③ 调价格/税</b><span>进入“法典”，生成、检查并颁布自然语言法规。</span></div>
       <div><b>④ 收购、出售与建设</b><span>收购猫咪闲置现货，按基准价 ×2 出售；锁住要留作建设的品类。</span></div>
       <div><b>⑤ 地标加成</b><span>买永久图纸，备齐仓库建材，选普通空地落成。</span></div>
@@ -87,9 +87,9 @@
     <section id="start">
       <h2>1. 下载与启动</h2>
       <ol class="steps">
-        <li><strong>下载游戏。</strong>打开 <a href="https://github.com/TingJShen/CatLaw2/releases/latest/download/CatWorkshop.exe">CatWorkshop.exe</a>，保存到任意可写文件夹。</li>
-        <li><strong>可选：核对校验值。</strong>同一发布页下载 <code>CatWorkshop.exe.sha256</code>，PowerShell 运行 <code>Get-FileHash .\CatWorkshop.exe -Algorithm SHA256</code>，结果应与校验文件一致。</li>
-        <li><strong>双击启动。</strong>便携版会准备内置 Electron 运行时，通常约 8 秒显示“猫咪工坊 · 法条驱动沙盒”窗口，不需要安装 Node.js。</li>
+        <li><strong>打开本地运行目录。</strong>进入项目的 <code>release\win-unpacked</code>；不要把其中的 EXE 单独移走，旁边的 <code>resources</code>、<code>locales</code> 与 DLL 都是运行所需文件。</li>
+        <li><strong>双击直接启动。</strong>运行 <code>猫咪工坊.exe</code>，无需安装，也不需要 Node.js。窗口会立即出现并显示“猫咪工坊 · 正在启动”。</li>
+        <li><strong>本轮只验证本地版。</strong>当前 GitHub Release 暂时还是 0.12.0；请直接使用本项目的完整 <code>release\win-unpacked</code> 目录。</li>
         <li><strong>选择难度。</strong>右上角默认是“3 · 空间工业”。难度下拉框会重建并清空当前工坊，所以只在开局选择。</li>
       </ol>
       <div class="warn"><strong>DeepSeek 密钥：</strong>游戏无密钥也能用内置演示编译器。若要调用真实模型，把已经轮换的新密钥放在 EXE 同目录的 <code>.env</code>；不要把聊天中出现过的旧密钥继续使用。</div>
@@ -102,7 +102,7 @@
         <tbody>
           <tr><td>顶栏</td><td>国库、猫咪现金、产值、工作中数量、暂停、1x–8x、开拓、难度</td><td>看总体经济，暂停模拟，调整运行速度，购买相邻地块。</td></tr>
           <tr><td>中央画布</td><td>等距地块、猫、资源中心、建筑、地标、动作进度环</td><td>平移缩放、放猫、选猫、选址建设。</td></tr>
-          <tr><td>法典</td><td>新法条、生成预览、现行法典</td><td>制定行为法、价格法、税法并调整优先级。</td></tr>
+          <tr><td>法典</td><td>新法规、生成预览、现行法典</td><td>在同一源码程序中任意组合动作、评分、价格、税、信用和悬赏，并调整法规优先级。</td></tr>
           <tr><td>配方图</td><td>65 项商品、配方、解锁条件和价格</td><td>了解科技链并花国库购买配方。</td></tr>
           <tr><td>仓库</td><td>批量交易、地标工程、65 种商品货架、工业建筑</td><td>收购猫咪现货，出售或锁定库存，建建筑和地标。</td></tr>
           <tr><td>猫咪</td><td>单项收购、地标加成、资产、市场、行动</td><td>收购指定猫的商品，排查它为什么做或不做某件事。</td></tr>
@@ -113,7 +113,7 @@
     <section id="canvas">
       <h2>3. 地图操作</h2>
       <div class="cards">
-        <div class="card"><strong>平移与缩放</strong>在画布按住鼠标左键拖动；滚轮缩放。缩放后坐标命中仍保持准确。</div>
+        <div class="card"><strong>移动与缩放</strong>桌宠版左拖标题或工坊区域移动整个窗口，滚轮缩放整个桌宠及全部控件；浏览器版仍由左拖平移画布、滚轮缩放画布。缩放后坐标命中仍保持准确。</div>
         <div class="card"><strong>放置新猫</strong>把鼠标移到已开拓的合法空格，出现绿色工位预览后单击；也可在当前预览格按空格。</div>
         <div class="card"><strong>选择猫</strong>直接点击猫，右侧自动切到“猫咪”，显示它的私有现金、债务、库存、合同和地标覆盖。</div>
         <div class="card"><strong>资源格</strong>资源 Emoji 所在中心不能放猫；周围 8 个彩色格可以放猫，并采集对应基础资源。</div>
@@ -124,13 +124,13 @@
     <section id="first15">
       <h2>4. 白手起家到第 15 项</h2>
       <ol class="steps">
-        <li><strong>先不操作，观察开局。</strong>11 只预制猫会采集并制造木材到砖等前 9 项。头顶进度环走满表示动作结算，<code>+1</code> 表示完成或收到物品。</li>
-        <li><strong>把第一批现货变成国库收入。</strong>进入“仓库”顶部点“收购并转卖”；按钮会显示收购成本、本次收入、净额和最低所需国库。收入高于成本时不需要先垫付全款。</li>
-        <li><strong>打开“配方图”。</strong>找到第 10–15 项：线、纸、工具、玻璃、金属、齿轮。按钮显示“解锁 · 金额”时，用国库逐项购买。</li>
-        <li><strong>每约 60 模拟秒再点一次“收购并转卖”。</strong>猫不会自行外部出售；定期清走未锁定成品后，教学目标会继续推进，直到齿轮首次制造完成。</li>
-        <li><strong>第 16 项起主动干预。</strong>线缆到工厂会遇到设计好的市场门槛。可用全品类 ×1.01 价格法满足悬赏准入；第 22–30 项改用读取开放订单、补料和留存的物流行为法。此阶段高于基础价的溢价会按 150% 传导到现有配料订单，逐项 ×2 会同步提高保证金与信用占用。</li>
+        <li><strong>先不操作，观察开局。</strong>11 只预制猫会采集并制造木材、炉火、木板、砖和线等前 10 项。头顶进度环走满表示动作结算，<code>+1</code> 表示完成或收到物品。</li>
+        <li><strong>无需先处理现货。</strong>“收购并转卖”仍可用于补充国库，但前 15 项自主生产不依赖收购、出售或清库存。</li>
+        <li><strong>打开“配方图”。</strong>第 10 项“线”已经免费解锁；只需购买第 11–15 项：纸、工具、玻璃、金属、齿轮。新档 150 金币足够一次买完五张。</li>
+        <li><strong>购买后直接推进时间。</strong>猫会把成品价值、首次发现悬赏和订单收入减去原料、运输与借款成本，再按作业负担折算收益率；等待纸、工具、玻璃、金属、齿轮自然完成即可。</li>
+        <li><strong>观察第 16–20 项软瓶颈。</strong>购买五张配方后继续等待：线缆、电池、化学品、底盘会按资产收益率自然完成，工厂会因四类原料的机会成本与协调作业停住。只把工厂价格设为 ×2，可让它把预期收益传给砖、齿轮、工具和玻璃订单并完成。</li>
       </ol>
-      <div class="path"><span>前 9 项生产</span><i>→</i><span>批量收购并转卖</span><i>→</i><span>国库买 10–15 配方</span><i>→</i><span>×1.01 与物流法推动后续</span></div>
+      <div class="path"><span>前 10 项自主生产</span><i>→</i><span>国库只买 11–15 配方</span><i>→</i><span>自动制造到 15</span><i>→</i><span>16–19 自发完成</span><i>→</i><span>工厂 ×2</span><i>→</i><span>22–26 用物流法</span></div>
     </section>
 
     <section id="laws">
@@ -140,13 +140,13 @@
         <li><strong>点“生成法条”。</strong>等待摘要、源码、样例与安全校验出现。生成失败不会收费，也不会改变现行法典。</li>
         <li><strong>检查预览。</strong>确认它属于你想要的行为、价格或税收规则；安全和语法必须都通过。</li>
         <li><strong>点“颁布”。</strong>前 5 次成功颁布免费；之后第 6、7、8 次分别花 5、10、15 金币。新行为版本影响所有猫的下一次决策，不中断在途动作。</li>
-        <li><strong>管理现行法。</strong>用 <code>↑</code>/<code>↓</code> 免费改优先级；“修”会生成新版本并计一次颁布；“废”花 5 金币且不退款。锁定系统法不能改。</li>
+        <li><strong>管理现行法。</strong>用 <code>↑</code>/<code>↓</code> 免费改优先级；法规颁布后不可修改，要改变内容就另起草一条并永久废止旧法；“废”花 5 金币且不退款。预制锁定法规不能改。</li>
       </ol>
       <h3>可直接尝试的四条法</h3>
       <div class="cards">
-        <div class="card"><strong>最低价格准入</strong>“把全部商品价格提高 1%。”只用于打开第 16 项后的悬赏认领，不负责物流调度。</div>
-        <div class="card"><strong>不要用高价代替物流</strong>难度 5 的第 22–30 项会把售价溢价传给配料订单。配方卡会显示“配料作业报价合计”；若它高于目标猫现金与可用信用之和，应留存材料、完成在途合同或改善猫链，而不是继续加价。</div>
-        <div class="card"><strong>订单物流</strong>“有开放订单时优先制作订单所需物品并留存关键中间品；磁铁到显示器按机械、电气、电子缺口补料。”用于推动第 22–30 项。</div>
+        <div class="card"><strong>工厂价格突破</strong>“只把工厂价格提高到基础价的 2 倍。”用于第 20 项；它不改变其他商品价格，也不替代后续物流调度。</div>
+        <div class="card"><strong>不要用高价代替物流</strong>难度 5 的第 22–30 项会把售价溢价按岗位竞争强度凸性传给配料订单。配方卡会显示“配料作业报价合计”；若它高于目标猫现金与可用信用，应留存材料、完成在途合同或改善猫链，而不是继续加价。</div>
+        <div class="card"><strong>订单物流</strong>“有开放订单时优先制作订单所需物品并留存关键中间品；磁铁到显示器按机械、电气、电子缺口补料。”专项验收中，仅价格时第 22–26 项无法全部完成；颁布本法后五项全部完成。</div>
         <div class="card"><strong>禁止猫咪 sell</strong>猫只制作和履行有偿运输合同。要求猫“卖掉物品”的行为法会被生成校验或引擎拒绝；请用玩家收购与仓库出售。</div>
         <div class="card"><strong>行为偏好</strong>“如果听到木材订单，就把制作木材的候选评分提高 3 倍，否则按局部收益行动。”</div>
       </div>
@@ -157,10 +157,10 @@
       <h2>6. 收购猫咪现货与出售仓库商品</h2>
       <ol class="steps">
         <li><strong>点猫进行定向收购。</strong>选择画布中的猫后，检查器顶部按品类显示“可收购数量”和“收购 1 件 · 价格”。点击后商品进入玩家仓库。</li>
-        <li><strong>打开“仓库”看总台。</strong>顶部同时显示全部猫咪可收购件数、总成本、未锁定商品的本次转卖收入、净额与最低所需国库。</li>
+        <li><strong>直接看主界面“收购与出售”。</strong>画布上方常驻显示全部猫咪可收购件数、总成本、收购并转卖的净差额，以及未锁定仓库商品的预计收入；不需要先打开“仓库”。</li>
         <li><strong>“一键收购全部”。</strong>必须由当前国库付清整个总成本；少 1 分也不会买入任何一件，所有余额和库存保持不变。</li>
         <li><strong>“收购并转卖”。</strong>只校验 <code>max(0, 收购成本−本次转卖收入)</code>。未锁定的本次商品立即按基准价 ×2 卖出；锁定品类仍买入并留在仓库。</li>
-        <li><strong>单件出售。</strong>每张货架显示固定玩家售价。点“出售 1 件”，收入立即进入国库；单件出售不受品类锁定限制。</li>
+        <li><strong>需要单件或锁定时再打开仓库。</strong>每张货架显示固定玩家售价。点“出售 1 件”，收入立即进入国库；单件出售不受品类锁定限制。</li>
         <li><strong>锁定建设材料。</strong>点某品类的“锁定”后，它不会参加“一键卖出未锁定商品”或批量收购后的立即转卖；再点“解锁”恢复。</li>
         <li><strong>一键清仓。</strong>总台的“一键卖出未锁定商品”会原子卖掉当前仓库中所有未锁定库存，按钮旁显示预计件数和收入。</li>
         <li><strong>理解固定售价。</strong>玩家售价严格等于目录基准价 ×2，不吃价格法、税法、难度系数、商贸中心或其他地标加成。</li>
@@ -250,7 +250,7 @@
       <table>
         <thead><tr><th>现象</th><th>处理</th></tr></thead>
         <tbody>
-          <tr><td>双击后没有马上出现窗口</td><td>等待约 8–15 秒；不要连续双击。确认没有旧的“猫咪工坊”进程占用本地端口。</td></tr>
+          <tr><td>双击后仍没有游戏窗口</td><td>0.12.3 会立即创建窗口并避开 18788 后的端口冲突。若仍失败，到 <code>win-unpacked</code> 目录查看 <code>CatWorkshop-startup.log</code>；日志不含密钥，可直接交给开发者定位。请确认没有把 EXE 从完整运行目录单独移走。</td></tr>
           <tr><td>Windows 提示未知发布者</td><td>先用发布页 SHA-256 核对文件；确认来源是本项目 Release 后，再按系统提示决定是否运行。</td></tr>
           <tr><td>图纸按钮显示“待发现”</td><td>这是永久发现门槛，不是仓库数量。先解锁并实际获得卡片列出的每种材料。</td></tr>
           <tr><td>“建造”显示缺料</td><td>到对应商品货架收购；猫咪私有库存不等于玩家仓库。</td></tr>
@@ -265,7 +265,7 @@
       <p>完整机制与开发说明见 <a href="README.html">README.html</a>；最高难度 5 的前 35 项真实操作、法规、费用与坐标见 <a href="CatWorkshop-Difficulty5-35-Operation.html">35 商品具体操作档案</a>；全部配方依赖见 <a href="CatWorkshop-RecipeFlow.html">65 项配方一图流</a>。</p>
     </section>
 
-    <footer>猫咪工坊 0.12.0 · 玩家收购与仓库销售操作指南 · 可直接保存、离线打开或打印</footer>
+    <footer>猫咪工坊 0.12.3 · 资产贪心生产与玩家仓库操作指南 · 可直接保存、离线打开或打印</footer>
   </main>
 </div>
 </body>

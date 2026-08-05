@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
-import { fileURLToPath } from "node:url";
+import path from "node:path";
 import { chromium } from "playwright";
 
-const outputDir = new URL("../output/market-0.7.0-browser/", import.meta.url);
+const outputDir = path.resolve("output/schema14-market-browser");
 await fs.mkdir(outputDir, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1365, height: 900 }, deviceScaleFactor: 1 });
@@ -14,58 +14,65 @@ await page.goto("http://127.0.0.1:5173", { waitUntil: "networkidle" });
 await page.waitForFunction(() => window.__CAT_WORKSHOP__ && typeof window.advanceTime === "function");
 await page.evaluate(() => window.__CAT_WORKSHOP__.reset());
 await page.waitForTimeout(100);
-
-const systemIds = [
-  "starter-law-cent-settlement",
-  "starter-law-private-credit",
-  "starter-law-discovery-bounty",
-];
-const lockedLawChecks = [];
-for (const id of systemIds) {
-  const card = page.getByTestId(`law-${id}`);
-  lockedLawChecks.push({
-    id,
-    visible: await card.isVisible(),
-    disabledActions: await card.locator("button:disabled").count(),
-    title: await card.locator("strong").first().textContent(),
-  });
-}
-await page.screenshot({ path: fileURLToPath(new URL("01-system-laws.png", outputDir)) });
+await page.screenshot({ path: path.join(outputDir, "01-initial-11-cats.png"), omitBackground: true });
 
 await page.evaluate(() => window.advanceTime(12_000));
 await page.waitForTimeout(100);
-await page.screenshot({ path: fileURLToPath(new URL("02-orders-and-law-hits.png", outputDir)) });
+const beforeInspector = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+await page.screenshot({ path: path.join(outputDir, "02-orders-plans-contracts.png"), omitBackground: true });
 
-await page.getByRole("button", { name: "猫咪", exact: true }).click();
+const canvas = page.getByTestId("game-canvas");
+const box = await canvas.boundingBox();
+if (!box) throw new Error("game canvas has no bounding box");
+// The default camera keeps the first cat at world (0,0) centered at this
+// stable isometric offset. Clicking the tile opens the real cat inspector.
+await page.mouse.click(box.x + box.width / 2 - 32 * 1.08, box.y + box.height / 2 - 28 * 1.08);
+await page.getByTestId("drawer-cat").waitFor();
 await page.getByTestId("cat-market").waitFor();
-await page.screenshot({ path: fileURLToPath(new URL("03-cat-wallet-market.png", outputDir)) });
+await page.screenshot({ path: path.join(outputDir, "03-cat-assets-market-plan.png"), omitBackground: true });
+await page.getByTestId("cat-assets").screenshot({ path: path.join(outputDir, "04-cat-assets.png") });
+await page.getByTestId("cat-market").screenshot({ path: path.join(outputDir, "05-cat-market.png") });
+await page.getByTestId("cat-action-detail").screenshot({ path: path.join(outputDir, "06-cat-funded-plan.png") });
 
-const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+const rawState = await page.evaluate(() => window.__CAT_WORKSHOP__.state());
+const textState = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+const inspectorText = await page.getByTestId("drawer-cat").innerText();
 await page.keyboard.press("f");
 await page.waitForTimeout(100);
 const enteredFullscreen = await page.evaluate(() => Boolean(document.fullscreenElement));
 await page.keyboard.press("Escape");
-await page.waitForTimeout(100);
 
 const result = {
-  lockedLawChecks,
+  schemaVersion: rawState.schemaVersion,
+  starterCats: rawState.cats.length,
+  sharedBehaviorHash: textState.decisionModel.sharedBehaviorHash,
+  sharedLawCount: textState.decisionModel.decisionLaws.length,
+  openOrderCount: beforeInspector.market.openOrders.length,
+  activePlanCount: beforeInspector.market.activePlans.length,
+  contractCount: beforeInspector.market.activeContracts.length,
+  everyOpenOrderHasFirmQuote: beforeInspector.market.openOrders.every((order) => (
+    order.committedSellerCatId && order.quotedSellerCents !== null && order.quotedRouteCatIds.length >= 2
+  )),
+  everyPlanHasFundingCertificate: beforeInspector.market.activePlans.every((plan) => (
+    Number.isFinite(plan.bundleCostCents)
+      && Number.isFinite(plan.financingReserveCents)
+      && Number.isFinite(plan.expectedProfitCents)
+  )),
+  inspectorSections: ["资产", "信用额度", "冻结保证金", "自己的订单", "合同路线", "生产计划", "计划阶段", "可靠原料包", "融资预留"]
+    .filter((label) => inspectorText.includes(label)),
   enteredFullscreen,
   errors,
-  stateChecks: {
-    schemaMoney: [state.treasuryCents, state.personalCashCents, state.totalDebtCents].every(Number.isFinite),
-    systemLawTitles: state.laws.filter((law) => law.category === "system").map((law) => law.title),
-    openOrderCount: state.market.openOrders.length,
-    contractCount: state.market.activeContracts.length,
-    bountyPaidCount: state.market.discoveryBounties.filter((bounty) => bounty.paid).length,
-    catHasMarketFields: state.cats.every((cat) => "debtCents" in cat && "netWorthCents" in cat
-      && "creditAvailableCents" in cat && Array.isArray(cat.localSignals) && Array.isArray(cat.contracts)),
-  },
 };
-await fs.writeFile(new URL("result.json", outputDir), JSON.stringify(result, null, 2));
+await fs.writeFile(path.join(outputDir, "result.json"), JSON.stringify(result, null, 2));
 await browser.close();
 
-if (errors.length || lockedLawChecks.some((entry) => !entry.visible || entry.disabledActions !== 4)
-  || !enteredFullscreen || !result.stateChecks.schemaMoney || !result.stateChecks.catHasMarketFields
-  || result.stateChecks.systemLawTitles.length !== 3 || result.stateChecks.bountyPaidCount === 0) {
-  process.exitCode = 1;
+const requiredInspectorSections = 9;
+if (result.schemaVersion !== 14 || result.starterCats !== 11
+  || result.sharedLawCount === 0 || result.openOrderCount === 0
+  || result.activePlanCount === 0 || result.contractCount === 0
+  || !result.everyOpenOrderHasFirmQuote || !result.everyPlanHasFundingCertificate
+  || result.inspectorSections.length !== requiredInspectorSections
+  || !enteredFullscreen || errors.length > 0) {
+  throw new Error(`schema-14 market browser QA failed:\n${JSON.stringify(result, null, 2)}`);
 }
+console.log(JSON.stringify(result, null, 2));

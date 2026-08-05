@@ -12,12 +12,27 @@ import {
   missingProductionCertifications,
   recipePrerequisiteIds,
   recipeUnlockCost,
-  TUTORIAL_RECIPE_IDS,
 } from "./catalog";
 import { DEFAULT_DIFFICULTY, difficultyProfile, effectiveRecipeInputs, normalizeDifficulty } from "./difficulty";
 import { createStarterScenario } from "./starterScenario";
-import { executeLawSource } from "./lawInterpreter";
-import { chooseAdjustedLocalAction, chooseWeightedLocalAction, localVisibleCats, planLocalLogistics, type LocalScoreAdjustment } from "./localPlanner";
+import { executeLawSource, MAX_LAW_EXECUTION_STEPS } from "./lawInterpreter";
+import { freshLawPolicy, runSharedLawLoop, SHARED_BEHAVIOR_HASH } from "./lawProgram";
+import { chooseAdjustedLocalDecision, localVisibleCats, planLocalLogistics, type LocalScoreAdjustment } from "./localPlanner";
+import {
+  DEFAULT_SPEECH_FREQUENCY,
+  DEFAULT_LAW_SPEECH_TEMPLATES,
+  fillSpeechTemplate,
+  formatSpeechAction,
+  formatSpeechGain,
+  normalizeSpeechFrequency,
+  safeSpeechTemplates,
+  speechCapacityForFrequency,
+  SPEECH_COOLDOWN_MS,
+  SPEECH_DURATION_MS,
+  speechEventIsQueuedOrVisible,
+  speechEventIsVisible,
+  speechRoll,
+} from "./speech";
 import { resourceItemAt, resourceItemsAt, siteFailure } from "./logistics";
 import {
   actionSpeedReductionAt,
@@ -31,11 +46,14 @@ import {
 } from "./landmarks";
 import {
   applyPrivateIncome,
+  acceptProfitableOrders,
+  availableInputQuantityForPlan,
   bountyBroadcastsForCat,
   broadcastsForCat,
   buildingOfferBroadcastsForCat,
   buyBuildingOffer as purchaseBuildingOffer,
   cancelDemandOrder,
+  canFinanceDirectCraft,
   claimDiscoveryBounty,
   completeProcurementPlan,
   contractActionForCat,
@@ -46,13 +64,14 @@ import {
   externalNetCents,
   externalNetCentsAt,
   ensureBountyBroadcasts,
+  ensureDirectCraftPlan,
   ensureMarketBroadcasts,
-  MARKET_SIGNAL_INTERVAL_MS,
   netWorthCents,
   openDemandOrder,
   planForCatPublic,
+  publishProductionBroadcast,
+  publishWarehouseBroadcast,
   readyContractForCat,
-  recordSystemLawHit,
   refreshCatMarket,
   settleContractLeg,
   signalsForCat,
@@ -71,6 +90,7 @@ import type {
   ItemStats,
   LawDraft,
   LawVersion,
+  MarketBroadcast,
   Position,
   RecipeDefinition,
   DifficultyLevel,
@@ -89,6 +109,9 @@ import {
   parcelKey,
   positionKey,
 } from "./world";
+import { consumeWarehousePurchase, recordWarehousePurchase } from "./warehouse";
+import { acknowledgeAchievement as acknowledgeAchievementRecord, unlockProductionAchievements } from "./achievements";
+import { recordCraftCompletion } from "./productionHistory";
 
 export const ACTION_DURATION_MS = 5_000;
 export const REPEAL_COST = 500;
@@ -128,16 +151,20 @@ export function createInitialState(options: { withStarter?: boolean; worldSeed?:
     action: null,
     lastDecision: "等待第一条法",
     decisionTrace: [],
+    decisionSerial: 0,
+    lastSpeechAt: null,
+    lawPolicy: freshLawPolicy(),
   }];
   const laws = starter?.laws ?? [];
   const resourceNodes = structuredClone(starterWorld.resourceNodes);
   const state: GameState = {
-    schemaVersion: 8,
+    schemaVersion: 14,
     difficulty,
     catalogVersion: CATALOG_VERSION,
     worldSeed,
     simTime: 0,
     paused: false,
+    speechFrequency: DEFAULT_SPEECH_FREQUENCY,
     cats,
     nextCatIndex: cats.length,
     unlockedParcels: [{ x: 0, y: 0 }],
@@ -148,6 +175,7 @@ export function createInitialState(options: { withStarter?: boolean; worldSeed?:
     nextLandmarkIndex: 0,
     buildingOffers: [],
     playerBuildingInventory: {},
+    playerWarehousePurchases: {},
     lockedWarehouseItemIds: [],
     nextBuildingOfferIndex: 0,
     buildingOrders: [],
@@ -156,17 +184,15 @@ export function createInitialState(options: { withStarter?: boolean; worldSeed?:
     logisticsStatus: [],
     procurementPlans: [],
     demandOrders: [],
-    orderSignals: [],
     marketBroadcasts: [],
     shipmentContracts: [],
-    discoveryBounties: createDiscoveryBounties(difficulty),
+    discoveryBounties: createDiscoveryBounties(difficulty, laws),
     marketEvents: [],
     nextProcurementPlanIndex: 0,
     nextDemandOrderIndex: 0,
     nextMarketBroadcastIndex: 0,
     nextContractIndex: 0,
     nextMarketEventIndex: 0,
-    nextMarketTickAt: Math.max(1, MARKET_SIGNAL_INTERVAL_MS / simulationSpeed),
     simulationSpeed,
     laws,
     lawHistory: laws.map((law) => structuredClone(law)),
@@ -176,11 +202,18 @@ export function createInitialState(options: { withStarter?: boolean; worldSeed?:
     discoveredItems: [],
     unlockedRecipes: [...INTRO_RECIPE_IDS],
     itemStats: emptyStats(),
+    totalProductionValueCents: 0,
+    achievements: [],
+    productionHistory: { byCat: {}, flows: [] },
+    recentProductionEvents: [],
     floatingEvents: [],
     stargatesBuilt: 0,
     milestoneAt: null,
-    dirtyDecisions: true,
+    dirtyDecisions: false,
+    lawbookRevision: 0,
+    commandAudit: [],
   };
+  for (const cat of state.cats) beginWait(state, cat, "入场等待");
   ensureMarketBroadcasts(state);
   return state;
 }
@@ -249,10 +282,12 @@ export function placeCat(state: GameState, position: Position): CatState | null 
     action: null,
     lastDecision: "新猫等待决策",
     decisionTrace: [],
+    decisionSerial: 0,
+    lastSpeechAt: null,
   };
   state.nextCatIndex += 1;
   state.cats.push(cat);
-  state.dirtyDecisions = true;
+  beginWait(state, cat, "新猫入场等待");
   return cat;
 }
 
@@ -337,9 +372,6 @@ export function removeCat(state: GameState, catId: string): CatRemovalResult {
   state.demandOrders = state.demandOrders.filter((order) => (
     order.buyerCatId !== catId && order.destinationCatId !== catId && !affectedOrderIds.has(order.id)
   ));
-  state.orderSignals = state.orderSignals.filter((signal) => (
-    signal.catId !== catId && !signal.routeCatIds.includes(catId) && !affectedOrderIds.has(signal.orderId)
-  ));
   state.shipmentContracts = state.shipmentContracts.filter((contract) => !affectedContractIds.has(contract.id));
   const affectedOfferIds = new Set(state.buildingOffers.filter((offer) => offer.sellerCatId === catId).map((offer) => offer.id));
   state.buildingOffers = state.buildingOffers.filter((offer) => !affectedOfferIds.has(offer.id));
@@ -365,8 +397,12 @@ export function buildObservation(
   cat: CatState,
   map = catMap(state),
   landmarkIndex: LandmarkSpatialIndex = createLandmarkSpatialIndex(state),
+  broadcastSnapshot?: readonly MarketBroadcast[],
+  visibleBroadcastSnapshot?: readonly MarketBroadcast[],
 ): CatObservation {
   const effects = landmarkEffectsAt(state, cat.position, landmarkIndex);
+  const broadcasts = broadcastSnapshot ?? broadcastsForCat(state, cat.id);
+  const visibleBroadcasts = visibleBroadcastSnapshot ?? broadcasts.slice(0, 512);
   const neighbors = {} as CatObservation["neighbors"];
   for (const [direction, offset] of Object.entries(DIRECTION_OFFSETS) as Array<[Direction, Position]>) {
     const neighbor = map.get(`${cat.position.x + offset.x},${cat.position.y + offset.y}`);
@@ -375,11 +411,31 @@ export function buildObservation(
       inventory: { ...neighbor.inventory },
     } : null;
   }
-  const heardOrders = signalsForCat(state, cat.id).slice(0, 32).map((signal) => {
-    const order = state.demandOrders.find((entry) => entry.id === signal.orderId)!;
-    const broadcast = broadcastsForCat(state, cat.id).find((entry) => entry.kind === "demand-open" && entry.subjectId === signal.orderId);
-    return { id: signal.orderId, itemId: order.itemId, effectiveBidCents: signal.effectiveBidCents, sourceCatId: broadcast?.sourceCatId ?? order.destinationCatId };
-  });
+  const orderSummaries = new Map<ItemId, { id: string; itemId: ItemId; effectiveBidCents: number; sourceCatId: string; count: number }>();
+  for (const order of state.demandOrders) {
+    if (order.status !== "open") continue;
+    const previous = orderSummaries.get(order.itemId);
+    if (!previous) {
+      orderSummaries.set(order.itemId, {
+        id: order.id,
+        itemId: order.itemId,
+        effectiveBidCents: order.maxDeliveredCents,
+        sourceCatId: order.destinationCatId,
+        count: 1,
+      });
+    } else {
+      previous.count += 1;
+      if (order.maxDeliveredCents > previous.effectiveBidCents
+        || (order.maxDeliveredCents === previous.effectiveBidCents && order.id.localeCompare(previous.id) < 0)) {
+        previous.id = order.id;
+        previous.effectiveBidCents = order.maxDeliveredCents;
+        previous.sourceCatId = order.destinationCatId;
+      }
+    }
+  }
+  const heardOrders = [...orderSummaries.values()].sort((left, right) => (
+    right.effectiveBidCents - left.effectiveBidCents || left.itemId.localeCompare(right.itemId)
+  ));
   const heardBounties = bountyBroadcastsForCat(state, cat.id).map((broadcast) => ({
     itemId: broadcast.itemId,
     amountCents: broadcast.amountCents,
@@ -397,7 +453,7 @@ export function buildObservation(
     position: { ...cat.position },
     inventory: { ...cat.inventory },
     neighbors,
-    nearby: localVisibleCats(state, cat, map, effects.effectiveVisionRadius).filter((entry) => entry.id !== cat.id).map((entry) => ({
+    nearby: localVisibleCats(state, cat, map).filter((entry) => entry.id !== cat.id).map((entry) => ({
       position: { ...entry.position },
       inventory: { ...entry.inventory },
       distance: Math.abs(entry.position.x - cat.position.x) + Math.abs(entry.position.y - cat.position.y),
@@ -413,13 +469,13 @@ export function buildObservation(
     wallet: {
       cashCents: cat.coins,
       debtCents: cat.debtCents,
-      netWorthCents: netWorthCents(state, cat, (itemId) => itemPrice(state, itemId)),
-      creditAvailableCents: creditAvailableCents(state, cat, (itemId) => itemPrice(state, itemId)),
+      netWorthCents: netWorthCents(state, cat, (itemId) => itemPrice(state, itemId, cat)),
+      creditAvailableCents: creditAvailableCents(state, cat, (itemId) => itemPrice(state, itemId, cat)),
     },
     heardOrders,
     heardBounties,
     heardBuildingOffers,
-    broadcasts: broadcastsForCat(state, cat.id).slice(0, 64),
+    broadcasts: visibleBroadcasts,
     carrying: carryingAction?.type === "pass" && carryingContract
       ? { contractId: carryingContract.id, itemId: carryingContract.itemId, nextDirection: carryingAction.direction }
       : null,
@@ -448,7 +504,6 @@ function give(inventory: Record<ItemId, number>, itemId: ItemId, quantity: numbe
 }
 
 function validateAction(state: GameState, cat: CatState, action: Exclude<CatAction, null>, map: Map<string, CatState>): string | null {
-  if (action.type === "sell") return "猫咪不能外部出售；请由玩家点击猫咪收购现货";
   if (action.type === "craft") {
     const entry = RECIPE_BY_ID.get(action.recipeId);
     if (!entry) return `未知配方 ${action.recipeId}`;
@@ -456,7 +511,7 @@ function validateAction(state: GameState, cat: CatState, action: Exclude<CatActi
     const siteFailure = recipeSiteFailure(state, cat, entry);
     if (siteFailure) return siteFailure;
     const plan = planForCatPublic(state, cat.id);
-    const servesPlan = Boolean(plan && itemDependencyDistance(entry.output, plan.outputItemId) >= 0);
+    const servesPlan = Boolean(plan && plan.recipeId === entry.id && plan.phase === "ready");
     const servesHeardOrder = signalsForCat(state, cat.id).some((signal) => state.demandOrders.some((order) => (
       order.id === signal.orderId && itemDependencyDistance(entry.output, order.itemId) >= 0
     )));
@@ -464,10 +519,12 @@ function validateAction(state: GameState, cat: CatState, action: Exclude<CatActi
     const bountyLedger = state.discoveryBounties.find((bounty) => bounty.itemId === entry.output && !bounty.paid);
     const servesBounty = heardBounty && Boolean(bountyLedger
       && (bountyLedger.claimedByCatId === null || bountyLedger.claimedByCatId === cat.id));
-    if (!servesPlan && !servesHeardOrder && !servesBounty) return "没有盈利生产计划、已知订单或首次发现悬赏";
-    const missing = effectiveRecipeInputs(entry, state.difficulty).find((input) => unofferedOwnedQuantity(state, cat, input.itemId) < input.quantity);
+    if (!servesPlan) return "没有完成整包融资的盈利生产计划";
+    const missing = effectiveRecipeInputs(entry, state.difficulty).find((input) => (
+      !plan || availableInputQuantityForPlan(state, cat, plan, input.itemId) < input.quantity
+    ));
     if (missing) return `缺少 ${missing.itemId}×${missing.quantity}`;
-    return expectedActionGainCents(state, cat, action, (itemId) => itemPrice(state, itemId)) < 0
+    return expectedActionGainCents(state, cat, action, (itemId) => itemPrice(state, itemId, cat)) < 0
       ? "预计降低自身净资产"
       : null;
   }
@@ -480,12 +537,75 @@ function validateAction(state: GameState, cat: CatState, action: Exclude<CatActi
     if (!contract) return "没有对价：传递必须履行已成交运输合同";
     return null;
   }
-  return "猫咪不能外部出售；请由玩家点击猫咪收购现货";
+  return "未知猫咪动作";
 }
 
-function beginAction(state: GameState, cat: CatState, action: Exclude<CatAction, null>, lawId: string): void {
+function validateLawProposedAction(
+  state: GameState,
+  cat: CatState,
+  action: Exclude<CatAction, null>,
+  map: Map<string, CatState>,
+): string | null {
+  if (action.type !== "craft") return validateAction(state, cat, action, map);
+  const recipe = RECIPE_BY_ID.get(action.recipeId);
+  if (!recipe) return `未知配方 ${action.recipeId}`;
+  if (!state.unlockedRecipes.includes(action.recipeId)) return `配方尚未解锁 ${action.recipeId}`;
+  const siteFailure = recipeSiteFailure(state, cat, recipe);
+  if (siteFailure) return siteFailure;
+  const active = planForCatPublic(state, cat.id);
+  if (active) return active.recipeId === recipe.id ? null : `已有生产计划 ${active.outputItemId}`;
+  return canFinanceDirectCraft(state, cat, recipe.id, (itemId) => itemPrice(state, itemId, cat))
+    ? null
+    : "无法为直接制作取得完整原料包融资证明";
+}
+
+function appendAudit(state: GameState, entry: Omit<GameState["commandAudit"][number], "sequence" | "atMs">): void {
+  state.commandAudit.push({ ...entry, sequence: (state.commandAudit.at(-1)?.sequence ?? 0) + 1, atMs: state.simTime });
+  if (state.commandAudit.length > 2_000) state.commandAudit.splice(0, state.commandAudit.length - 2_000);
+}
+
+export function recordPlayerCommand(
+  state: GameState,
+  kind: Extract<GameState["commandAudit"][number]["kind"],
+    "buy-recipe" | "buy-cat-stock" | "buy-building" | "place-building" | "sell-warehouse" |
+    "compile-law" | "enact-law" | "reorder-law" | "repeal-law" | "advance-time" |
+    "place-cat" | "remove-cat" | "expand-parcel" | "queue-building" | "cancel-building" |
+    "dismantle-building" | "toggle-warehouse-lock" | "buy-landmark-blueprint" | "place-landmark" |
+    "dismantle-landmark" | "set-paused" | "set-speech-frequency" | "ack-achievement" | "forbidden-debug">,
+  target: string,
+  ok: boolean,
+  detail?: string,
+): void {
+  appendAudit(state, { origin: "player-ui", kind, target, ok, detail });
+}
+
+function beginWait(state: GameState, cat: CatState, reason: string): void {
+  cat.action = {
+    type: "wait",
+    itemId: "",
+    startedAt: state.simTime,
+    endsAt: state.simTime + Math.max(1, ACTION_DURATION_MS / state.simulationSpeed),
+    reserved: {},
+    lawId: "internal-wait",
+    speedReduction: 0,
+  };
+  cat.lastDecision = reason;
+  appendAudit(state, { origin: "simulation", kind: "action-start", target: cat.id, ok: true, detail: "wait" });
+}
+
+export function scheduleInternalWait(state: GameState, cat: CatState, reason = "存档载入等待"): void {
+  beginWait(state, cat, reason);
+}
+
+function beginAction(
+  state: GameState,
+  cat: CatState,
+  action: Exclude<CatAction, null>,
+  lawId: string,
+  decisionReason: string,
+): void {
   const reserved: Record<ItemId, number> = {};
-  let itemId: ItemId;
+  let itemId = "" as ItemId;
   if (action.type === "craft") {
     const entry = RECIPE_BY_ID.get(action.recipeId)!;
     itemId = entry.output;
@@ -498,19 +618,11 @@ function beginAction(state: GameState, cat: CatState, action: Exclude<CatAction,
     itemId = action.itemId;
     const contract = contractForAction(state, cat, action)!;
     if (contract.currentLeg === 0) reserved[itemId] = 1;
-  } else {
-    recordSystemLawHit(state, "starter-law-cent-settlement");
-    itemId = action.itemId;
-    take(cat.inventory, itemId, 1);
-    reserved[itemId] = 1;
   }
   const contract = action.type === "pass" ? contractForAction(state, cat, action) : undefined;
   const speedReduction = actionSpeedReductionAt(state, cat.position, action.type);
   const baseDuration = Math.max(2_000, ACTION_DURATION_MS * (1 - speedReduction));
-  const saleGrossCents = action.type === "sell"
-    ? Math.ceil(itemPrice(state, itemId) * (1 + landmarkEffectsAt(state, cat.position).saleValueBonus))
-    : undefined;
-  const salePriceLawId = action.type === "sell" ? activePriceLaw(state, itemId)?.id : undefined;
+  const expectedGainCents = expectedActionGainCents(state, cat, action, (id) => itemPrice(state, id, cat));
   cat.action = {
     type: action.type,
     recipeId: action.type === "craft" ? action.recipeId : undefined,
@@ -521,12 +633,78 @@ function beginAction(state: GameState, cat: CatState, action: Exclude<CatAction,
     reserved,
     lawId,
     contractId: contract?.id,
-    expectedGainCents: expectedActionGainCents(state, cat, action, (id) => itemPrice(state, id)),
-    saleGrossCents,
-    salePriceLawId,
+    expectedGainCents,
+    decisionReason,
     speedReduction,
   };
+  cat.decisionSerial = (cat.decisionSerial ?? 0) + 1;
   cat.lastDecision = `${lawId} → ${action.type}:${itemId}`;
+  maybeAddDecisionSpeech(state, cat, lawId, decisionReason);
+  appendAudit(state, { origin: "simulation", kind: "action-start", target: cat.id, ok: true, detail: `${action.type}:${itemId}` });
+}
+
+const SPEECH_DIRECTION_LABELS: Record<Direction, string> = {
+  north: "北",
+  east: "东",
+  south: "南",
+  west: "西",
+};
+
+function maybeAddDecisionSpeech(state: GameState, cat: CatState, lawId: string, reason: string): void {
+  const command = cat.action;
+  if (!command || command.type === "wait") return;
+  if (cat.lastSpeechAt !== null && cat.lastSpeechAt !== undefined && state.simTime < cat.lastSpeechAt + SPEECH_COOLDOWN_MS) return;
+  const queuedOrActiveSpeechCount = state.floatingEvents.filter((event) => speechEventIsQueuedOrVisible(event, state.simTime)).length;
+  if (queuedOrActiveSpeechCount >= speechCapacityForFrequency(state.speechFrequency)) return;
+  const key = [
+    state.worldSeed,
+    cat.createdIndex,
+    cat.decisionSerial ?? 0,
+    lawId,
+    command.type,
+    command.itemId,
+    command.direction ?? "",
+  ].join("|");
+  const roll = speechRoll(key, state.speechFrequency);
+  if (!roll.speaks) return;
+
+  const definition = ITEM_BY_ID.get(command.itemId);
+  const item = `${definition?.emoji ?? "📦"}${definition?.name ?? command.itemId}`;
+  const direction = command.direction ? `${SPEECH_DIRECTION_LABELS[command.direction]}边` : "";
+  const contract = command.contractId ? state.shipmentContracts.find((entry) => entry.id === command.contractId) : undefined;
+  const destinationCatId = contract?.routeCatIds[contract.currentLeg + 1];
+  const destinationCat = destinationCatId ? state.cats.find((entry) => entry.id === destinationCatId) : undefined;
+  const destination = command.type === "pass"
+    ? `${direction || "相邻"}的${destinationCat ? `${destinationCat.createdIndex + 1}号猫` : "下一站"}`
+    : "";
+  const action = formatSpeechAction(command.type, item, destination);
+  const law = state.laws.find((entry) => entry.id === lawId);
+  const templates = law ? safeSpeechTemplates(law.speechTemplates) : DEFAULT_LAW_SPEECH_TEMPLATES;
+  const text = fillSpeechTemplate(templates[roll.templateIndex], {
+    law: law ? `《${law.title}》` : "收益准则",
+    reason,
+    action,
+    item,
+    direction,
+    gain: formatSpeechGain(command.expectedGainCents ?? 0),
+  });
+  const scheduledAt = state.simTime + roll.delayMs;
+  state.floatingEvents.push({
+    id: `speech-${state.simTime}-${cat.id}-${cat.decisionSerial ?? 0}`,
+    catId: cat.id,
+    text,
+    createdAt: scheduledAt,
+    duration: SPEECH_DURATION_MS,
+    kind: "speech",
+    lawId: law?.id ?? lawId,
+    reason,
+    itemId: command.itemId,
+    gainCents: command.expectedGainCents ?? 0,
+    direction: command.direction,
+    destinationCatId,
+    scheduledDelayMs: roll.delayMs,
+  });
+  cat.lastSpeechAt = scheduledAt;
 }
 
 export function queueBuildingOrder(state: GameState, targetCatId: string, itemId: ItemId): { ok: boolean; error?: string; order?: BuildingOrder } {
@@ -591,7 +769,8 @@ export function buildingPlacementFailure(state: GameState, itemId: ItemId, posit
   if (!isPositionUnlocked(state.unlockedParcels, position)) return "只能放在已开拓土地";
   if (state.cats.some((cat) => cat.position.x === position.x && cat.position.y === position.y)) return "该格已有猫咪工位";
   if (buildingAt(state, position)) return "该格已有建筑";
-  if (resourceAt(state, position) || resourceItemsAt(state, position).length > 0) return "资源中心和采集格不能放建筑";
+  if (resourceAt(state, position)) return "资源中心不能放建筑";
+  if (itemId !== "factory" && resourceItemsAt(state, position).length > 0) return "只有工厂可以放在资源采集格";
   return null;
 }
 
@@ -608,12 +787,15 @@ export function placeOwnedBuilding(state: GameState, itemId: ItemId, position: P
   state.buildings.push(building);
   state.playerBuildingInventory[itemId] -= 1;
   if (state.playerBuildingInventory[itemId] <= 0) delete state.playerBuildingInventory[itemId];
+  consumeWarehousePurchase(state, itemId, 1);
   state.dirtyDecisions = true;
   return { ok: true, building };
 }
 
 export function buyBuildingOffer(state: GameState, offerId: string): { ok: boolean; error?: string } {
-  return purchaseBuildingOffer(state, offerId);
+  const result = purchaseBuildingOffer(state, offerId);
+  if (result.ok) compactGameStateHistory(state);
+  return result;
 }
 
 export interface WarehouseQuote {
@@ -642,6 +824,19 @@ export interface CatStockPurchaseQuote {
   requiredTreasuryCents: number;
 }
 
+export interface WarehouseBulkSellLine {
+  itemId: ItemId;
+  quantity: number;
+  unitPriceCents: number;
+  subtotalCents: number;
+}
+
+export interface WarehouseBulkSellQuote {
+  lines: WarehouseBulkSellLine[];
+  totalQuantity: number;
+  totalRevenueCents: number;
+}
+
 function warehouseDirectPrice(state: GameState, itemId: ItemId): number {
   return Math.ceil(itemPrice(state, itemId) * difficultyProfile(state.difficulty).buildingAskMultiplier);
 }
@@ -649,6 +844,20 @@ function warehouseDirectPrice(state: GameState, itemId: ItemId): number {
 /** Player warehouse sales always use the immutable catalog base value, never a law or landmark price. */
 export function warehouseSellPrice(itemId: ItemId): number {
   return ITEM_BY_ID.has(itemId) ? (CATALOG_ANALYSIS.basePrices[itemId] ?? 0) * 100 * 2 : 0;
+}
+
+export function warehouseBulkSellQuote(state: GameState): WarehouseBulkSellQuote {
+  const locked = new Set(state.lockedWarehouseItemIds);
+  const lines = ITEMS.map((item) => {
+    const quantity = locked.has(item.id) ? 0 : state.playerBuildingInventory[item.id] ?? 0;
+    const unitPriceCents = warehouseSellPrice(item.id);
+    return { itemId: item.id, quantity, unitPriceCents, subtotalCents: unitPriceCents * quantity };
+  }).filter((line) => line.quantity > 0);
+  return {
+    lines,
+    totalQuantity: lines.reduce((sum, line) => sum + line.quantity, 0),
+    totalRevenueCents: lines.reduce((sum, line) => sum + line.subtotalCents, 0),
+  };
 }
 
 function catStockLines(state: GameState, onlyCatId?: string, onlyItemId?: ItemId): CatStockPurchaseLine[] {
@@ -750,7 +959,8 @@ export function buyWarehouseItem(state: GameState, itemId: ItemId): { ok: boolea
   take(selected.seller.inventory, itemId, 1);
   applyPrivateIncome(selected.seller, selected.price);
   state.playerBuildingInventory[itemId] = (state.playerBuildingInventory[itemId] ?? 0) + 1;
-  recordSystemLawHit(state, "starter-law-cent-settlement");
+  recordWarehousePurchase(state, itemId, 1);
+  publishWarehouseBroadcast(state, selected.seller.id, itemId);
   state.dirtyDecisions = true;
   return { ok: true, cost: selected.price, sellerCatId: selected.seller.id };
 }
@@ -776,7 +986,8 @@ export function buyCatItem(state: GameState, catId: string, itemId: ItemId): { o
   take(seller.inventory, itemId, 1);
   applyPrivateIncome(seller, selected.unitPriceCents);
   give(state.playerBuildingInventory, itemId, 1);
-  recordSystemLawHit(state, "starter-law-cent-settlement");
+  recordWarehousePurchase(state, itemId, 1);
+  publishWarehouseBroadcast(state, seller.id, itemId);
   state.dirtyDecisions = true;
   return { ok: true, cost: selected.unitPriceCents, sellerCatId: seller.id };
 }
@@ -797,7 +1008,8 @@ function buyQuotedCatStock(state: GameState, quote: CatStockPurchaseQuote): { ok
     take(seller.inventory, line.itemId, line.quantity);
     applyPrivateIncome(seller, line.subtotalCents);
     give(state.playerBuildingInventory, line.itemId, line.quantity);
-    recordSystemLawHit(state, "starter-law-cent-settlement");
+    recordWarehousePurchase(state, line.itemId, line.quantity);
+    publishWarehouseBroadcast(state, seller.id, line.itemId);
   }
   state.dirtyDecisions = true;
   return { ok: true };
@@ -840,7 +1052,9 @@ export function buyAllCatStockAndSell(state: GameState): { ok: boolean; error?: 
   for (const line of quote.lines) {
     if (locked.has(line.itemId)) continue;
     take(state.playerBuildingInventory, line.itemId, line.quantity);
+    consumeWarehousePurchase(state, line.itemId, line.quantity);
     recordWarehouseSale(state, line.itemId, line.quantity, false);
+    publishWarehouseBroadcast(state, state.cats[0]?.id ?? "", line.itemId);
   }
   return {
     ok: true,
@@ -856,21 +1070,23 @@ export function sellWarehouseItem(state: GameState, itemId: ItemId, quantity = 1
   if (!Number.isInteger(quantity) || quantity <= 0) return { ok: false, error: "出售数量必须是正整数" };
   if ((state.playerBuildingInventory[itemId] ?? 0) < quantity) return { ok: false, error: "仓库库存不足" };
   take(state.playerBuildingInventory, itemId, quantity);
+  consumeWarehousePurchase(state, itemId, quantity);
   const revenueCents = recordWarehouseSale(state, itemId, quantity);
+  publishWarehouseBroadcast(state, state.cats[0]?.id ?? "", itemId);
   state.dirtyDecisions = true;
   return { ok: true, revenueCents, quantity };
 }
 
 export function sellAllUnlockedWarehouseItems(state: GameState): { ok: boolean; error?: string; revenueCents?: number; quantity?: number } {
-  const locked = new Set(state.lockedWarehouseItemIds);
-  const sale = ITEMS.map((item) => ({ itemId: item.id, quantity: state.playerBuildingInventory[item.id] ?? 0 }))
-    .filter((line) => line.quantity > 0 && !locked.has(line.itemId));
-  if (sale.length === 0) return { ok: false, error: "没有可一键出售的未锁定商品" };
+  const quote = warehouseBulkSellQuote(state);
+  if (quote.lines.length === 0) return { ok: false, error: "没有可一键出售的未锁定商品" };
   let revenueCents = 0;
   let quantity = 0;
-  for (const line of sale) {
+  for (const line of quote.lines) {
     take(state.playerBuildingInventory, line.itemId, line.quantity);
+    consumeWarehousePurchase(state, line.itemId, line.quantity);
     revenueCents += recordWarehouseSale(state, line.itemId, line.quantity);
+    publishWarehouseBroadcast(state, state.cats[0]?.id ?? "", line.itemId);
     quantity += line.quantity;
   }
   state.dirtyDecisions = true;
@@ -895,168 +1111,260 @@ function resolveBuildingOrders(state: GameState): void {
     const contract = order.contractId ? state.shipmentContracts.find((entry) => entry.id === order.contractId) : undefined;
     if (!contract || contract.status !== "delivered") continue;
     state.playerBuildingInventory[order.itemId] = (state.playerBuildingInventory[order.itemId] ?? 0) + 1;
+    publishWarehouseBroadcast(state, cat.id, order.itemId);
     completed.push(order.id);
     addFloating(state, cat.id, `${ITEM_BY_ID.get(order.itemId)?.emoji ?? "🏗️"} 已送入建筑库`, "gain");
   }
   if (completed.length) state.buildingOrders = state.buildingOrders.filter((order) => !completed.includes(order.id));
 }
 
-export function decideIdleCats(state: GameState): void {
+export function decideIdleCats(state: GameState, eligibleCatIds?: ReadonlySet<string>): void {
+  const broadcastCutoff = state.simTime - 60_000 / state.simulationSpeed;
+  state.marketBroadcasts = state.marketBroadcasts.filter((broadcast) => (
+    broadcast.kind !== "production-event" || broadcast.publishedAt >= broadcastCutoff
+  ));
   resolveBuildingOrders(state);
-  for (const cat of [...state.cats].sort((a, b) => a.createdIndex - b.createdIndex)) {
-    refreshCatMarket(state, cat, (itemId) => itemPrice(state, itemId));
-  }
-  resolveBuildingOrders(state);
+  acceptProfitableOrders(state, (itemId) => itemPrice(state, itemId));
   const landmarkIndex = createLandmarkSpatialIndex(state);
-  const spatialPlan = planLocalLogistics(state, (itemId) => itemPrice(state, itemId), landmarkIndex);
   const spatialMap = catMap(state);
-  state.logisticsStatus = spatialPlan.status;
-  for (const cat of [...state.cats].sort((a, b) => a.createdIndex - b.createdIndex)) {
-    if (cat.action) continue;
-    const trace = spatialPlan.traces.get(cat.id) ?? [];
-    let action: Exclude<CatAction, null> | undefined = contractActionForCat(state, cat) ?? undefined;
-    let lawId = action ? "binding-contract" : "local-greedy";
-    const observation = buildObservation(state, cat, spatialMap, landmarkIndex);
-    const law = state.laws.find((entry) => entry.status === "active" && entry.category === "behavior");
-    if (law && !action) {
-      const scoreAdjustments: LocalScoreAdjustment[] = [];
-      const chooseAdjusted = () => scoreAdjustments.length === 0
-        ? spatialPlan.assignments.get(cat.id) ?? null
-        : chooseAdjustedLocalAction(state, cat, (itemId) => itemPrice(state, itemId), scoreAdjustments);
-      const result = executeLawSource(law.sourceCode, observation, 200, {
-        canCraft: (recipeId) => {
-          const candidate: Exclude<CatAction, null> = { type: "craft", recipeId };
-          return validateAction(state, cat, candidate, spatialMap) === null;
+  const eligible = [...state.cats]
+    .filter((cat) => !cat.action && (!eligibleCatIds || eligibleCatIds.has(cat.id)))
+    .sort((a, b) => a.createdIndex - b.createdIndex);
+  if (eligible.length === 0) return;
+
+  const activeLaws = state.laws.filter((law) => law.status === "active");
+  const activeLawPriority = new Map(activeLaws.map((law) => [law.id, state.laws.indexOf(law)]));
+  const broadcastSnapshot = broadcastsForCat(state, "*");
+  const visibleBroadcastSnapshot = broadcastSnapshot.slice(0, 512);
+  const warehouseCounts = new Map<string, number>();
+  const craftedCounts = new Map<string, number>();
+  const recentCraftedCounts = new Map<string, number>();
+  for (const broadcast of visibleBroadcastSnapshot) {
+    if (broadcast.kind === "warehouse-stock" && !warehouseCounts.has(broadcast.itemId)) {
+      warehouseCounts.set(broadcast.itemId, broadcast.amountCents);
+    } else if (broadcast.kind === "production-total" && !craftedCounts.has(broadcast.itemId)) {
+      craftedCounts.set(broadcast.itemId, broadcast.amountCents);
+    } else if (broadcast.kind === "production-event") {
+      recentCraftedCounts.set(broadcast.itemId, (recentCraftedCounts.get(broadcast.itemId) ?? 0) + 1);
+    }
+  }
+  const marketNeedItems = state.unlockedRecipes
+    .map((id) => RECIPE_BY_ID.get(id)?.output)
+    .filter((itemId): itemId is ItemId => Boolean(itemId))
+    .sort((left, right) => (
+      (recentCraftedCounts.get(left) ?? 0) - (recentCraftedCounts.get(right) ?? 0)
+        || (state.itemStats[left]?.crafted ?? 0) - (state.itemStats[right]?.crafted ?? 0)
+        || left.localeCompare(right)
+    ));
+  type Policy = {
+    adjustments: LocalScoreAdjustment[];
+    selectorRequested: boolean;
+    selectorLawId: string;
+    direct?: { action: Exclude<CatAction, null>; lawId: string };
+    trace: string[];
+  };
+  const policies = new Map<string, Policy>();
+
+  // This is the only law authority. Action, scoring, price, tax, credit and
+  // bounty instructions are all emitted by the same real shared for-loop.
+  for (const cat of eligible) {
+    const observation = buildObservation(
+      state,
+      cat,
+      spatialMap,
+      landmarkIndex,
+      broadcastSnapshot,
+      visibleBroadcastSnapshot,
+    );
+    const runtimePolicy = freshLawPolicy();
+    const claimedPolicyKeys = new Set<string>();
+    const policy = runSharedLawLoop(activeLaws, (law) => {
+      const localAdjustments: LocalScoreAdjustment[] = [];
+      let requestedSelector = false;
+      let policyTouched = false;
+      const requestSelector = () => {
+        requestedSelector = true;
+        return null;
+      };
+      const result = executeLawSource(law.sourceCode, observation, MAX_LAW_EXECUTION_STEPS, {
+        observationIsSnapshot: true,
+        canCraft: (recipeOrItemId) => {
+          const recipe = RECIPE_BY_ID.get(recipeOrItemId) ?? RECIPE_BY_OUTPUT.get(recipeOrItemId);
+          return Boolean(recipe && validateLawProposedAction(state, cat, { type: "craft", recipeId: recipe.id }, spatialMap) === null);
         },
-        earnCoins: chooseAdjusted,
-        weighted: (craftWeight, passWeight, sellWeight) => chooseWeightedLocalAction(
-          state,
-          cat,
-          (itemId) => itemPrice(state, itemId),
-          { craft: craftWeight, pass: passWeight, sell: sellWeight },
-        ),
+        earnCoins: requestSelector,
+        choose: requestSelector,
+        weighted: (craftWeight, passWeight) => {
+          requestedSelector = true;
+          localAdjustments.push(
+            { actionType: "craft", itemId: "*", multiplier: craftWeight, bonus: 0, lawId: law.id, lawPriority: activeLawPriority.get(law.id) },
+            { actionType: "pass", itemId: "*", multiplier: passWeight, bonus: 0, lawId: law.id, lawPriority: activeLawPriority.get(law.id) },
+          );
+          return null;
+        },
         adjust: (actionType, itemId, multiplier, bonus) => {
-          if (!["craft", "pass", "sell", "*"].includes(actionType)) return;
-          scoreAdjustments.push({
+          if (!["craft", "pass", "*"].includes(actionType)) return;
+          localAdjustments.push({
             actionType: actionType as LocalScoreAdjustment["actionType"],
             itemId,
             multiplier,
             bonus,
+            lawId: law.id,
+            lawPriority: activeLawPriority.get(law.id),
           });
         },
-        choose: chooseAdjusted,
+        warehouseCount: (itemId) => warehouseCounts.get(itemId) ?? 0,
+        crafted: (itemId) => craftedCounts.get(itemId) ?? 0,
+        recentCrafted: (itemId) => recentCraftedCounts.get(itemId) ?? 0,
+        marketNeed: (rank) => marketNeedItems[rank] ?? "",
+        setPrice: (itemId, multiplier) => {
+          if ((itemId !== "*" && !ITEM_BY_ID.has(itemId)) || !Number.isFinite(multiplier)) return;
+          const key = `price:${itemId}`;
+          if (claimedPolicyKeys.has(key)) return;
+          claimedPolicyKeys.add(key);
+          runtimePolicy.priceMultipliers[itemId] = Math.max(0.1, Math.min(10, multiplier));
+          policyTouched = true;
+        },
+        setTax: (rate) => {
+          if (claimedPolicyKeys.has("tax") || !Number.isFinite(rate)) return;
+          claimedPolicyKeys.add("tax");
+          runtimePolicy.taxRate = Math.max(0, Math.min(1, rate));
+          policyTouched = true;
+        },
+        setCredit: (baseCents, netWorthFactor) => {
+          if (claimedPolicyKeys.has("credit") || !Number.isFinite(baseCents) || !Number.isFinite(netWorthFactor)) return;
+          claimedPolicyKeys.add("credit");
+          runtimePolicy.creditBaseCents = Math.max(0, Math.min(1_000_000, Math.floor(baseCents)));
+          runtimePolicy.creditNetWorthFactor = Math.max(0, Math.min(1, netWorthFactor));
+          policyTouched = true;
+        },
+        setBounty: (multiplier) => {
+          if (claimedPolicyKeys.has("bounty") || !Number.isFinite(multiplier)) return;
+          claimedPolicyKeys.add("bounty");
+          runtimePolicy.bountyMultiplier = Math.max(0, Math.min(10, multiplier));
+          policyTouched = true;
+        },
       });
-      if (result.error) {
-        law.invalidCount += 1;
-        law.consecutiveFaults += 1;
-        trace.push(`《${law.title}》异常：${result.error}`);
-        if (law.consecutiveFaults >= 3) {
-          law.status = "quarantined";
-          trace.push(`《${law.title}》连续异常，已隔离`);
-        }
-      } else if (result.action) {
-        const invalid = validateAction(state, cat, result.action, spatialMap);
-        if (invalid) {
-        law.invalidCount += 1;
-        law.consecutiveFaults += 1;
-        trace.push(`《${law.title}》跳过：${invalid}`);
-        } else {
-          law.hitCount += 1;
-          law.consecutiveFaults = 0;
-          action = result.action;
-          lawId = law.id;
-          trace.push(`《${law.title}》命中全体共享逻辑`);
-        }
-      }
+      return {
+        action: result.action,
+        error: result.error,
+        adjustments: localAdjustments,
+        selectorRequested: requestedSelector,
+        policyTouched,
+      };
+    }, (action) => validateLawProposedAction(state, cat, action, spatialMap));
+    cat.lawPolicy = runtimePolicy;
+    policies.set(cat.id, policy as Policy);
+  }
+  const bountyMultiplier = state.cats[0]?.lawPolicy?.bountyMultiplier ?? difficultyProfile(state.difficulty).bountyMultiplier;
+  for (const bounty of state.discoveryBounties) {
+    if (bounty.paid || bounty.claimedByCatId) continue;
+    bounty.amountCents = Math.round((CATALOG_ANALYSIS.basePrices[bounty.itemId] ?? 1) * 100 * bountyMultiplier);
+  }
+
+  const plannerAuthorizedCatIds = new Set<string>();
+  for (const cat of eligible) {
+    const policy = policies.get(cat.id)!;
+    if (policy.direct?.action.type === "craft") {
+      const prepared = ensureDirectCraftPlan(
+        state,
+        cat,
+        policy.direct.action.recipeId,
+        (itemId) => itemPrice(state, itemId, cat),
+        policy.direct.lawId,
+      );
+      if (prepared) plannerAuthorizedCatIds.add(cat.id);
+      else policy.trace.push("直接制作未能建立完整原料包融资计划");
     }
-    action ??= spatialPlan.assignments.get(cat.id);
-    cat.decisionTrace = trace.slice(-8);
-    if (!action) {
-      cat.lastDecision = trace[0] ?? "没有可执行的赚钱动作";
+    if (!policy.direct && policy.selectorRequested) {
+      plannerAuthorizedCatIds.add(cat.id);
+    }
+    if (plannerAuthorizedCatIds.has(cat.id)) refreshCatMarket(
+      state,
+      cat,
+      (itemId) => itemPrice(state, itemId, cat),
+      policy.adjustments,
+      policy.direct?.lawId || policy.selectorLawId,
+    );
+  }
+  resolveBuildingOrders(state);
+  const spatialPlan = plannerAuthorizedCatIds.size
+    ? planLocalLogistics(state, (itemId, cat) => itemPrice(state, itemId, cat), landmarkIndex)
+    : {
+      assignments: new Map<string, Exclude<CatAction, null>>(),
+      decisions: new Map(),
+      traces: new Map<string, string[]>(),
+      status: [],
+    };
+  state.logisticsStatus = spatialPlan.status.filter((entry) => entry.componentId.startsWith("local-")
+    && plannerAuthorizedCatIds.has(entry.componentId.slice("local-".length)));
+
+  for (const cat of eligible) {
+    const policy = policies.get(cat.id)!;
+    const trace = [...policy.trace, ...(spatialPlan.traces.get(cat.id) ?? [])];
+    const localDecision = policy.adjustments.length
+      ? chooseAdjustedLocalDecision(state, cat, (itemId) => itemPrice(state, itemId, cat), policy.adjustments)
+      : spatialPlan.decisions.get(cat.id) ?? null;
+    const directInvalid = policy.direct
+      ? validateAction(state, cat, policy.direct.action, spatialMap)
+      : null;
+    const selected = policy.direct && directInvalid === null ? {
+      ...policy.direct,
+      reason: `《${state.laws.find((law) => law.id === policy.direct?.lawId)?.title ?? "统一法规"}》提出直接动作，并通过非亏损校验`,
+    } : plannerAuthorizedCatIds.has(cat.id) && localDecision ? {
+      action: localDecision.action,
+      lawId: localDecision.attributedLawId || policy.direct?.lawId || policy.selectorLawId,
+      reason: localDecision.reason,
+    } : null;
+    if (!selected?.action) {
+      cat.decisionTrace = [...trace, "没有法规提出合法动作，进入内部等待"].slice(-8);
+      beginWait(state, cat, "法规决策后等待");
       continue;
     }
-    const invalid = validateAction(state, cat, action, spatialMap);
+    const invalid = validateAction(state, cat, selected.action, spatialMap);
     if (invalid) {
-      cat.lastDecision = invalid;
       cat.decisionTrace = [...trace, invalid].slice(-8);
+      beginWait(state, cat, `动作失效：${invalid}`);
       continue;
     }
-    beginAction(state, cat, action, lawId);
+    cat.decisionTrace = trace.slice(-8);
+    beginAction(state, cat, selected.action, selected.lawId || "shared-law", selected.reason);
   }
   state.dirtyDecisions = false;
 }
 
-function canCraftRecipe(inventory: Record<ItemId, number>, recipeId: string, difficulty: GameState["difficulty"]): boolean {
-  const entry = RECIPE_BY_ID.get(recipeId);
-  return Boolean(entry && effectiveRecipeInputs(entry, difficulty).every((input) => (inventory[input.itemId] ?? 0) >= input.quantity));
+export function sharedBehaviorHash(): string {
+  return SHARED_BEHAVIOR_HASH;
 }
 
-function planTowardRecipe(state: GameState, inventory: Record<ItemId, number>, recipeId: string, visiting = new Set<string>()): CatAction {
-  if (visiting.has(recipeId) || !state.unlockedRecipes.includes(recipeId)) return null;
-  const entry = RECIPE_BY_ID.get(recipeId);
-  if (!entry) return null;
-  if (canCraftRecipe(inventory, recipeId, state.difficulty)) return { type: "craft", recipeId };
-  visiting.add(recipeId);
-  for (const input of effectiveRecipeInputs(entry, state.difficulty)) {
-    if ((inventory[input.itemId] ?? 0) >= input.quantity) continue;
-    const source = RECIPE_BY_OUTPUT.get(input.itemId);
-    if (!source) continue;
-    const action = planTowardRecipe(state, inventory, source.id, visiting);
-    if (action) return action;
-  }
-  return null;
-}
-
-export function chooseCoinAction(state: GameState, cat: CatState): CatAction {
-  const introTarget = nextUndiscoveredIntroRecipe(state);
-  if (introTarget) return planTowardRecipe(state, cat.inventory, introTarget.id);
-  const unlocked = state.unlockedRecipes
-    .map((id) => RECIPE_BY_ID.get(id))
-    .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
-  const advanced = unlocked.filter((entry) => entry.inputs.length > 0);
-  if (advanced.length === 0) {
-    const bases = unlocked.filter((entry) => entry.inputs.length === 0);
-    const target = bases[cat.createdIndex % Math.max(1, bases.length)];
-    if (!target) return null;
-    if ((cat.inventory[target.output] ?? 0) > 0) return null;
-    return { type: "craft", recipeId: target.id };
-  }
-
-  advanced.sort((left, right) => {
-    const leftPrice = itemPrice(state, left.output);
-    const rightPrice = itemPrice(state, right.output);
-    const leftRate = leftPrice / (CATALOG_ANALYSIS.workUnits[left.output] + 1);
-    const rightRate = rightPrice / (CATALOG_ANALYSIS.workUnits[right.output] + 1);
-    return rightRate - leftRate || rightPrice - leftPrice || left.id.localeCompare(right.id);
-  });
-  const target = advanced[0];
-  if ((cat.inventory[target.output] ?? 0) > 0) return null;
-  const action = planTowardRecipe(state, cat.inventory, target.id);
-  if (action) return action;
-  return null;
-}
-
-function nextUndiscoveredIntroRecipe(state: GameState) {
-  return TUTORIAL_RECIPE_IDS
-    .map((id) => RECIPE_BY_ID.get(id))
-    .find((entry) => entry
-      && state.unlockedRecipes.includes(entry.id)
-      && !state.discoveredItems.includes(entry.output));
-}
-
-export function activePriceLaw(state: GameState, itemId: ItemId): LawVersion | undefined {
-  return state.laws.find((law) => law.status === "active" && law.category === "price" && law.priceMultiplier !== null
-    && (law.priceItemId === "*" || law.priceItemId === itemId));
-}
-
-export function itemPrice(state: GameState, itemId: ItemId): number {
+export function itemPrice(state: GameState, itemId: ItemId, cat: CatState | undefined = state.cats[0]): number {
   const base = CATALOG_ANALYSIS.basePrices[itemId] ?? 1;
-  const law = activePriceLaw(state, itemId);
-  return Math.max(1, Math.ceil(base * 100 * (law?.priceMultiplier ?? 1)));
+  const multiplier = cat?.lawPolicy?.priceMultipliers[itemId]
+    ?? cat?.lawPolicy?.priceMultipliers["*"]
+    ?? 1;
+  return Math.max(1, Math.ceil(base * 100 * multiplier));
 }
 
 export function formatMoney(cents: number): string {
   return `${(Math.max(0, cents) / 100).toFixed(2)} 🪙`;
+}
+
+export function acknowledgeAchievement(state: GameState, achievementId: string): boolean {
+  return acknowledgeAchievementRecord(state, achievementId);
+}
+
+/** Rolling gross production value, annualized to one logical production minute. */
+export function grossProductionValuePerMinute(state: GameState): number {
+  const logicalMinuteMs = 60_000 / Math.max(1, state.simulationSpeed);
+  const observedMs = Math.max(1, Math.min(logicalMinuteMs, state.simTime));
+  const cutoff = state.simTime - logicalMinuteMs;
+  const valueCents = state.recentProductionEvents.reduce((sum, event) => {
+    if (event.at < cutoff) return sum;
+    if (Number.isFinite(event.valueCents)) return sum + Math.max(0, Math.round(event.valueCents ?? 0));
+    const producer = state.cats.find((cat) => cat.id === event.catId);
+    return sum + itemPrice(state, event.itemId, producer);
+  }, 0);
+  return Math.round(valueCents * logicalMinuteMs / observedMs);
 }
 
 function addFloating(state: GameState, catId: string, text: string, kind: "gain" | "sale" | "milestone"): void {
@@ -1079,10 +1387,24 @@ function resolveAction(state: GameState, cat: CatState, map: Map<string, CatStat
   const command = cat.action;
   if (!command) return;
   cat.action = null;
+  appendAudit(state, { origin: "simulation", kind: "action-complete", target: cat.id, ok: true, detail: command.type });
+  if (command.type === "wait") return;
   const definition = ITEM_BY_ID.get(command.itemId)!;
   if (command.type === "craft") {
+    const firstCraft = state.itemStats[command.itemId].crafted === 0;
+    const craftValueCents = itemPrice(state, command.itemId, cat);
     give(cat.inventory, command.itemId, 1);
     state.itemStats[command.itemId].crafted += 1;
+    state.totalProductionValueCents += craftValueCents;
+    state.recentProductionEvents.push({
+      itemId: command.itemId,
+      at: state.simTime,
+      catId: cat.id,
+      valueCents: craftValueCents,
+    });
+    unlockProductionAchievements(state, command.itemId, firstCraft, grossProductionValuePerMinute(state));
+    recordCraftCompletion(state, cat.id, command.itemId);
+    publishProductionBroadcast(state, cat.id, command.itemId);
     discover(state, command.itemId);
     const bounty = completeProcurementPlan(state, cat.id, command.itemId);
     if (bounty > 0) applyPrivateIncome(cat, bounty);
@@ -1101,47 +1423,105 @@ function resolveAction(state: GameState, cat: CatState, map: Map<string, CatStat
       for (const [itemId, quantity] of Object.entries(command.reserved)) give(cat.inventory, itemId, quantity);
       cat.lastDecision = "运输合同异常，物品已退回";
     }
-  } else {
-    const value = command.saleGrossCents ?? itemPrice(state, command.itemId);
-    const priceLaw = command.salePriceLawId
-      ? state.laws.find((law) => law.id === command.salePriceLawId)
-      : activePriceLaw(state, command.itemId);
-    if (priceLaw) priceLaw.hitCount += 1;
-    const taxLaw = state.laws.find((law) => law.status === "active" && law.category === "tax" && law.taxRate !== null);
-    const rate = taxLaw?.taxRate ?? 0;
-    const tax = rate > 0 ? Math.min(value, Math.ceil(value * rate)) : 0;
-    const personalIncome = value - tax;
-    applyPrivateIncome(cat, personalIncome);
-    state.treasuryCoins += tax;
-    state.totalSales += value;
-    state.itemStats[command.itemId].sold += 1;
-    state.itemStats[command.itemId].revenue += value;
-    const saleText = tax === 0 ? `+${formatMoney(value)}` : personalIncome === 0 ? `税 ${formatMoney(tax)}` : `+${formatMoney(personalIncome)} · 税${formatMoney(tax)}`;
-    addFloating(state, cat.id, saleText, "sale");
   }
-  state.dirtyDecisions = true;
 }
 
 export function advanceGame(state: GameState, milliseconds: number): void {
   if (state.paused || !Number.isFinite(milliseconds) || milliseconds <= 0) return;
   const target = state.simTime + milliseconds;
-  if (state.dirtyDecisions) decideIdleCats(state);
   while (true) {
     const nextAction = state.cats.reduce((time, cat) => cat.action && cat.action.endsAt < time ? cat.action.endsAt : time, Number.POSITIVE_INFINITY);
-    const next = Math.min(nextAction, state.nextMarketTickAt);
+    const next = nextAction;
     if (next > target) break;
     state.simTime = next;
     const map = catMap(state);
     const completing = state.cats.filter((cat) => cat.action?.endsAt === next).sort((a, b) => a.createdIndex - b.createdIndex);
     for (const cat of completing) resolveAction(state, cat, map);
-    const marketTick = state.nextMarketTickAt === next;
-    if (marketTick) {
-      state.nextMarketTickAt += Math.max(1, MARKET_SIGNAL_INTERVAL_MS / state.simulationSpeed);
-    }
-    if (completing.length > 0 || marketTick) decideIdleCats(state);
+    pruneEphemeralState(state);
+    if (completing.length > 0) decideIdleCats(state, new Set(completing.map((cat) => cat.id)));
+    compactGameStateHistory(state);
   }
   state.simTime = target;
+  pruneEphemeralState(state);
+  compactGameStateHistory(state);
+}
+
+function pruneEphemeralState(state: GameState): void {
+  const recentCutoff = state.simTime - 60_000 / state.simulationSpeed;
+  state.recentProductionEvents = state.recentProductionEvents.filter((event) => event.at >= recentCutoff);
+  state.marketBroadcasts = state.marketBroadcasts.filter((broadcast) => (
+    broadcast.kind !== "production-event" || broadcast.publishedAt >= recentCutoff
+  ));
   state.floatingEvents = state.floatingEvents.filter((event) => state.simTime - event.createdAt < event.duration);
+}
+
+export const CLOSED_MARKET_HISTORY_LIMIT = 256;
+export const LAW_HISTORY_LIMIT = 512;
+
+function compactLawHistory(state: GameState): void {
+  if (state.lawHistory.length > LAW_HISTORY_LIMIT) {
+    state.lawHistory.splice(0, state.lawHistory.length - LAW_HISTORY_LIMIT);
+  }
+}
+
+export function compactGameStateHistory(state: GameState): void {
+  compactLawHistory(state);
+  if (state.commandAudit.length > 2_000) state.commandAudit.splice(0, state.commandAudit.length - 2_000);
+  if (state.marketEvents.length > 64) state.marketEvents = state.marketEvents.slice(-64);
+
+  const liveContracts = state.shipmentContracts.filter((contract) => contract.status !== "delivered");
+  const requiredOrderIds = new Set<string>([
+    ...liveContracts.map((contract) => contract.orderId),
+    ...state.buildingOrders.flatMap((order) => order.demandOrderId ? [order.demandOrderId] : []),
+  ]);
+  for (const order of state.demandOrders) if (order.status === "open") requiredOrderIds.add(order.id);
+
+  const requiredPlanIds = new Set(state.demandOrders
+    .filter((order) => requiredOrderIds.has(order.id) && order.planId)
+    .map((order) => order.planId!));
+  const archivedPlans = state.procurementPlans.filter((plan) => plan.status !== "active" && !requiredPlanIds.has(plan.id));
+  const retainedArchivedPlanIds = new Set(archivedPlans.slice(-CLOSED_MARKET_HISTORY_LIMIT).map((plan) => plan.id));
+  state.procurementPlans = state.procurementPlans.filter((plan) => (
+    plan.status === "active" || requiredPlanIds.has(plan.id) || retainedArchivedPlanIds.has(plan.id)
+  ));
+
+  const retainedPlanIds = new Set(state.procurementPlans.map((plan) => plan.id));
+  const archivedOrders = state.demandOrders.filter((order) => (
+    !requiredOrderIds.has(order.id) && !(order.planId && retainedPlanIds.has(order.planId))
+  ));
+  const retainedArchivedOrderIds = new Set(archivedOrders.slice(-CLOSED_MARKET_HISTORY_LIMIT).map((order) => order.id));
+  state.demandOrders = state.demandOrders.filter((order) => (
+    requiredOrderIds.has(order.id)
+      || Boolean(order.planId && retainedPlanIds.has(order.planId))
+      || retainedArchivedOrderIds.has(order.id)
+  ));
+
+  const requiredContractIds = new Set(state.buildingOrders.flatMap((order) => order.contractId ? [order.contractId] : []));
+  const archivedContracts = state.shipmentContracts.filter((contract) => (
+    contract.status === "delivered" && !requiredContractIds.has(contract.id)
+  ));
+  const retainedArchivedContractIds = new Set(archivedContracts.slice(-CLOSED_MARKET_HISTORY_LIMIT).map((contract) => contract.id));
+  state.shipmentContracts = state.shipmentContracts.filter((contract) => (
+    contract.status !== "delivered" || requiredContractIds.has(contract.id) || retainedArchivedContractIds.has(contract.id)
+  ));
+
+  const closedOffers = state.buildingOffers.filter((offer) => offer.status !== "open");
+  const retainedClosedOfferIds = new Set(closedOffers.slice(-CLOSED_MARKET_HISTORY_LIMIT).map((offer) => offer.id));
+  state.buildingOffers = state.buildingOffers.filter((offer) => offer.status === "open" || retainedClosedOfferIds.has(offer.id));
+
+  const retainedDemandSubjects = new Set(state.demandOrders.map((order) => order.id));
+  const demandBroadcasts = state.marketBroadcasts.filter((broadcast) => broadcast.kind.startsWith("demand-")
+    && !retainedDemandSubjects.has(broadcast.subjectId));
+  const retainedDemandBroadcastIds = new Set(demandBroadcasts.slice(-CLOSED_MARKET_HISTORY_LIMIT).map((broadcast) => broadcast.id));
+  state.marketBroadcasts = state.marketBroadcasts.filter((broadcast) => (
+    !broadcast.kind.startsWith("demand-")
+      || retainedDemandSubjects.has(broadcast.subjectId)
+      || retainedDemandBroadcastIds.has(broadcast.id)
+  ));
+  const retainedBuildingOfferSubjects = new Set(state.buildingOffers.map((offer) => offer.id));
+  state.marketBroadcasts = state.marketBroadcasts.filter((broadcast) => (
+    !broadcast.kind.startsWith("building-offer") || retainedBuildingOfferSubjects.has(broadcast.subjectId)
+  ));
 }
 
 export function nextEnactmentCost(state: GameState): number {
@@ -1191,27 +1571,18 @@ export function enactLaw(state: GameState, draft: LawDraft, insertionIndex = 0):
     astHash: draft.astHash,
     examples: draft.examples,
     warnings: draft.warnings,
+    speechTemplates: safeSpeechTemplates(draft.speechTemplates),
     enactedAt: state.simTime,
-    category: draft.category,
-    taxRate: draft.category === "tax" ? draft.taxRate : null,
-    priceItemId: draft.category === "price" ? draft.priceItemId : null,
-    priceMultiplier: draft.category === "price" ? draft.priceMultiplier : null,
+    program: structuredClone(draft.program),
     hitCount: 0,
     invalidCount: 0,
     consecutiveFaults: 0,
     status: "active",
   };
-  if (draft.category === "behavior") {
-    for (const previous of state.laws.filter((entry) => entry.category === "behavior" && entry.status === "active")) {
-      previous.status = "repealed";
-      state.lawHistory.push(structuredClone(previous));
-    }
-    state.laws = state.laws.filter((entry) => entry.category !== "behavior");
-    insertionIndex = 0;
-  }
   state.laws.splice(Math.max(0, Math.min(insertionIndex, state.laws.length)), 0, law);
   state.lawHistory.push(structuredClone(law));
-  state.dirtyDecisions = true;
+  compactLawHistory(state);
+  state.lawbookRevision += 1;
   return { ok: true, law };
 }
 
@@ -1222,7 +1593,7 @@ export function reorderLaw(state: GameState, lawId: string, delta: -1 | 1): bool
   if (index < 0 || target < 0 || target >= state.laws.length) return false;
   const [law] = state.laws.splice(index, 1);
   state.laws.splice(target, 0, law);
-  state.dirtyDecisions = true;
+  state.lawbookRevision += 1;
   return true;
 }
 
@@ -1235,12 +1606,32 @@ export function repealLaw(state: GameState, lawId: string): { ok: boolean; error
   const [law] = state.laws.splice(index, 1);
   law.status = "repealed";
   state.lawHistory.push(structuredClone(law));
-  state.dirtyDecisions = true;
+  compactLawHistory(state);
+  state.lawbookRevision += 1;
   return { ok: true };
 }
 
 export function setPaused(state: GameState, paused: boolean): void {
   state.paused = paused;
+}
+
+export function setSpeechFrequency(state: GameState, frequency: number): number {
+  const normalized = normalizeSpeechFrequency(frequency);
+  state.speechFrequency = normalized;
+  const capacity = speechCapacityForFrequency(normalized);
+  const candidates = state.floatingEvents
+    .filter((event) => speechEventIsQueuedOrVisible(event, state.simTime))
+    .sort((left, right) => {
+      const visibleDelta = Number(speechEventIsVisible(right, state.simTime)) - Number(speechEventIsVisible(left, state.simTime));
+      return visibleDelta || left.createdAt - right.createdAt || left.id.localeCompare(right.id);
+    });
+  const retainedSpeechIds = new Set(candidates.slice(0, capacity).map((event) => event.id));
+  state.floatingEvents = state.floatingEvents.filter((event) => (
+    event.kind !== "speech"
+    || (!speechEventIsQueuedOrVisible(event, state.simTime) && capacity > 0)
+    || retainedSpeechIds.has(event.id)
+  ));
+  return normalized;
 }
 
 export function inventoryTotal(state: GameState, itemId: ItemId): number {

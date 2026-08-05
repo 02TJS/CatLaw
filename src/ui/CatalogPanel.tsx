@@ -17,11 +17,10 @@ import {
 import type { GameController } from "../game/controller";
 import { formatMoney, inventoryTotal, itemPrice } from "../game/engine";
 import { difficultySiteRequirements, effectiveRecipeInputs } from "../game/difficulty";
-import { hasPriceSensitiveJobDemand, productionOrderBudgetCents } from "../game/market";
 
 const TIER_NAMES = ["基础采集", "手工作坊", "机械制造", "电气工业", "电子自动化", "计算与核能", "航天时代", "量子时代", "星门工程"];
 
-export function CatalogPanel({ controller }: { controller: GameController }) {
+export function CatalogPanel({ controller, onOpenGraph }: { controller: GameController; onOpenGraph: () => void }) {
   const state = controller.state;
   const [message, setMessage] = useState("");
   const craftedItems = ITEMS.filter((item) => state.itemStats[item.id].crafted > 0).map((item) => item.id);
@@ -29,15 +28,20 @@ export function CatalogPanel({ controller }: { controller: GameController }) {
   const missingCertificationItems = MARKET_CERTIFICATION_ITEM_IDS.filter((itemId) => !certifiedItems.includes(itemId));
 
   return <div className="catalog-panel">
+    <button className="recipe-graph-entry" type="button" onClick={onOpenGraph} data-testid="open-recipe-graph">
+      <span>🧶</span>
+      <span><strong>打开配方一图流</strong><small>浏览器中查看全部 65 项、建筑条件与关系高亮</small></span>
+      <b>↗</b>
+    </button>
     <div className="panel-summary">
-      <strong>配方图</strong>
+      <strong>购买配方</strong>
       <span>已解锁 {state.unlockedRecipes.length} / {ITEMS.length}</span>
     </div>
-    <div className="recipe-note">前 9 项免费启蒙；第 10–15 项需用国库金币购买，解锁后教学目标会继续到齿轮。第 16–20 项还要求这六种中间品都曾实际制造。</div>
+    <div className="recipe-note">前 10 项开局免费；第 11–15 项只需用国库金币购买。猫咪不会追逐预设目录目标，而会按成品价值、发现悬赏、订单收入、成本与作业负担计算净资产增益率。第 16–20 项还要求五种付费中间品都曾实际制造。</div>
     <div className={`certification-card ${missingCertificationItems.length === 0 ? "complete" : ""}`} data-testid="industry-certification">
-      <div><strong>产业认证 {certifiedItems.length}/6</strong><span>解锁第 16–20 项的共同门槛</span></div>
+      <div><strong>产业认证 {certifiedItems.length}/{MARKET_CERTIFICATION_ITEM_IDS.length}</strong><span>解锁第 16–20 项的共同门槛</span></div>
       <small>{missingCertificationItems.length === 0
-        ? "✓ 六种中间品均已实际制造"
+        ? "✓ 五种付费中间品均已实际制造"
         : `待认证：${missingCertificationItems.map((id) => `${ITEM_BY_ID.get(id)?.emoji} ${ITEM_BY_ID.get(id)?.name}`).join("、")}`}</small>
     </div>
     {message && <div className={message.includes("已解锁") ? "success-box" : "error-box"}>{message}</div>}
@@ -59,10 +63,6 @@ export function CatalogPanel({ controller }: { controller: GameController }) {
             const missingCertifications = missingProductionCertifications(entry.id, craftedItems)
               .map((id) => ITEM_BY_ID.get(id)?.name ?? id);
             const affordable = state.treasuryCoins >= cost;
-            const priceSensitiveJobs = hasPriceSensitiveJobDemand(state, entry.id);
-            const inputJobBudget = priceSensitiveJobs
-              ? productionOrderBudgetCents(state, entry.id, (itemId) => itemPrice(state, itemId))
-              : 0;
             const siteLabel = difficultySiteRequirements(entry, state.difficulty).map((requirement) => {
               const building = ITEM_BY_ID.get(requirement.buildingItemId);
               return `${building?.emoji ?? "🏗️"} ${building?.name ?? requirement.buildingItemId} ${requirement.maxManhattanDistance}格内`;
@@ -79,10 +79,10 @@ export function CatalogPanel({ controller }: { controller: GameController }) {
                 <div className="recipe-title"><strong>{item.name}</strong>{state.discoveredItems.includes(item.id) && <span>已制造</span>}</div>
                 <small className="recipe-formula">{describeRecipe(entry.id)}{state.difficulty === 5 && effectiveRecipeInputs(entry, state.difficulty).some((input, index) => input.quantity !== entry.inputs[index]?.quantity) ? " · 难度5大宗配料" : ""}</small>
                 <small>基础 {formatMoney(CATALOG_ANALYSIS.basePrices[item.id] * 100)} · 实际 {formatMoney(itemPrice(state, item.id))} · 库存 {inventoryTotal(state, item.id)}</small>
-                {priceSensitiveJobs && <small className="site-requirement" data-testid={`job-demand-${entry.id}`}>配料作业报价合计 {formatMoney(inputJobBudget)} · 售价溢价会传导给现有订单</small>}
+                {unlocked && <small className="site-requirement">开工前按当前卖家、路线和运费取得可靠报价；整包融资成功后才发布原料订单</small>}
                 <small>制 {stats.crafted} / 售 {stats.sold}</small>
                 {unlocked
-                  ? <span className="recipe-status learned">✓ {INTRO_RECIPE_IDS.includes(entry.id) ? "开局免费启蒙" : "猫咪已学会"}</span>
+                  ? <span className="recipe-status learned">✓ {INTRO_RECIPE_IDS.includes(entry.id) ? "开局免费配方" : "猫咪已学会"}</span>
                   : available
                     ? <button
                         className="recipe-unlock"

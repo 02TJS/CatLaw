@@ -37,6 +37,8 @@ export interface CatObservation {
     itemId: ItemId;
     effectiveBidCents: number;
     sourceCatId: string;
+    /** Number of open orders represented by this per-item market summary. */
+    count?: number;
   }>;
   heardBounties?: ReadonlyArray<{
     itemId: ItemId;
@@ -67,12 +69,26 @@ export interface CatObservation {
 export type CatAction =
   | { type: "craft"; recipeId: string }
   | { type: "pass"; direction: Direction; itemId: ItemId }
-  | { type: "sell"; itemId: ItemId }
   | null;
 
 export interface LawExample {
   input: CatObservation;
   expected: CatAction;
+}
+
+/** Source code is the only executable law representation. */
+export interface LawProgram {
+  version: 2;
+}
+
+export type LawSpeechTemplates = [string, string, string, string, string];
+
+export interface LawRuntimePolicy {
+  priceMultipliers: Record<ItemId | "*", number>;
+  taxRate: number;
+  creditBaseCents: number;
+  creditNetWorthFactor: number;
+  bountyMultiplier: number;
 }
 
 export interface LawVersion {
@@ -84,12 +100,10 @@ export interface LawVersion {
   astHash: string;
   examples: LawExample[];
   warnings: string[];
+  speechTemplates?: LawSpeechTemplates;
   enactedAt: number;
-  category: "behavior" | "price" | "tax" | "system";
+  program: LawProgram;
   locked?: boolean;
-  taxRate: number | null;
-  priceItemId: ItemId | "*" | null;
-  priceMultiplier: number | null;
   hitCount: number;
   invalidCount: number;
   consecutiveFaults: number;
@@ -122,7 +136,7 @@ export interface SiteRequirement {
 }
 
 export interface ActionCommand {
-  type: "craft" | "pass" | "sell";
+  type: "craft" | "pass" | "wait";
   recipeId?: string;
   itemId: ItemId;
   direction?: Direction;
@@ -132,9 +146,8 @@ export interface ActionCommand {
   lawId: string;
   contractId?: string;
   expectedGainCents?: number;
-  /** External-sale gross locked when the action starts, after price law and landmark bonus. */
-  saleGrossCents?: number;
-  salePriceLawId?: string;
+  /** Human-readable explanation captured from the winning local candidate. */
+  decisionReason?: string;
   /** Landmark speed reduction locked when the action starts. */
   speedReduction?: number;
 }
@@ -151,6 +164,12 @@ export interface CatState {
   action: ActionCommand | null;
   lastDecision: string;
   decisionTrace: string[];
+  /** Increments once for every valid non-wait action, including silent decisions. */
+  decisionSerial?: number;
+  /** Simulation/UI time of the last emitted speech bubble. */
+  lastSpeechAt?: number | null;
+  /** Last policy produced by the real shared law loop for this cat. */
+  lawPolicy?: LawRuntimePolicy;
 }
 
 export interface ResourceNode {
@@ -233,8 +252,21 @@ export interface ProcurementPlan {
   terminalOrderId: string | null;
   expectedRevenueCents: number;
   createdAt: number;
+  /** The one shared behavior law that authorized creation of this plan. */
+  createdByBehaviorLawId?: string;
   status: ProcurementPlanStatus;
   reason: "bounty" | "order" | "external-sale";
+  /** Market funding state. A plan may act only after its complete input bundle is funded. */
+  phase?: "quoting" | "funded" | "procuring" | "ready";
+  terminalRevenueCents?: number;
+  alternativeGainCents?: number;
+  bundleCostCents?: number;
+  financingReserveCents?: number;
+  expectedProfitCents?: number;
+  budgetSlackCents?: number;
+  bundleOrderIds?: string[];
+  blockedReason?: string | null;
+  quoteRevision?: number;
 }
 
 export type DemandOrderStatus = "open" | "contracted" | "cancelled";
@@ -252,6 +284,14 @@ export interface DemandOrder {
   status: DemandOrderStatus;
   closedAt: number | null;
   closeReason: string | null;
+  /** A firm quote names its supplier and locks the route and settlement amounts. */
+  committedSellerCatId?: string | null;
+  quotedSellerCents?: number;
+  quotedRouteCatIds?: string[];
+  quotedFeesByCatId?: Record<string, number>;
+  /** Worst-case loan fee reserved together with this order's delivered quote. */
+  quoteFinancingReserveCents?: number;
+  quoteRevision?: number;
 }
 
 export interface OrderSignal {
@@ -271,7 +311,10 @@ export type MarketBroadcastKind =
   | "bounty-open"
   | "bounty-closed"
   | "building-offer-open"
-  | "building-offer-closed";
+  | "building-offer-closed"
+  | "production-event"
+  | "production-total"
+  | "warehouse-stock";
 
 export interface MarketBroadcast {
   id: string;
@@ -323,7 +366,7 @@ export interface MarketLifecycleEvent {
 export interface LogisticsStatus {
   componentId: string;
   catIds: string[];
-  kind: "building" | "tutorial" | "profit" | "idle";
+  kind: "building" | "bounty" | "profit" | "idle";
   targetItemId: ItemId | null;
   blockedReason: string | null;
 }
@@ -335,22 +378,71 @@ export interface ItemStats {
   revenue: number;
 }
 
+export type AchievementKind = "first-craft" | "production-rate" | "total-production";
+
+export interface AchievementEvent {
+  id: string;
+  kind: AchievementKind;
+  itemId: ItemId | null;
+  thresholdCents: number | null;
+  unlockedAt: number;
+  acknowledgedAt: number | null;
+}
+
+export interface ProductionHistoryCounter {
+  plannedCount: number;
+  craftedCount: number;
+  firstPlannedAt: number | null;
+  lastPlannedAt: number | null;
+  firstCraftedAt: number | null;
+  lastCraftedAt: number | null;
+}
+
+export interface ProductionHistoryFlow {
+  id: string;
+  /** The finished good selected in the production-stability lens. */
+  outputItemId: ItemId;
+  /** Input flows point supplier -> producer; output flows point producer -> destination. */
+  kind: "input" | "output";
+  /** Input commodity, or the finished commodity for an output flow. */
+  itemId: ItemId;
+  sourceCatId: string;
+  targetCatId: string;
+  count: number;
+  firstAt: number;
+  lastAt: number;
+}
+
+export interface ProductionHistory {
+  byCat: Record<string, Partial<Record<ItemId, ProductionHistoryCounter>>>;
+  flows: ProductionHistoryFlow[];
+}
+
 export interface FloatingEvent {
   id: string;
   catId: string;
   text: string;
   createdAt: number;
   duration: number;
-  kind: "gain" | "sale" | "milestone";
+  kind: "gain" | "sale" | "milestone" | "speech";
+  lawId?: string;
+  reason?: string;
+  itemId?: ItemId;
+  gainCents?: number;
+  direction?: Direction;
+  destinationCatId?: string;
+  scheduledDelayMs?: number;
 }
 
 export interface GameState {
-  schemaVersion: 8;
+  schemaVersion: 14;
   difficulty: DifficultyLevel;
   catalogVersion: string;
   worldSeed: number;
   simTime: number;
   paused: boolean;
+  /** Percentage of valid craft/pass starts that may schedule a decision bubble. */
+  speechFrequency: number;
   cats: CatState[];
   nextCatIndex: number;
   unlockedParcels: Position[];
@@ -362,6 +454,8 @@ export interface GameState {
   buildingOffers: BuildingOffer[];
   /** Legacy field name retained for save compatibility; stores every item in the player's warehouse. */
   playerBuildingInventory: Record<ItemId, number>;
+  /** Purchased warehouse stock, kept separate from cat-made/delivered stock for provenance audits. */
+  playerWarehousePurchases: Record<ItemId, number>;
   /** Item kinds protected from bulk warehouse sales and buy-then-resell operations. */
   lockedWarehouseItemIds: ItemId[];
   nextBuildingOfferIndex: number;
@@ -371,7 +465,6 @@ export interface GameState {
   logisticsStatus: LogisticsStatus[];
   procurementPlans: ProcurementPlan[];
   demandOrders: DemandOrder[];
-  orderSignals: OrderSignal[];
   marketBroadcasts: MarketBroadcast[];
   shipmentContracts: ShipmentContract[];
   discoveryBounties: DiscoveryBounty[];
@@ -381,7 +474,6 @@ export interface GameState {
   nextMarketBroadcastIndex: number;
   nextContractIndex: number;
   nextMarketEventIndex: number;
-  nextMarketTickAt: number;
   simulationSpeed: number;
   laws: LawVersion[];
   lawHistory: LawVersion[];
@@ -391,10 +483,40 @@ export interface GameState {
   discoveredItems: ItemId[];
   unlockedRecipes: string[];
   itemStats: Record<ItemId, ItemStats>;
+  /** Gross value captured at craft completion; later price laws never rewrite history. */
+  totalProductionValueCents: number;
+  /** Persistent, deterministic achievement queue. */
+  achievements: AchievementEvent[];
+  /** Compact lifetime production-plan graph used by the persistent stability lens. */
+  productionHistory: ProductionHistory;
+  /** Craft completions retained for the public rolling 60-second law input. */
+  recentProductionEvents: Array<{ itemId: ItemId; at: number; catId: string; valueCents?: number }>;
   floatingEvents: FloatingEvent[];
   stargatesBuilt: number;
   milestoneAt: number | null;
   dirtyDecisions: boolean;
+  /** Monotonic lawbook revision. It invalidates quotes but never wakes cats. */
+  lawbookRevision: number;
+  /** Bounded audit used by black-box acceptance; game logic never reads it. */
+  commandAudit: CommandAuditEntry[];
+}
+
+export type PlayerCommandKind =
+  | "buy-recipe" | "buy-cat-stock" | "buy-building" | "place-building"
+  | "sell-warehouse" | "compile-law" | "enact-law" | "reorder-law" | "repeal-law"
+  | "advance-time" | "place-cat" | "remove-cat" | "expand-parcel"
+  | "queue-building" | "cancel-building" | "dismantle-building"
+  | "toggle-warehouse-lock" | "buy-landmark-blueprint" | "place-landmark" | "dismantle-landmark"
+  | "set-paused" | "set-speech-frequency" | "ack-achievement" | "forbidden-debug";
+
+export interface CommandAuditEntry {
+  sequence: number;
+  atMs: number;
+  origin: "player-ui" | "simulation";
+  kind: PlayerCommandKind | "action-start" | "action-complete";
+  target: string;
+  ok: boolean;
+  detail?: string;
 }
 
 export interface LawDraft {
@@ -405,10 +527,19 @@ export interface LawDraft {
   astHash: string;
   examples: LawExample[];
   warnings: string[];
-  category: "behavior" | "price" | "tax";
-  taxRate: number | null;
-  priceItemId: ItemId | "*" | null;
-  priceMultiplier: number | null;
+  speechTemplates?: LawSpeechTemplates;
+  program: LawProgram;
+  compileAudit?: {
+    requestId: string;
+    model: string;
+    attempts: number;
+    startedAt: string;
+    durationMs: number;
+    promptSha256: string;
+    responseSha256: string;
+    usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+    sharedBehaviorHash: string;
+  };
   validation: {
     syntax: boolean;
     safety: boolean;
@@ -432,6 +563,7 @@ declare global {
       reset: (difficulty?: DifficultyLevel) => Promise<void>;
       state: () => GameState;
       setSpeed: (multiplier: number) => void;
+      setSpeechFrequency: (frequency: number) => number;
       removeCat: (catId: string) => { ok: boolean; error?: string; settledCents?: number; debtRepaidCents?: number; treasuryDeltaCents?: number };
       buyCatItem: (catId: string, itemId: ItemId) => { ok: boolean; error?: string; cost?: number; sellerCatId?: string };
       buyAllCatStock: () => { ok: boolean; error?: string; costCents?: number; quantity?: number };
@@ -439,6 +571,7 @@ declare global {
       sellWarehouseItem: (itemId: ItemId, quantity?: number) => { ok: boolean; error?: string; revenueCents?: number; quantity?: number };
       sellAllUnlockedWarehouseItems: () => { ok: boolean; error?: string; revenueCents?: number; quantity?: number };
       toggleWarehouseItemLock: (itemId: ItemId) => { ok: boolean; error?: string; locked?: boolean };
+      acknowledgeAchievement: (achievementId: string) => boolean;
     };
   }
 }
