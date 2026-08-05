@@ -19,7 +19,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm run package:portable
+      - name: Package Windows x64 portable
+        run: npx electron-builder --win portable --x64 --publish never --config.compression=maximum '--config.artifactName=CatWorkshop-${version}-portable.${ext}'
       - uses: actions/upload-artifact@v4
         with:
           name: cat-workshop-windows-x64
