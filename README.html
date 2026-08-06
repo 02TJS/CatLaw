@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>猫咪工坊 0.14.34 · 单计划无税市场</title>
+  <title>猫咪工坊 0.14.37 · 地标与资源编辑</title>
   <style>
     :root { color-scheme: light; --ink:#172033; --muted:#667085; --paper:#fff; --card:#f8faf9; --line:#dfe4e1; --accent:#c58b1b; --green:#3f8f5d; }
     * { box-sizing: border-box; }
@@ -28,15 +28,15 @@
 </head>
 <body>
 <main>
-  <span class="badge">0.14.34 · 单计划无税市场</span>
+  <span class="badge">0.14.37 · 地标与资源编辑</span>
   <h1>🐾 猫咪工坊</h1>
   <p class="lead">一款逻辑法驱动的空间自动化制造沙盒。每只猫都短视且利己：基础只观察两格内工位，却能署名发布全局即时广播；玩家既可通过自然语言修改共享决策逻辑，也可把仓库商品建成覆盖周边工位的地标。</p>
 
   <h2>直接下载，无需开发环境</h2>
   <div class="grid">
-    <div class="card"><strong>Windows 10/11 x64</strong>从 <a href="https://github.com/02TJS/CatLaw/releases/tag/v0.14.34">GitHub Release v0.14.34</a> 下载 <code>CatWorkshop-0.14.34-portable.exe</code>，双击即可开始，不安装 Python、Node.js、浏览器或 WebView2。</div>
-    <div class="card"><strong>Apple Silicon Mac</strong>下载 <code>CatWorkshop-0.14.34-mac-arm64.dmg</code>，双击磁盘映像后直接打开“猫咪工坊.app”；适用于 M1、M2、M3、M4 及后续 Apple Silicon，不需要解压。</div>
-    <div class="card"><strong>Intel Mac</strong>下载 <code>CatWorkshop-0.14.34-mac-x64.dmg</code>，双击磁盘映像后直接打开“猫咪工坊.app”；运行时已经完整包含在应用内，不需要解压。</div>
+    <div class="card"><strong>Windows 10/11 x64</strong>从 <a href="https://github.com/02TJS/CatLaw/releases/tag/v0.14.37">GitHub Release v0.14.37</a> 下载 <code>CatWorkshop-0.14.37-portable.exe</code>，双击即可开始；无需 Python、Node.js、浏览器或 WebView2。</div>
+    <div class="card"><strong>Apple Silicon Mac</strong>从同一 Release 下载 <code>CatWorkshop-0.14.37-mac-arm64.dmg</code>；适用于 M1、M2、M3、M4 及后续 Apple Silicon，不需要解压。</div>
+    <div class="card"><strong>Intel Mac</strong>从同一 Release 下载 <code>CatWorkshop-0.14.37-mac-x64.dmg</code>；运行时已经完整包含在应用内，不需要解压。</div>
   </div>
   <div class="notice"><strong>macOS 首次启动：</strong>当前版本未使用 Apple Developer 证书签名和公证。若系统阻止普通双击，请在 Finder 中右键“猫咪工坊.app”并选择“打开”。这不是缺少 Python、Node.js 或其他环境，而是 macOS 对互联网下载的未公证应用执行的安全检查。</div>
 
@@ -119,9 +119,12 @@
     <div class="card"><strong>四项独立视觉比例</strong>控件为 50%–180%，界面文字与猫语气泡各为 50%–220%，地图为 50%–200%；互不联动且重启后保留。说话频率为 0–100%，默认 70%，并会同步改变触发率和并发上限。</div>
     <div class="card"><strong>缩放后仍完整、不重叠</strong>标题、国库交易和窗口键按自然宽度自动切换为两行；抽屉只在横向相交时避让快捷统计，底栏在极端比例自动折行，滤镜面板随之上移。180% 控件与 220% 文字下，所有关闭键和操作按钮仍完整位于窗口内。</div>
     <div class="card"><strong>干净舞台与顶部安全区</strong>永久删除“左键拖动”说明浮窗；标题、国库、快捷交易和窗口键固定在第一层，抽屉不会与右上角关闭键重叠。</div>
-    <div class="card"><strong>地图与滤镜独立入口</strong>底部“地图与开拓”负责平移、缩放和开拓；旁边始终可见的“滤镜”一次点击展开普通地图及九种分析视图。财富信用按当前猫群归一化成连续红—金—绿热力图；活跃热力按距上次有效制作或运输的时间，以固定 60 秒尺度显示绿—黄—红；分析滤镜统一隐藏动作图标、进度、浮字和猫语。</div>
+    <div class="card"><strong>地图与滤镜独立入口</strong>底部“地图与开拓”负责平移、缩放和开拓；旁边始终可见的“滤镜”一次点击展开普通地图及九种分析视图。财富信用、活跃热力、法规影响等视图彼此互斥；分析滤镜统一隐藏动作图标、进度、浮字和猫语。</div>
+    <div class="card"><strong>财富总量与近期增量</strong>财富信用可在“当前总量”和“近期增量”间切换；增量时段可选 15 秒、30 秒、1 分、3 分或 5 分。系统按确定性模拟时间每 5 秒记录一次净资产、可用信用与冻结保证金，负增长趋红、零增长为金黄、正增长趋绿；最多保留约 62 个时间点并随 schema 16 存档。</div>
+    <div class="card"><strong>窗口内商品选择器</strong>订单供需、生产瓶颈、生产环境和生产稳定不再依赖透明 Electron 窗口外的原生下拉弹层。商品面板随控件与字体缩放，支持滚动、点外关闭和 <code>Esc</code>；已解锁但尚未首制的商品（例如计算机）以及仍被计划、订单、合同或历史引用的商品也可直接查看。</div>
     <div class="card"><strong>库存只在增强滤镜显示</strong>普通视角不再在猫咪脚下堆叠材料徽标。选择“库存增强”后，每个工位才显示最多三种 <code>emoji × 数量</code>，并按持有物最高稀有度着色；更多品类折叠为 <code>+N</code>。</div>
-    <div class="card"><strong>右键地块操作</strong>右键合法空地会同时列出“新增猫咪”与仓库实际持有的工厂、机床、天线、实验室、反应堆。五类建筑都可建在资源中心周围 8 个采集格，也可彼此相邻；只禁止同格占用。放猫仍需二次确认，且不改变当前选中猫或打开详情。</div>
+    <div class="card"><strong>右键世界管理</strong>右键空地会列出新增猫咪、仓库实际持有的工业建筑，以及当前材料确实足够的地标/资源操作：1 份木材可创建唯一命名的 <code>📍</code> 地标，某基础资源达到 50 份才显示对应资源中心创建项；材料不足的条目完全不出现。右键对象本体可改名或二次确认拆除，右键猫咪则先展示资产、债务与国库结算审计。</div>
+    <div class="card"><strong>法规可读命名地标</strong>地标名称会以小气泡永久显示，并作为只读观察传给统一法规与 DeepSeek。法规可使用 <code>nearLandmark("东区", 2)</code> 或 <code>landmarkDistance("东区")</code> 编排区域生产；改名、拆除或废止法规后条件立即停止命中，不会把效果写进世界状态。</div>
     <div class="card"><strong>旧市场自动修复</strong>载入存档和每轮决策前会验证合同路线、托管猫、订单与活动计划。经过已删除猫的合同会清算并释放保证金，同猫重复计划和循环采购账单会取消，避免旧账长期遮挡后续运输。</div>
   </div>
   <p>Electron 桌宠的空白世界完全透明，可直接看到桌面；画布只为未占用位置绘制低透明度的 9×9 菱形网格和资源提示。猫咪所在工位则使用完全不透明的灰色顶面与侧面，使猫和动作拥有稳定承载面。标题、指标与窗口控制拆成独立悬浮胶囊，不再形成整页白底。普通浏览器开发页仍使用白色承载背景，便于调试。等距构图参考了 <a href="https://github.com/t42ji2ji/keyfarm">t42ji2ji/keyfarm</a> 的空间组织方式。该仓库未提供许可证，因此本项目没有复制其代码、GIF 或图片；猫咪精灵、工位和界面均为独立实现。</p>
@@ -206,13 +209,13 @@ npm run dev</code></pre>
   <p>内存对照：1000 猫运行 60 模拟秒时，Heap Total 从 165.96 MB 降至 107.21 MB，RSS 从 270.75 MB 降至 193.43 MB；默认新档推进 3 模拟小时从约 29.1 秒降到 13.5 秒，最终状态和队列结果一致。</p>
 
   <h2>Windows 桌面版</h2>
-  <p><strong>0.14.34 单文件便携版不需要安装：</strong>在空白 Windows 10/11 x64 电脑上双击 <code>CatWorkshop-0.14.34-portable.exe</code> 即可运行。它内置 Electron/Chromium、Node 运行时和本地服务，不需要另装 Node.js、Python、浏览器、WebView2 或 VC++ 运行库，不安装程序，也不写入注册表；DeepSeek 密钥只影响可选的法规编译。</p>
-  <p>整目录备用版位于 <code>release\win-unpacked-0.14.34\猫咪工坊.exe</code>。使用该版本时必须保留整个 <code>win-unpacked-0.14.34</code> 目录，不能只复制其中的 EXE。</p>
+  <p><strong>0.14.37 单文件便携版不需要安装：</strong>在空白 Windows 10/11 x64 电脑上双击 <code>CatWorkshop-0.14.37-portable.exe</code> 即可运行。它内置 Electron/Chromium、Node 运行时和本地服务，不需要另装 Node.js、Python、浏览器、WebView2 或 VC++ 运行库，不安装程序，也不写入注册表；DeepSeek 密钥只影响可选的法规编译。</p>
+  <p>整目录备用版位于 <code>release\win-unpacked-0.14.37\猫咪工坊.exe</code>。使用该版本时必须保留整个 <code>win-unpacked-0.14.37</code> 目录，不能只复制其中的 EXE。</p>
   <p>启动时只清理可再生的 Chromium 图形与代码缓存，不触碰 IndexedDB 存档和本机安全密钥；若 GPU、Utility 或 Renderer 子进程瞬时崩溃，应用会自动清理运行期缓存并重建窗口，最多重试两次。</p>
   <p>游戏会立即创建以 760×720 为 100% 基准的无边框置顶桌宠窗口；普通模式滚轮整体缩放窗口、左拖移动窗口。点击底栏“地图与开拓”后，滚轮与拖动改为操作地图，单击相邻地块仍可开拓。点击“配方”由系统默认浏览器打开大尺寸 HTML 流程图。内置服务在默认端口被占用时自动尝试后续端口，启动步骤写入 EXE 同目录的 <code>CatWorkshop-startup.log</code>，且不记录密钥。</p>
 
   <h2>macOS 桌面版</h2>
-  <p>GitHub Release 同时提供 <code>CatWorkshop-0.14.34-mac-x64.dmg</code> 和 <code>CatWorkshop-0.14.34-mac-arm64.dmg</code>，分别适用于 Intel Mac 与 Apple Silicon Mac。双击 DMG 即可看到并打开 <code>猫咪工坊.app</code>，不需要先解压；应用已内置 Electron/Chromium、Node 运行时和本地服务，不需要安装 Python、Node.js 或其他开发环境。</p>
+  <p>GitHub Release 同时提供 <code>CatWorkshop-0.14.37-mac-x64.dmg</code> 和 <code>CatWorkshop-0.14.37-mac-arm64.dmg</code>。双击 DMG 即可看到并打开 <code>猫咪工坊.app</code>，不需要先解压；应用已内置 Electron/Chromium、Node 运行时和本地服务，不需要安装 Python、Node.js 或其他开发环境。</p>
   <p><strong>签名限制：</strong>当前发布环境没有 Apple Developer 证书与公证凭据，因此 macOS 首次下载可能提示无法验证开发者，需要在 Finder 中右键应用并选择“打开”。补充 Apple Developer ID Application 证书、团队 ID 和公证凭据后，发布流水线即可升级为真正无提示的双击启动。</p>
 
   <h2>核心规则</h2>
@@ -221,10 +224,10 @@ npm run dev</code></pre>
     <tbody>
       <tr><td>地块</td><td>每块 9×9；中央免费，新地块只能相邻开拓，费用为 50 + 25 × 地块曼哈顿距离。</td></tr>
       <tr><td>猫咪动作</td><td>制作、向四邻传递；基础耗时 5 秒，地标加速后最短 2 秒。传递必须匹配不可撤销的有偿运输合同；外部出售由玩家仓库完成。</td></tr>
-      <tr><td>资源</td><td>资源中心不可放猫；中心周围 8 个彩色采集格均可采集对应资源。生成器优先保证不同资源采集区不重叠。</td></tr>
+      <tr><td>资源</td><td>资源中心不可放猫；中心周围 8 个彩色采集格均可采集对应资源。生成器优先保证不同资源采集区不重叠。玩家仓库拥有 50 份同类基础资源时，可在右键空地菜单中消耗它们创建一个新中心；移除不返还材料。</td></tr>
       <tr><td>仓库</td><td>只呈现玩家实际持有的商品；可单猫单项或批量收购、固定基准价 ×2 出售、锁定品类并一键出售未锁定库存。</td></tr>
       <tr><td>建筑</td><td>工厂、机床、天线、实验室和反应堆提供制造范围；五类建筑都可放在资源中心周围 8 个空采集格，也可彼此相邻。只禁止与猫、资源中心、建筑或地标占用同一格；重叠范围会共同参与复合配方判定。</td></tr>
-      <tr><td>地标</td><td>玩家购买永久图纸、消耗仓库建材即时落成；六类地标提供速度、售价、信用、中转费或视野加成，不满足工业建筑场地要求。</td></tr>
+      <tr><td>地标</td><td>六类工程地标由永久图纸和仓库建材落成，提供速度、售价、信用或中转费加成；普通命名地标仅消耗 1 木材、显示唯一名称并服务法规分区，本身不提供自动加成。</td></tr>
       <tr><td>经济</td><td>金额统一为整数分。猫持有现金、债务、信用和保守净资产；收购款归猫并优先还债，玩家仓库销售收入进入国库。主界面的“产值/分”按最近一个逻辑分钟内完工商品的价值统计，与国库和销售额增速无关。</td></tr>
       <tr><td>删除猫咪</td><td>检查器显示清算预览；确认后取消未完成订单与合同，返还动作锁定物，按当前外部净价变现库存，先偿还全部贷款，净额转入国库。工坊至少保留一只猫。</td></tr>
       <tr><td>立法</td><td>所有猫共用一份逻辑，基础视野半径 2、受地标提升到最高 5。DeepSeek 可读取有效加成并直接决策或修正局部候选评分；法典不接收配料表。</td></tr>
@@ -234,20 +237,20 @@ npm run dev</code></pre>
   </table>
 
   <h2>操作</h2>
-  <p>普通桌宠模式左拖标题或工坊区域移动原生窗口，滚轮缩放整个桌宠；短按已有猫查看资产、信用与合同。点击底栏“地图与开拓”后，左拖与滚轮改为地图平移和 50%–200% 缩放，单击相邻地块继续执行原有开拓，再点“完成”退出。点击旁边始终可见的“滤镜”，会同时进入地图操作并展开普通、订单供需、生产瓶颈、生产环境、财富信用、活跃热力、法规影响、生产稳定和坐标索引九个选项。<strong>右键地块打开快捷操作菜单</strong>：合法空位可二次确认新增猫咪，并列出玩家仓库现有的五类可部署建筑；点击建筑直接在目标格搭建，非法建筑选项会禁用。点击别处取消菜单。设置页还可分别调整 50%–180% 控件、50%–220% 界面文字和 50%–220% 猫语气泡。窗口仅由右上角 <code>×</code> 关闭；空格与左键空地不会放猫。按 <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd>/<kbd>4</kbd> 切换 <code>1x/2x/4x/8x</code>，按 <kbd>P</kbd> 暂停或继续，按 <kbd>F</kbd> 切换全屏，按 <kbd>Esc</kbd> 退出全屏或当前模式。</p>
+  <p>普通桌宠模式左拖标题或工坊区域移动原生窗口，滚轮缩放整个桌宠；短按已有猫查看资产、信用与合同。点击底栏“地图与开拓”后，左拖与滚轮改为地图平移和 50%–200% 缩放，单击相邻地块继续执行原有开拓，再点“完成”退出。点击旁边始终可见的“滤镜”，会同时进入地图操作并展开普通、订单供需、生产瓶颈、生产环境、财富信用、活跃热力、法规影响、生产稳定和坐标索引九个选项。<strong>右键空地或对象打开世界管理菜单</strong>：空位可新增猫咪、搭建已有建筑，或在材料满足时创建命名地标和基础资源；猫、资源、建筑和地标本体拥有各自的审计、改名或拆除操作。创建项缺料时不会显示，破坏性操作需要再次点击确认，点击别处会取消菜单。设置页还可分别调整 50%–180% 控件、50%–220% 界面文字和 50%–220% 猫语气泡。窗口仅由右上角 <code>×</code> 关闭；空格与左键空地不会放猫。按 <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd>/<kbd>4</kbd> 切换 <code>1x/2x/4x/8x</code>，按 <kbd>P</kbd> 暂停或继续，按 <kbd>F</kbd> 切换全屏，按 <kbd>Esc</kbd> 退出全屏或当前模式。</p>
 
   <h2>验证命令</h2>
   <pre><code>npm test
 npm run build
 npx tsx scripts/qa-35.mts 1
 npm start</code></pre>
-  <p>自动化测试还可调用 <code>window.advanceTime(ms)</code>、<code>window.render_game_to_text()</code>，以及 <code>window.__CAT_WORKSHOP__</code> 中的说话频率、速度、删猫、单猫收购、批量收购/转卖、仓库出售和品类锁定接口。文本状态包含 0–100% 说话频率、固定玩家售价、锁定品类、批量交易成本/收入/净差额，以及图纸、地标、每只猫的有效加成、排队/可见决策气泡、随机延迟、下一站、实际收益、归因法规和剩余显示时间。</p>
+  <p>自动化测试还可调用 <code>window.advanceTime(ms)</code>、<code>window.render_game_to_text()</code>，以及 <code>window.__CAT_WORKSHOP__</code> 中的说话频率、速度、删猫、命名/改名/拆除地标、创建/移除资源、单猫收购、批量收购/转卖、仓库出售和品类锁定接口。文本状态包含材料门槛、对象来源、名称和放置规则，以及 0–100% 说话频率、固定玩家售价、锁定品类、批量交易、每只猫有效加成、决策气泡、收益与归因法规。</p>
 
   <h2>安全说明</h2>
   <div class="notice">请轮换任何曾经出现在聊天记录中的 DeepSeek 密钥。新密钥只应保存在未提交的本地 <code>.env</code> 中，不能写进浏览器代码、存档、日志或 README。</div>
   <p>模型生成的共享逻辑会执行，但只在 Acorn 白名单解释器中读取基础半径 2、受量子信标提升到最高 5 的只读快照。每条法规源码最多 24 KiB、4096 个 AST 节点、64 层 AST 深度和 10000 个确定性解释步骤；它不能访问 DOM、网络、存储、时间、随机数或原型链，也不使用 <code>eval</code> 或 <code>new Function</code>。</p>
 
-  <footer>猫咪工坊 0.14.34 · 单计划无税市场 · Electron 透明桌宠</footer>
+  <footer>猫咪工坊 0.14.37 · 地标与资源编辑 · Electron 透明桌宠</footer>
 </main>
 </body>
 </html>

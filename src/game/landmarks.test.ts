@@ -175,7 +175,7 @@ describe("0.11.0 player landmarks", () => {
     legacy.treasuryCoins = 12_345;
     legacy.playerBuildingInventory = { wood: 9 };
     const migrated = migrateSaveSnapshot(legacy);
-    expect(migrated.schemaVersion).toBe(15);
+    expect(migrated.schemaVersion).toBe(17);
     expect(migrated.landmarks).toEqual([]);
     expect(migrated.unlockedLandmarkIds).toEqual([]);
     expect(migrated.nextLandmarkIndex).toBe(0);

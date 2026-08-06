@@ -1,8 +1,31 @@
 import { describe, expect, it } from "vitest";
 import { createInitialState } from "../game/engine";
-import { buildMapLensSnapshot, LENS_COLORS } from "./mapLenses";
+import { buildMapLensSnapshot, LENS_COLORS, mapLensSelectableItemIds } from "./mapLenses";
 
 describe("Civilization-style map lenses", () => {
+  it("offers unlocked and live-market products before their first craft", () => {
+    const state = createInitialState({ worldSeed: 12345 });
+    state.unlockedRecipes.push("make_computer");
+    expect(state.discoveredItems).not.toContain("computer");
+    expect(mapLensSelectableItemIds(state)).toContain("computer");
+    expect(mapLensSelectableItemIds(state)).not.toContain("server");
+
+    state.procurementPlans.push({
+      id: "plan-visible-server",
+      catId: state.cats[0].id,
+      outputItemId: "server",
+      recipeId: "make_server",
+      terminalOrderId: null,
+      expectedRevenueCents: 1_000,
+      createdAt: 0,
+      status: "active",
+      reason: "order",
+    });
+    const selectable = mapLensSelectableItemIds(state);
+    expect(selectable).toContain("server");
+    expect(selectable.indexOf("computer")).toBeLessThan(selectable.indexOf("server"));
+  });
+
   it("shows owned materials through the inventory enhancement lens", () => {
     const state = createInitialState({ worldSeed: 12345 });
     const first = state.cats[0];
@@ -27,6 +50,33 @@ describe("Civilization-style map lenses", () => {
     expect(Math.min(...(snapshot.metric?.normalized.values() ?? []))).toBe(0);
     expect(Math.max(...(snapshot.metric?.normalized.values() ?? []))).toBe(1);
     expect(snapshot.catColors.get(state.cats[0].id)?.top).not.toBe(snapshot.catColors.get(state.cats[1].id)?.top);
+  });
+
+  it("compares adjustable recent wealth windows around a true zero center", () => {
+    const state = createInitialState({ worldSeed: 12345 });
+    state.simTime = 60_000;
+    const total = buildMapLensSnapshot(state, "wealth", null);
+    const firstId = state.cats[0].id;
+    const secondId = state.cats[1].id;
+    const firstNow = total.metric?.values.get(firstId) ?? 0;
+    const secondNow = total.metric?.values.get(secondId) ?? 0;
+    state.wealthHistory = [
+      { at: 0, values: { [firstId]: firstNow - 1_000, [secondId]: secondNow + 500 } },
+      { at: 45_000, values: { [firstId]: firstNow - 200, [secondId]: secondNow + 100 } },
+    ];
+
+    const fifteenSeconds = buildMapLensSnapshot(state, "wealth", null, { wealthMode: "change", wealthWindowMs: 15_000 });
+    expect(fifteenSeconds.metric).toMatchObject({ mode: "change", windowMs: 15_000, baselineAt: 45_000 });
+    expect(fifteenSeconds.metric?.values.get(firstId)).toBe(200);
+    expect(fifteenSeconds.metric?.values.get(secondId)).toBe(-100);
+    expect(fifteenSeconds.metric?.normalized.get(firstId)).toBe(1);
+    expect(fifteenSeconds.metric?.normalized.get(secondId)).toBe(0.25);
+    expect(fifteenSeconds.legend[1].label).toContain("持平");
+
+    const oneMinute = buildMapLensSnapshot(state, "wealth", null, { wealthMode: "change", wealthWindowMs: 60_000 });
+    expect(oneMinute.metric).toMatchObject({ windowMs: 60_000, baselineAt: 0 });
+    expect(oneMinute.metric?.values.get(firstId)).toBe(1_000);
+    expect(oneMinute.metric?.values.get(secondId)).toBe(-500);
   });
 
   it("uses a fixed green-to-red activity scale based on effective actions", () => {

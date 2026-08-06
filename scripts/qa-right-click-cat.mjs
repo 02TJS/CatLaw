@@ -84,7 +84,10 @@ await page.waitForTimeout(80);
 const afterResourceCenter = await readState();
 if (afterResourceCenter.cats.length !== 11) throw new Error("right click must not add a cat on a resource center");
 if (await page.getByTestId("add-cat-menu").count() !== 0) throw new Error("resource center must not expose the add-cat confirmation");
-if (await page.getByTestId("tile-action-menu").count() !== 0) throw new Error("resource center must not expose unusable building actions");
+if (await page.getByTestId("tile-action-menu").count() !== 1) throw new Error("resource center must expose its own management menu");
+if (await page.getByTestId("context-remove-resource").count() !== 1) throw new Error("resource center menu lost the remove action");
+await page.keyboard.press("Escape");
+await page.mouse.click(2, 2);
 
 const resourceHarvestPoint = await pointForTile(resourceHarvestTile);
 await page.mouse.click(resourceHarvestPoint.x, resourceHarvestPoint.y, { button: "right" });

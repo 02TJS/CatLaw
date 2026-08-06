@@ -22,7 +22,7 @@ try {
   const palette = page.getByTestId("map-lens-palette");
   await palette.waitFor();
   const choices = await palette.locator("button").allTextContents();
-  if (choices.length !== 8) throw new Error(`expected ordinary plus seven filters, got ${choices.length}`);
+  if (choices.length !== 10) throw new Error(`expected ordinary plus nine filters, got ${choices.length}`);
   const layout = await palette.evaluate((element) => {
     const buttons = [...element.querySelectorAll("button")];
     return {

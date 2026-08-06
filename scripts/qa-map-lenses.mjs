@@ -40,8 +40,10 @@ const states = [];
 for (const lens of lenses) {
   await page.getByTestId(`map-lens-${lens}`).click();
   if (lens === "environment" && await page.getByTestId("map-lens-item").isVisible()) {
-    const options = await page.getByTestId("map-lens-item").locator("option").allTextContents();
-    if (options.some((entry) => entry.includes("木材"))) await page.getByTestId("map-lens-item").selectOption("wood");
+    await page.getByTestId("map-lens-item").click();
+    if (await page.getByTestId("map-lens-item-wood").isVisible().catch(() => false)) {
+      await page.getByTestId("map-lens-item-wood").click();
+    }
   }
   await page.waitForTimeout(180);
   const state = JSON.parse(await page.evaluate(() => window.render_game_to_text?.() ?? "{}"));

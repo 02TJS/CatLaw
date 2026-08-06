@@ -2,11 +2,18 @@ import { useEffect, useRef, useState } from "react";
 import catSpriteUrl from "../assets/cat-workshop-sprite.png?url";
 import { DEPLOYABLE_BUILDING_IDS, ITEM_BY_ID } from "../game/catalog";
 import type { GameController } from "../game/controller";
-import { buildingPlacementFailure, formatMoney, landmarkPlacementFailure } from "../game/engine";
-import { LANDMARK_BY_ID } from "../game/landmarks";
+import {
+  buildingPlacementFailure,
+  catLiquidationPreview,
+  formatMoney,
+  landmarkPlacementFailure,
+  PLAYER_RESOURCE_CREATION_COST,
+  resourcePlacementFailure,
+} from "../game/engine";
+import { landmarkDisplayName, LANDMARK_BY_ID, NAMED_LANDMARK_EMOJI, NAMED_LANDMARK_WOOD_COST } from "../game/landmarks";
 import { speechEventIsVisible } from "../game/speech";
 import type { ActionCommand, CatState, DeployedBuilding, DeployedLandmark, Direction, FloatingEvent, LandmarkId, Position, ResourceNode } from "../game/types";
-import { frontierParcels, isPositionUnlocked, parcelBounds, parcelCost, parcelForPosition, parcelKey, resourceHarvestTiles } from "../game/world";
+import { BASE_RESOURCE_ITEM_IDS, frontierParcels, isPositionUnlocked, parcelBounds, parcelCost, parcelForPosition, parcelKey, resourceHarvestTiles } from "../game/world";
 import {
   MAP_SCALE_MAX,
   MAP_SCALE_MIN,
@@ -29,7 +36,7 @@ import {
 import { EmojiCanvasCache } from "./emojiCanvasCache";
 import { buildingQualityPalette, itemQualityLevel, itemQualityPalette, type ItemQualityPalette, workstationQualityVisual } from "./itemQuality";
 import { chooseSpeechBubblePlacement, wrapSpeechText, type SpeechLayoutRectangle, type SpeechProtectedRectangle } from "./speechLayout";
-import { buildMapLensSnapshot, LENS_COLORS, type LensColor, type MapLensId, type MapLensOrderFloor, type MapLensSnapshot } from "./mapLenses";
+import { buildMapLensSnapshot, LENS_COLORS, type LensColor, type MapLensId, type MapLensOrderFloor, type MapLensSnapshot, type WealthLensMode } from "./mapLenses";
 
 const DEFAULT_CAMERA: Camera = { x: 32, y: 28, zoom: 1.08 };
 const EMOJI_FONT = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
@@ -48,7 +55,7 @@ interface RenderScratch {
   scene: SceneEntry[];
   stationBases: CatState[];
   catById: Map<string, CatState>;
-  lensCache?: { revision: number; lensId: MapLensId; itemId: string | null; snapshot: MapLensSnapshot };
+  lensCache?: { revision: number; lensId: MapLensId; itemId: string | null; wealthMode: WealthLensMode; wealthWindowMs: number; snapshot: MapLensSnapshot };
   speechControls: { measuredAt: number; width: number; height: number; rectangles: SpeechLayoutRectangle[] };
 }
 
@@ -120,6 +127,8 @@ interface Props {
   onLandmarkPlacementResult: (feedback: { landmarkId: LandmarkId; position: Position; ok: boolean; error?: string }) => void;
   mapLensId: MapLensId;
   mapLensItemId: string | null;
+  wealthLensMode: WealthLensMode;
+  wealthLensWindowMs: number;
 }
 
 type SceneEntry =
@@ -130,9 +139,21 @@ type SceneEntry =
 
 interface TileActionMenu {
   tile: Position;
+  target:
+    | { kind: "empty" }
+    | { kind: "cat"; id: string }
+    | { kind: "resource"; id: string }
+    | { kind: "building"; id: string }
+    | { kind: "landmark"; id: string };
   x: number;
   y: number;
   verticalAlign: "above" | "below";
+}
+
+interface LandmarkNameEditor {
+  mode: "create" | "rename";
+  value: string;
+  error: string | null;
 }
 
 export function GameCanvas({
@@ -149,6 +170,8 @@ export function GameCanvas({
   onLandmarkPlacementResult,
   mapLensId,
   mapLensItemId,
+  wealthLensMode,
+  wealthLensWindowMs,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const camera = useRef<Camera>({ ...DEFAULT_CAMERA, zoom: DEFAULT_CAMERA.zoom * mapScale });
@@ -156,9 +179,17 @@ export function GameCanvas({
   const drag = useRef<{ x: number; y: number; cameraX: number; cameraY: number; moved: boolean; nativeWindow: boolean } | null>(null);
   const groundCache = useRef<GroundLayerCache>({});
   const renderScratch = useRef<RenderScratch>(createRenderScratch());
-  const renderOptions = useRef({ selectedCatId, expansionMode, placingBuildingItemId, placingLandmarkId, speechScale, mapLensId, mapLensItemId });
-  renderOptions.current = { selectedCatId, expansionMode, placingBuildingItemId, placingLandmarkId, speechScale, mapLensId, mapLensItemId };
+  const renderOptions = useRef({ selectedCatId, expansionMode, placingBuildingItemId, placingLandmarkId, speechScale, mapLensId, mapLensItemId, wealthLensMode, wealthLensWindowMs });
+  renderOptions.current = { selectedCatId, expansionMode, placingBuildingItemId, placingLandmarkId, speechScale, mapLensId, mapLensItemId, wealthLensMode, wealthLensWindowMs };
   const [tileActionMenu, setTileActionMenu] = useState<TileActionMenu | null>(null);
+  const [landmarkNameEditor, setLandmarkNameEditor] = useState<LandmarkNameEditor | null>(null);
+  const [pendingDestructiveAction, setPendingDestructiveAction] = useState<string | null>(null);
+
+  const closeTileActionMenu = () => {
+    setTileActionMenu(null);
+    setLandmarkNameEditor(null);
+    setPendingDestructiveAction(null);
+  };
 
   useEffect(() => {
     camera.current.zoom = DEFAULT_CAMERA.zoom * mapScale;
@@ -168,7 +199,7 @@ export function GameCanvas({
     const dismissTileActionMenu = (event: PointerEvent) => {
       const target = event.target;
       if (target instanceof Element && target.closest("[data-testid='tile-action-menu']")) return;
-      setTileActionMenu(null);
+      closeTileActionMenu();
     };
     window.addEventListener("pointerdown", dismissTileActionMenu, true);
     return () => window.removeEventListener("pointerdown", dismissTileActionMenu, true);
@@ -227,6 +258,8 @@ export function GameCanvas({
         speechControlObstacles,
         options.mapLensId,
         options.mapLensItemId,
+        options.wealthLensMode,
+        options.wealthLensWindowMs,
         reducedMotion,
         groundCache.current,
         renderScratch.current,
@@ -259,6 +292,49 @@ export function GameCanvas({
         { ...right.position, createdIndex: right.createdIndex },
       ))[0];
     return raisedHit?.position ?? rough;
+  };
+
+  const contextTargetAt = (clientX: number, clientY: number): Pick<TileActionMenu, "tile" | "target"> => {
+    const canvas = canvasRef.current!;
+    const rect = canvas.getBoundingClientRect();
+    const viewport = { width: rect.width, height: rect.height };
+    const local = { x: clientX - rect.left, y: clientY - rect.top };
+    const candidates: Array<{ tile: Position; target: TileActionMenu["target"]; distance: number; depth: number }> = [];
+    const addCandidate = (tile: Position, target: TileActionMenu["target"], isoCenter: Position, radius: number) => {
+      const screen = isoToScreen(isoCenter, camera.current, viewport);
+      const distance = Math.hypot(local.x - screen.x, local.y - screen.y);
+      if (distance <= radius) candidates.push({ tile, target, distance, depth: tile.x + tile.y });
+    };
+    const objectRadius = Math.max(18, 28 * camera.current.zoom);
+    for (const node of controller.state.resourceNodes) {
+      const center = worldToIso(node.position);
+      addCandidate(node.position, { kind: "resource", id: node.id }, { x: center.x, y: center.y - 23 }, objectRadius);
+    }
+    for (const building of controller.state.buildings) {
+      const center = worldToIso(building.position);
+      addCandidate(building.position, { kind: "building", id: building.id }, { x: center.x, y: center.y - 23 }, objectRadius);
+    }
+    for (const landmark of controller.state.landmarks) {
+      const center = worldToIso(landmark.position);
+      addCandidate(landmark.position, { kind: "landmark", id: landmark.id }, { x: center.x, y: center.y - 24 }, objectRadius);
+    }
+    for (const cat of controller.state.cats) {
+      const motion = catMotion(cat, workstationCenter(cat), controller.state.simTime, false);
+      addCandidate(cat.position, { kind: "cat", id: cat.id }, { x: motion.x, y: motion.y }, Math.max(15, 22 * camera.current.zoom));
+    }
+    candidates.sort((left, right) => left.distance - right.distance || right.depth - left.depth);
+    if (candidates[0]) return { tile: { ...candidates[0].tile }, target: candidates[0].target };
+
+    const tile = pointToTile(clientX, clientY);
+    const cat = controller.state.cats.find((entry) => entry.position.x === tile.x && entry.position.y === tile.y);
+    if (cat) return { tile, target: { kind: "cat", id: cat.id } };
+    const landmark = controller.state.landmarks.find((entry) => entry.position.x === tile.x && entry.position.y === tile.y);
+    if (landmark) return { tile, target: { kind: "landmark", id: landmark.id } };
+    const building = controller.state.buildings.find((entry) => entry.position.x === tile.x && entry.position.y === tile.y);
+    if (building) return { tile, target: { kind: "building", id: building.id } };
+    const resource = controller.state.resourceNodes.find((entry) => entry.position.x === tile.x && entry.position.y === tile.y);
+    if (resource) return { tile, target: { kind: "resource", id: resource.id } };
+    return { tile, target: { kind: "empty" } };
   };
 
   const activateHoveredTile = () => {
@@ -312,7 +388,24 @@ export function GameCanvas({
       failure: buildingPlacementFailure(controller.state, itemId, tile),
     }));
 
-  const contextBuildingOptions = tileActionMenu ? ownedBuildingOptionsAt(tileActionMenu.tile) : [];
+  const contextBuildingOptions = tileActionMenu?.target.kind === "empty" ? ownedBuildingOptionsAt(tileActionMenu.tile) : [];
+  const contextResourceOptions = tileActionMenu?.target.kind === "empty" ? BASE_RESOURCE_ITEM_IDS
+    .filter((itemId) => (controller.state.playerBuildingInventory[itemId] ?? 0) >= PLAYER_RESOURCE_CREATION_COST)
+    .map((itemId) => ({
+      itemId,
+      quantity: controller.state.playerBuildingInventory[itemId] ?? 0,
+      failure: resourcePlacementFailure(controller.state, itemId, tileActionMenu.tile),
+    })) : [];
+  const contextTarget = tileActionMenu?.target;
+  const contextCatId = contextTarget?.kind === "cat" ? contextTarget.id : null;
+  const contextResourceId = contextTarget?.kind === "resource" ? contextTarget.id : null;
+  const contextBuildingId = contextTarget?.kind === "building" ? contextTarget.id : null;
+  const contextLandmarkId = contextTarget?.kind === "landmark" ? contextTarget.id : null;
+  const contextCat = contextCatId ? controller.state.cats.find((cat) => cat.id === contextCatId) : undefined;
+  const contextResource = contextResourceId ? controller.state.resourceNodes.find((node) => node.id === contextResourceId) : undefined;
+  const contextBuilding = contextBuildingId ? controller.state.buildings.find((building) => building.id === contextBuildingId) : undefined;
+  const contextLandmark = contextLandmarkId ? controller.state.landmarks.find((landmark) => landmark.id === contextLandmarkId) : undefined;
+  const contextCatLiquidation = contextCat ? catLiquidationPreview(controller.state, contextCat) : null;
 
   return (
     <>
@@ -322,26 +415,39 @@ export function GameCanvas({
       data-testid="game-canvas"
       data-map-scale={mapScale}
       tabIndex={0}
-      aria-label={window.catWorkshopDesktop ? "等距猫咪工坊。普通模式左键拖动桌宠、滚轮缩放整体；地图模式改为平移和缩放地图。右键地块打开新增猫咪与已有建筑菜单。" : "等距猫咪工坊。左键拖拽平移，滚轮缩放地图，右键地块打开新增猫咪与已有建筑菜单。"}
+      aria-label={window.catWorkshopDesktop ? "等距猫咪工坊。普通模式左键拖动桌宠、滚轮缩放整体；地图模式改为平移和缩放地图。右键空地或对象打开世界管理菜单。" : "等距猫咪工坊。左键拖拽平移，滚轮缩放地图，右键空地或对象打开世界管理菜单。"}
       onContextMenu={(event) => {
         event.preventDefault();
-        const tile = pointToTile(event.clientX, event.clientY);
+        const { tile, target } = contextTargetAt(event.clientX, event.clientY);
         hoveredTile.current = tile;
         if (placingBuildingItemId || placingLandmarkId || expansionMode) {
-          setTileActionMenu(null);
+          closeTileActionMenu();
           return;
         }
-        const canAddCat = canOfferAddCatAt(tile);
-        const buildingOptions = ownedBuildingOptionsAt(tile);
-        if (!canAddCat && !buildingOptions.some((option) => !option.failure)) {
-          setTileActionMenu(null);
+        const canAddCat = target.kind === "empty" && canOfferAddCatAt(tile);
+        const buildingOptions = target.kind === "empty" ? ownedBuildingOptionsAt(tile) : [];
+        const canCreateLandmark = target.kind === "empty"
+          && (controller.state.playerBuildingInventory.wood ?? 0) >= NAMED_LANDMARK_WOOD_COST;
+        const canCreateResource = target.kind === "empty" && BASE_RESOURCE_ITEM_IDS.some((itemId) => (
+          (controller.state.playerBuildingInventory[itemId] ?? 0) >= PLAYER_RESOURCE_CREATION_COST
+          && !resourcePlacementFailure(controller.state, itemId, tile)
+        ));
+        if (target.kind === "empty" && !canAddCat && !canCreateLandmark && !canCreateResource
+          && !buildingOptions.some((option) => !option.failure)) {
+          closeTileActionMenu();
           return;
         }
         const rect = canvasRef.current!.getBoundingClientRect();
         const localY = event.clientY - rect.top;
+        const scaleHost = canvasRef.current!.closest(".pet-window") ?? document.documentElement;
+        const controlScale = Number.parseFloat(getComputedStyle(scaleHost).getPropertyValue("--pet-control-scale")) || 1;
+        const horizontalInset = Math.min(rect.width / 2, Math.max(112, 126 * controlScale));
+        setLandmarkNameEditor(null);
+        setPendingDestructiveAction(null);
         setTileActionMenu({
           tile,
-          x: Math.max(112, Math.min(rect.width - 112, event.clientX - rect.left)),
+          target,
+          x: Math.max(horizontalInset, Math.min(rect.width - horizontalInset, event.clientX - rect.left)),
           y: Math.max(12, Math.min(rect.height - 12, localY)),
           verticalAlign: localY > rect.height * 0.55 ? "above" : "below",
         });
@@ -407,14 +513,14 @@ export function GameCanvas({
       aria-label={`地块 ${tileActionMenu.tile.x}, ${tileActionMenu.tile.y} 操作`}
       style={{ left: tileActionMenu.x, top: tileActionMenu.y }}
     >
-      <small>({tileActionMenu.tile.x}, {tileActionMenu.tile.y})</small>
-      {canOfferAddCatAt(tileActionMenu.tile) && <button
+      <small>{tileActionMenu.target.kind === "empty" ? "空地" : "对象"} · ({tileActionMenu.tile.x}, {tileActionMenu.tile.y})</small>
+      {tileActionMenu.target.kind === "empty" && canOfferAddCatAt(tileActionMenu.tile) && <button
         className="add-cat-action"
         data-testid="add-cat-menu"
         role="menuitem"
         onClick={() => {
           addCatAt(tileActionMenu.tile);
-          setTileActionMenu(null);
+          closeTileActionMenu();
         }}
       >＋ 新增猫咪</button>}
       {contextBuildingOptions.map(({ itemId, quantity, failure }) => {
@@ -430,10 +536,122 @@ export function GameCanvas({
           onClick={() => {
             const result = controller.placeBuilding(itemId, tileActionMenu.tile);
             onBuildingPlacementResult({ itemId, position: { ...tileActionMenu.tile }, ...result });
-            if (result.ok) setTileActionMenu(null);
+            if (result.ok) closeTileActionMenu();
           }}
         ><span>{item?.emoji}</span><b>搭建{item?.name ?? itemId}</b><i>×{quantity}</i></button>;
       })}
+      {tileActionMenu.target.kind === "empty" && (controller.state.playerBuildingInventory.wood ?? 0) >= NAMED_LANDMARK_WOOD_COST && (
+        landmarkNameEditor?.mode === "create" ? <form className="tile-landmark-name-form" data-testid="create-landmark-form" onSubmit={(event) => {
+          event.preventDefault();
+          const result = controller.placeNamedLandmark(landmarkNameEditor.value, tileActionMenu.tile);
+          if (result.ok) closeTileActionMenu();
+          else setLandmarkNameEditor((current) => current ? { ...current, error: result.error ?? "创建失败" } : current);
+        }}>
+          <label htmlFor="new-landmark-name">给地标起一个唯一名称</label>
+          <input
+            id="new-landmark-name"
+            data-testid="new-landmark-name"
+            autoFocus
+            maxLength={20}
+            value={landmarkNameEditor.value}
+            onChange={(event) => setLandmarkNameEditor({ ...landmarkNameEditor, value: event.target.value, error: null })}
+            placeholder="例如：东区"
+          />
+          {landmarkNameEditor.error && <span className="tile-action-error" role="alert">{landmarkNameEditor.error}</span>}
+          <div><button type="submit">消耗 🪵×1 创建</button><button type="button" onClick={() => setLandmarkNameEditor(null)}>取消</button></div>
+        </form> : <button
+          className="create-landmark-action"
+          data-testid="create-landmark-menu"
+          role="menuitem"
+          onClick={() => setLandmarkNameEditor({ mode: "create", value: "", error: null })}
+        ><span>{NAMED_LANDMARK_EMOJI}</span><b>创建地标</b><i>🪵 −1</i></button>
+      )}
+      {contextResourceOptions.map(({ itemId, quantity, failure }) => {
+        const item = ITEM_BY_ID.get(itemId);
+        return <button
+          key={`resource-${itemId}`}
+          className="create-resource-action"
+          data-testid={`create-resource-${itemId}`}
+          data-placement-valid={failure ? "false" : "true"}
+          role="menuitem"
+          disabled={Boolean(failure)}
+          title={failure ?? `消耗 ${PLAYER_RESOURCE_CREATION_COST} 份${item?.name ?? itemId}创建资源中心`}
+          onClick={() => {
+            const result = controller.createResource(itemId, tileActionMenu.tile);
+            if (result.ok) closeTileActionMenu();
+          }}
+        ><span>{item?.emoji}</span><b>创建{item?.name ?? itemId}资源</b><i>−{PLAYER_RESOURCE_CREATION_COST} / {quantity}</i></button>;
+      })}
+      {contextCat && contextCatLiquidation && <>
+        <div className="tile-object-title"><span>🐈</span><strong>猫咪 #{contextCat.createdIndex + 1}</strong></div>
+        <div className="tile-liquidation-preview" data-testid="context-cat-liquidation">
+          <span>可清算资产 <b>{formatMoney(contextCatLiquidation.assetsCents)}</b></span>
+          <span>偿还债务 <b>{formatMoney(contextCatLiquidation.debtRepaidCents)}</b></span>
+          <span>国库变化 <b>{contextCatLiquidation.treasuryDeltaCents >= 0 ? "+" : "−"}{formatMoney(Math.abs(contextCatLiquidation.treasuryDeltaCents))}</b></span>
+        </div>
+        <button
+          className="danger-action"
+          data-testid="context-remove-cat"
+          disabled={controller.state.cats.length <= 1}
+          role="menuitem"
+          onClick={() => {
+            const key = `cat:${contextCat.id}`;
+            if (pendingDestructiveAction !== key) {
+              setPendingDestructiveAction(key);
+              return;
+            }
+            const result = controller.removeCat(contextCat.id);
+            if (result.ok) closeTileActionMenu();
+          }}
+        ><span>🧾</span><b>{controller.state.cats.length <= 1 ? "至少保留一只猫咪" : pendingDestructiveAction === `cat:${contextCat.id}` ? "确认删除并完成清算" : "删除猫咪并清算"}</b><i>{pendingDestructiveAction === `cat:${contextCat.id}` ? "再次点击" : "完整审计"}</i></button>
+      </>}
+      {contextResource && <>
+        <div className="tile-object-title"><span>{ITEM_BY_ID.get(contextResource.itemId)?.emoji}</span><strong>{ITEM_BY_ID.get(contextResource.itemId)?.name ?? contextResource.itemId}资源中心</strong></div>
+        <button className="danger-action" data-testid="context-remove-resource" role="menuitem" onClick={() => {
+          const key = `resource:${contextResource.id}`;
+          if (pendingDestructiveAction !== key) return setPendingDestructiveAction(key);
+          const result = controller.removeResource(contextResource.id);
+          if (result.ok) closeTileActionMenu();
+        }}><span>⛏️</span><b>{pendingDestructiveAction === `resource:${contextResource.id}` ? "确认移除资源中心" : "移除资源中心"}</b><i>不返还材料</i></button>
+      </>}
+      {contextBuilding && <>
+        <div className="tile-object-title"><span>{ITEM_BY_ID.get(contextBuilding.itemId)?.emoji}</span><strong>{ITEM_BY_ID.get(contextBuilding.itemId)?.name ?? contextBuilding.itemId}</strong></div>
+        <button className="danger-action" data-testid="context-dismantle-building" role="menuitem" onClick={() => {
+          const key = `building:${contextBuilding.id}`;
+          if (pendingDestructiveAction !== key) return setPendingDestructiveAction(key);
+          const result = controller.dismantleBuilding(contextBuilding.id);
+          if (result.ok) closeTileActionMenu();
+        }}><span>🧰</span><b>{pendingDestructiveAction === `building:${contextBuilding.id}` ? "确认拆除建筑" : "拆除建筑"}</b><i>退回仓库</i></button>
+      </>}
+      {contextLandmark && <>
+        <div className="tile-object-title"><span>{contextLandmark.landmarkId ? LANDMARK_BY_ID.get(contextLandmark.landmarkId)?.emoji : NAMED_LANDMARK_EMOJI}</span><strong>{landmarkDisplayName(contextLandmark)}</strong></div>
+        {landmarkNameEditor?.mode === "rename" ? <form className="tile-landmark-name-form" data-testid="rename-landmark-form" onSubmit={(event) => {
+          event.preventDefault();
+          const result = controller.renameLandmark(contextLandmark.id, landmarkNameEditor.value);
+          if (result.ok) closeTileActionMenu();
+          else setLandmarkNameEditor((current) => current ? { ...current, error: result.error ?? "改名失败" } : current);
+        }}>
+          <label htmlFor="rename-landmark-name">地标名称必须全世界唯一</label>
+          <input
+            id="rename-landmark-name"
+            data-testid="rename-landmark-name"
+            autoFocus
+            maxLength={20}
+            value={landmarkNameEditor.value}
+            onChange={(event) => setLandmarkNameEditor({ ...landmarkNameEditor, value: event.target.value, error: null })}
+          />
+          {landmarkNameEditor.error && <span className="tile-action-error" role="alert">{landmarkNameEditor.error}</span>}
+          <div><button type="submit">保存名称</button><button type="button" onClick={() => setLandmarkNameEditor(null)}>取消</button></div>
+        </form> : <button className="rename-landmark-action" data-testid="context-rename-landmark" role="menuitem" onClick={() => (
+          setLandmarkNameEditor({ mode: "rename", value: landmarkDisplayName(contextLandmark), error: null })
+        )}><span>✏️</span><b>重命名地标</b><i>法规可读取</i></button>}
+        <button className="danger-action" data-testid="context-dismantle-landmark" role="menuitem" onClick={() => {
+          const key = `landmark:${contextLandmark.id}`;
+          if (pendingDestructiveAction !== key) return setPendingDestructiveAction(key);
+          const result = controller.dismantleLandmark(contextLandmark.id);
+          if (result.ok) closeTileActionMenu();
+        }}><span>🧰</span><b>{pendingDestructiveAction === `landmark:${contextLandmark.id}` ? "确认拆除地标" : "拆除地标"}</b><i>{contextLandmark.landmarkId ? "返还半数建材" : "木材不返还"}</i></button>
+      </>}
     </div>}
     </>
   );
@@ -456,6 +674,8 @@ function drawWorld(
   speechControlObstacles: readonly SpeechLayoutRectangle[],
   mapLensId: MapLensId,
   mapLensItemId: string | null,
+  wealthLensMode: WealthLensMode,
+  wealthLensWindowMs: number,
   reducedMotion: boolean,
   groundCache: GroundLayerCache,
   scratch: RenderScratch,
@@ -475,12 +695,15 @@ function drawWorld(
   if (expansionMode) drawExpansionParcels(context, state.unlockedParcels, state.treasuryCoins, state.difficulty, hoveredTile);
   const revision = controller.getRevision();
   if (!scratch.lensCache || scratch.lensCache.revision !== revision
-    || scratch.lensCache.lensId !== mapLensId || scratch.lensCache.itemId !== mapLensItemId) {
+    || scratch.lensCache.lensId !== mapLensId || scratch.lensCache.itemId !== mapLensItemId
+    || scratch.lensCache.wealthMode !== wealthLensMode || scratch.lensCache.wealthWindowMs !== wealthLensWindowMs) {
     scratch.lensCache = {
       revision,
       lensId: mapLensId,
       itemId: mapLensItemId,
-      snapshot: buildMapLensSnapshot(state, mapLensId, mapLensItemId),
+      wealthMode: wealthLensMode,
+      wealthWindowMs: wealthLensWindowMs,
+      snapshot: buildMapLensSnapshot(state, mapLensId, mapLensItemId, { wealthMode: wealthLensMode, wealthWindowMs: wealthLensWindowMs }),
     };
   }
   const lens = scratch.lensCache.snapshot;
@@ -561,7 +784,7 @@ function drawWorld(
     drawBuildingPlacementPreview(context, hoveredTile, placingBuildingItemId, !failure, dpr);
   } else if (hoveredTile && state.landmarks.some((landmark) => landmark.position.x === hoveredTile.x && landmark.position.y === hoveredTile.y)) {
     const landmark = state.landmarks.find((entry) => entry.position.x === hoveredTile.x && entry.position.y === hoveredTile.y)!;
-    drawLandmarkAura(context, landmark.position, landmark.landmarkId);
+    if (landmark.landmarkId) drawLandmarkAura(context, landmark.position, landmark.landmarkId);
   } else if (hoveredTile && !expansionMode && isPositionUnlocked(state.unlockedParcels, hoveredTile)) {
     const occupied = state.cats.some((cat) => cat.position.x === hoveredTile.x && cat.position.y === hoveredTile.y);
     const resourceCenter = state.resourceNodes.some((node) => node.position.x === hoveredTile.x && node.position.y === hoveredTile.y);
@@ -1021,17 +1244,51 @@ function drawWorldObjectBadge(
 
 function drawLandmarkMarker(context: CanvasRenderingContext2D, landmark: DeployedLandmark, dpr: number) {
   const center = worldToIso(landmark.position);
-  const definition = LANDMARK_BY_ID.get(landmark.landmarkId);
-  const emoji = getEmojiCanvas(definition?.emoji ?? "🏛️", 38, dpr);
+  const definition = landmark.landmarkId ? LANDMARK_BY_ID.get(landmark.landmarkId) : null;
+  if (!definition) {
+    drawWorldObjectBadge(context, center, NAMED_LANDMARK_EMOJI, itemQualityPalette("wood"), dpr);
+  } else {
+    const emoji = getEmojiCanvas(definition.emoji, 38, dpr);
+    context.save();
+    context.beginPath();
+    context.ellipse(center.x, center.y + 7, 30, 12, 0, 0, Math.PI * 2);
+    context.fillStyle = "rgba(82, 126, 181, .14)";
+    context.fill();
+    context.strokeStyle = "rgba(76, 106, 147, .32)";
+    context.lineWidth = 1.4;
+    context.stroke();
+    context.drawImage(emoji, center.x - 21, center.y - 45, 42, 42);
+    context.restore();
+  }
+  drawLandmarkNameBubble(context, center, landmarkDisplayName(landmark));
+}
+
+function drawLandmarkNameBubble(context: CanvasRenderingContext2D, center: Position, name: string) {
+  const label = [...name].slice(0, 20).join("");
   context.save();
-  context.beginPath();
-  context.ellipse(center.x, center.y + 7, 30, 12, 0, 0, Math.PI * 2);
-  context.fillStyle = "rgba(82, 126, 181, .14)";
+  context.font = "800 9px 'Microsoft YaHei UI', system-ui";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  const width = Math.max(30, Math.min(128, context.measureText(label).width + 14));
+  const x = center.x - width / 2;
+  const y = center.y - 62;
+  roundedPath(context, x, y, width, 20, 7);
+  context.fillStyle = "rgba(255, 255, 255, .97)";
   context.fill();
-  context.strokeStyle = "rgba(76, 106, 147, .32)";
-  context.lineWidth = 1.4;
+  context.strokeStyle = "rgba(117, 126, 120, .32)";
+  context.lineWidth = 1;
   context.stroke();
-  context.drawImage(emoji, center.x - 21, center.y - 45, 42, 42);
+  context.beginPath();
+  context.moveTo(center.x - 4, y + 20);
+  context.lineTo(center.x + 4, y + 20);
+  context.lineTo(center.x, y + 25);
+  context.closePath();
+  context.fillStyle = "rgba(255, 255, 255, .97)";
+  context.fill();
+  context.strokeStyle = "rgba(117, 126, 120, .24)";
+  context.stroke();
+  context.fillStyle = "#535e57";
+  context.fillText(label, center.x, y + 10.5, width - 10);
   context.restore();
 }
 

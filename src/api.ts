@@ -2,6 +2,7 @@ import type { GameState, LawDraft } from "./game/types";
 import { recordPlayerCommand } from "./game/engine";
 import { SHARED_BEHAVIOR_HASH, SHARED_BEHAVIOR_SOURCE } from "./game/lawProgram";
 import { validateDraftInWorker } from "./game/lawWorkerClient";
+import { landmarkDisplayName } from "./game/landmarks";
 
 export interface DeepSeekStatus {
   ok: true;
@@ -52,6 +53,11 @@ export async function compileLaw(text: string, state: GameState): Promise<LawDra
           status: law.status,
         })),
         sharedBehavior: { sourceCode: SHARED_BEHAVIOR_SOURCE, astHash: SHARED_BEHAVIOR_HASH },
+        landmarks: state.landmarks.map((landmark) => ({
+          name: landmarkDisplayName(landmark),
+          position: landmark.position,
+          kind: landmark.landmarkId === null ? "marker" : "engineered",
+        })),
       }),
     });
     const body = await response.json() as LawDraft | { error: string };

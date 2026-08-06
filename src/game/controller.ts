@@ -1,4 +1,4 @@
-import { acknowledgeAchievement, advanceGame, buyAllCatStock, buyAllCatStockAndSell, buyBuildingOffer, buyCatItem, buyLandmarkBlueprint, buyWarehouseItem, cancelBuildingOrder, createInitialState, dismantleBuilding, dismantleLandmark, enactLaw, expandParcel, placeCat, placeLandmark, placeOwnedBuilding, queueBuildingOrder, recordPlayerCommand, removeCat, reorderLaw, repealLaw, sellAllUnlockedWarehouseItems, sellWarehouseItem, setPaused, setSpeechFrequency, toggleWarehouseItemLock, unlockRecipe } from "./engine";
+import { acknowledgeAchievement, advanceGame, buyAllCatStock, buyAllCatStockAndSell, buyBuildingOffer, buyCatItem, buyLandmarkBlueprint, buyWarehouseItem, cancelBuildingOrder, createInitialState, createPlayerResource, dismantleBuilding, dismantleLandmark, enactLaw, expandParcel, placeCat, placeLandmark, placeNamedLandmark, placeOwnedBuilding, queueBuildingOrder, recordPlayerCommand, removeCat, removeResource, renameLandmark, reorderLaw, repealLaw, sellAllUnlockedWarehouseItems, sellWarehouseItem, setPaused, setSpeechFrequency, toggleWarehouseItemLock, unlockRecipe } from "./engine";
 import { clearSave, loadGame, saveGame } from "./persistence";
 import type { GameState, LandmarkId, LawDraft, Position } from "./types";
 import { randomWorldSeed } from "./world";
@@ -297,9 +297,37 @@ export class GameController {
     return result;
   }
 
+  placeNamedLandmark(name: string, position: Position) {
+    const result = placeNamedLandmark(this.state, name, position);
+    recordPlayerCommand(this.state, "place-landmark", `${name}@${position.x},${position.y}`, result.ok, result.error);
+    this.emit();
+    return result;
+  }
+
+  renameLandmark(deployedId: string, name: string) {
+    const result = renameLandmark(this.state, deployedId, name);
+    recordPlayerCommand(this.state, "rename-landmark", `${deployedId}:${name}`, result.ok, result.error);
+    this.emit();
+    return result;
+  }
+
   dismantleLandmark(deployedId: string) {
     const result = dismantleLandmark(this.state, deployedId);
     recordPlayerCommand(this.state, "dismantle-landmark", deployedId, result.ok, result.error);
+    this.emit();
+    return result;
+  }
+
+  createResource(itemId: string, position: Position) {
+    const result = createPlayerResource(this.state, itemId, position);
+    recordPlayerCommand(this.state, "create-resource", `${itemId}@${position.x},${position.y}`, result.ok, result.error);
+    this.emit();
+    return result;
+  }
+
+  removeResource(resourceId: string) {
+    const result = removeResource(this.state, resourceId);
+    recordPlayerCommand(this.state, "remove-resource", resourceId, result.ok, result.error);
     this.emit();
     return result;
   }

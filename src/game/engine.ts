@@ -40,9 +40,13 @@ import {
   buyLandmarkBlueprint,
   createLandmarkSpatialIndex,
   dismantleLandmark,
+  landmarkDisplayName,
   landmarkEffectsAt,
   landmarkPlacementFailure,
+  normalizeLandmarkNames,
   placeLandmark,
+  placeNamedLandmark,
+  renameLandmark,
   type LandmarkSpatialIndex,
 } from "./landmarks";
 import {
@@ -119,6 +123,8 @@ import { recordCraftCompletion } from "./productionHistory";
 
 export const ACTION_DURATION_MS = 5_000;
 export const REPEAL_COST = 500;
+export const WEALTH_HISTORY_SAMPLE_INTERVAL_MS = 5_000;
+export const WEALTH_HISTORY_MAX_WINDOW_MS = 300_000;
 
 const DIRECTION_OFFSETS: Record<Direction, Position> = {
   north: { x: 0, y: -1 },
@@ -161,7 +167,7 @@ export function createInitialState(options: { withStarter?: boolean; worldSeed?:
   const laws = starter?.laws ?? [];
   const resourceNodes = structuredClone(starterWorld.resourceNodes);
   const state: GameState = {
-    schemaVersion: 15,
+    schemaVersion: 17,
     difficulty,
     catalogVersion: CATALOG_VERSION,
     worldSeed,
@@ -172,6 +178,7 @@ export function createInitialState(options: { withStarter?: boolean; worldSeed?:
     nextCatIndex: cats.length,
     unlockedParcels: [{ x: 0, y: 0 }],
     resourceNodes,
+    nextPlayerResourceIndex: 0,
     buildings: [],
     landmarks: [],
     unlockedLandmarkIds: [],
@@ -208,6 +215,7 @@ export function createInitialState(options: { withStarter?: boolean; worldSeed?:
     totalProductionValueCents: 0,
     achievements: [],
     productionHistory: { byCat: {}, flows: [] },
+    wealthHistory: [],
     recentProductionEvents: [],
     floatingEvents: [],
     stargatesBuilt: 0,
@@ -218,6 +226,7 @@ export function createInitialState(options: { withStarter?: boolean; worldSeed?:
   };
   for (const cat of state.cats) beginWait(state, cat, "入场等待");
   ensureMarketBroadcasts(state);
+  recordWealthHistorySample(state, true);
   return state;
 }
 
@@ -239,7 +248,58 @@ export function buildingAt(state: GameState, position: Position): DeployedBuildi
   return state.buildings.find((building) => building.position.x === position.x && building.position.y === position.y);
 }
 
-export { buyLandmarkBlueprint, dismantleLandmark, landmarkEffectsAt, landmarkPlacementFailure, placeLandmark };
+export {
+  buyLandmarkBlueprint,
+  dismantleLandmark,
+  landmarkEffectsAt,
+  landmarkPlacementFailure,
+  normalizeLandmarkNames,
+  placeLandmark,
+  placeNamedLandmark,
+  renameLandmark,
+};
+
+export const PLAYER_RESOURCE_CREATION_COST = 50;
+
+export function resourcePlacementFailure(state: GameState, itemId: ItemId, position: Position): string | null {
+  if (!BASE_RESOURCE_ITEM_IDS.includes(itemId as typeof BASE_RESOURCE_ITEM_IDS[number])) return "只能创建六种基础资源";
+  if (!Number.isInteger(position.x) || !Number.isInteger(position.y)) return "资源坐标必须是整数";
+  if (!isPositionUnlocked(state.unlockedParcels, position)) return "只能放在已开拓土地";
+  if (state.cats.some((cat) => positionKey(cat.position) === positionKey(position))) return "该格已有猫咪工位";
+  if (state.resourceNodes.some((node) => positionKey(node.position) === positionKey(position))) return "该格已有资源中心";
+  if (state.buildings.some((building) => positionKey(building.position) === positionKey(position))) return "该格已有工业建筑";
+  if (state.landmarks.some((landmark) => positionKey(landmark.position) === positionKey(position))) return "该格已有地标";
+  if ((state.playerBuildingInventory[itemId] ?? 0) < PLAYER_RESOURCE_CREATION_COST) return `仓库需要 ${PLAYER_RESOURCE_CREATION_COST} 份${ITEM_BY_ID.get(itemId)?.name ?? itemId}`;
+  return null;
+}
+
+export function createPlayerResource(
+  state: GameState,
+  itemId: ItemId,
+  position: Position,
+): { ok: boolean; error?: string; resource?: GameState["resourceNodes"][number] } {
+  const failure = resourcePlacementFailure(state, itemId, position);
+  if (failure) return { ok: false, error: failure };
+  const resource = {
+    id: `resource-player-${state.nextPlayerResourceIndex++}`,
+    itemId,
+    position: { ...position },
+  };
+  state.playerBuildingInventory[itemId] -= PLAYER_RESOURCE_CREATION_COST;
+  consumeWarehousePurchase(state, itemId, PLAYER_RESOURCE_CREATION_COST);
+  if (state.playerBuildingInventory[itemId] <= 0) delete state.playerBuildingInventory[itemId];
+  state.resourceNodes.push(resource);
+  state.dirtyDecisions = true;
+  return { ok: true, resource };
+}
+
+export function removeResource(state: GameState, resourceId: string): { ok: boolean; error?: string } {
+  const index = state.resourceNodes.findIndex((node) => node.id === resourceId);
+  if (index < 0) return { ok: false, error: "资源中心不存在" };
+  state.resourceNodes.splice(index, 1);
+  state.dirtyDecisions = true;
+  return { ok: true };
+}
 
 export function recipeSiteFailure(state: GameState, cat: CatState, recipe: RecipeDefinition): string | null {
   return siteFailure(state, cat, recipe);
@@ -302,6 +362,29 @@ export interface CatRemovalResult {
   treasuryDeltaCents?: number;
 }
 
+export interface CatLiquidationPreview {
+  assetsCents: number;
+  stockCents: number;
+  debtRepaidCents: number;
+  treasuryDeltaCents: number;
+}
+
+/** Read-only liquidation quote used by the inspector and right-click audit. */
+export function catLiquidationPreview(state: GameState, cat: CatState): CatLiquidationPreview {
+  const inventory = { ...cat.inventory };
+  if (cat.action && !cat.action.contractId) {
+    for (const [itemId, quantity] of Object.entries(cat.action.reserved ?? {})) {
+      inventory[itemId] = (inventory[itemId] ?? 0) + quantity;
+    }
+  }
+  const stockCents = Object.entries(inventory).reduce((sum, [itemId, quantity]) => (
+    sum + Math.max(0, quantity) * externalNetCentsAt(state, itemId, (id) => itemPrice(state, id), cat)
+  ), 0);
+  const assetsCents = cat.coins + stockCents;
+  const debtRepaidCents = Math.max(0, cat.debtCents);
+  return { assetsCents, stockCents, debtRepaidCents, treasuryDeltaCents: assetsCents - debtRepaidCents };
+}
+
 /**
  * Atomically liquidate a cat. Realized cash and stock are valued at the
  * current external net price, debt is paid first, and the net settlement is
@@ -349,11 +432,10 @@ export function removeCat(state: GameState, catId: string): CatRemovalResult {
   // single asset-conserving path before this cat is liquidated.
   const contractRepair = cancelContractsReferencingCat(state, catId);
 
-  const liquidatedCents = cat.coins + Object.entries(cat.inventory).reduce((sum, [itemId, quantity]) => (
-    sum + Math.max(0, quantity) * externalNetCentsAt(state, itemId, (id) => itemPrice(state, id), cat)
-  ), 0);
-  const debtRepaidCents = Math.max(0, cat.debtCents);
-  const treasuryDeltaCents = liquidatedCents - debtRepaidCents;
+  const liquidation = catLiquidationPreview(state, cat);
+  const liquidatedCents = liquidation.assetsCents;
+  const debtRepaidCents = liquidation.debtRepaidCents;
+  const treasuryDeltaCents = liquidation.treasuryDeltaCents;
   state.treasuryCoins += treasuryDeltaCents;
 
   // Remove all secondary records that could retain the cat or its orders.
@@ -482,6 +564,14 @@ export function buildObservation(
       amountCents: bounty.amountCents,
       claimedBySelf: state.discoveryBounties.some((entry) => entry.itemId === bounty.itemId && entry.claimedByCatId === cat.id),
     })),
+    landmarks: state.landmarks.map((landmark) => ({
+      id: landmark.id,
+      name: landmarkDisplayName(landmark),
+      position: { ...landmark.position },
+      distance: Math.abs(landmark.position.x - cat.position.x) + Math.abs(landmark.position.y - cat.position.y),
+      kind: landmark.landmarkId === null ? "marker" as const : "engineered" as const,
+      landmarkId: landmark.landmarkId,
+    })).sort((left, right) => left.distance - right.distance || left.name.localeCompare(right.name)).slice(0, 128),
     landmarkEffects: effects,
   };
 }
@@ -569,12 +659,7 @@ function appendAudit(state: GameState, entry: Omit<GameState["commandAudit"][num
 
 export function recordPlayerCommand(
   state: GameState,
-  kind: Extract<GameState["commandAudit"][number]["kind"],
-    "buy-recipe" | "buy-cat-stock" | "buy-building" | "place-building" | "sell-warehouse" |
-    "compile-law" | "enact-law" | "reorder-law" | "repeal-law" | "advance-time" |
-    "place-cat" | "remove-cat" | "expand-parcel" | "queue-building" | "cancel-building" |
-    "dismantle-building" | "toggle-warehouse-lock" | "buy-landmark-blueprint" | "place-landmark" |
-    "dismantle-landmark" | "set-paused" | "set-speech-frequency" | "ack-achievement" | "forbidden-debug">,
+  kind: import("./types").PlayerCommandKind,
   target: string,
   ok: boolean,
   detail?: string,
@@ -1443,12 +1528,65 @@ function resolveAction(state: GameState, cat: CatState, map: Map<string, CatStat
   }
 }
 
+/**
+ * Reproduce the exact score used by the Wealth & Credit map lens.
+ * Inventory is liquidated at this cat's current lawful price; debt, escrow and
+ * available credit remain visible instead of reducing the metric to cash flow.
+ */
+export function catWealthScoreCents(state: GameState, cat: CatState): number {
+  const priceOf = (itemId: ItemId) => itemPrice(state, itemId, cat);
+  return Math.round(
+    netWorthCents(state, cat, priceOf)
+    + creditAvailableCents(state, cat, priceOf)
+    - cat.escrowReservedCents,
+  );
+}
+
+function pruneWealthHistory(state: GameState): void {
+  const cutoff = state.simTime - WEALTH_HISTORY_MAX_WINDOW_MS - WEALTH_HISTORY_SAMPLE_INTERVAL_MS;
+  state.wealthHistory = state.wealthHistory.filter((sample) => sample.at >= cutoff && sample.at <= state.simTime);
+}
+
+/** Capture or replace one deterministic wealth snapshot at the current sim time. */
+export function recordWealthHistorySample(state: GameState, force = false): void {
+  if (!Array.isArray(state.wealthHistory)) state.wealthHistory = [];
+  const last = state.wealthHistory.at(-1);
+  if (!force && last && state.simTime - last.at < WEALTH_HISTORY_SAMPLE_INTERVAL_MS) return;
+  const sample = {
+    at: state.simTime,
+    values: Object.fromEntries(state.cats.map((cat) => [cat.id, catWealthScoreCents(state, cat)])),
+  };
+  if (last?.at === state.simTime) state.wealthHistory[state.wealthHistory.length - 1] = sample;
+  else state.wealthHistory.push(sample);
+  pruneWealthHistory(state);
+}
+
+/** Sanitize persisted samples and anchor the restored world at its load time. */
+export function normalizeWealthHistory(state: GameState, rawHistory: unknown): void {
+  const currentCatIds = new Set(state.cats.map((cat) => cat.id));
+  const byTime = new Map<number, Record<string, number>>();
+  for (const raw of Array.isArray(rawHistory) ? rawHistory : []) {
+    if (!raw || !Number.isFinite(raw.at) || raw.at < 0 || raw.at > state.simTime || typeof raw.values !== "object") continue;
+    const values: Record<string, number> = {};
+    for (const [catId, value] of Object.entries(raw.values as Record<string, unknown>)) {
+      if (currentCatIds.has(catId) && Number.isFinite(value)) values[catId] = Math.round(Number(value));
+    }
+    byTime.set(Number(raw.at), values);
+  }
+  state.wealthHistory = [...byTime]
+    .sort(([left], [right]) => left - right)
+    .map(([at, values]) => ({ at, values }));
+  pruneWealthHistory(state);
+  recordWealthHistorySample(state, true);
+}
+
 export function advanceGame(state: GameState, milliseconds: number): void {
   if (state.paused || !Number.isFinite(milliseconds) || milliseconds <= 0) return;
   const target = state.simTime + milliseconds;
   while (true) {
     const nextAction = state.cats.reduce((time, cat) => cat.action && cat.action.endsAt < time ? cat.action.endsAt : time, Number.POSITIVE_INFINITY);
-    const next = nextAction;
+    const nextWealthSample = (state.wealthHistory.at(-1)?.at ?? state.simTime) + WEALTH_HISTORY_SAMPLE_INTERVAL_MS;
+    const next = Math.min(nextAction, nextWealthSample);
     if (next > target) break;
     state.simTime = next;
     const map = catMap(state);
@@ -1456,6 +1594,7 @@ export function advanceGame(state: GameState, milliseconds: number): void {
     for (const cat of completing) resolveAction(state, cat, map);
     pruneEphemeralState(state);
     if (completing.length > 0) decideIdleCats(state, new Set(completing.map((cat) => cat.id)));
+    if (next === nextWealthSample) recordWealthHistorySample(state, true);
     compactGameStateHistory(state);
   }
   state.simTime = target;
@@ -1483,6 +1622,7 @@ function compactLawHistory(state: GameState): void {
 
 export function compactGameStateHistory(state: GameState): void {
   compactLawHistory(state);
+  pruneWealthHistory(state);
   if (state.commandAudit.length > 2_000) state.commandAudit.splice(0, state.commandAudit.length - 2_000);
   if (state.marketEvents.length > 64) state.marketEvents = state.marketEvents.slice(-64);
 

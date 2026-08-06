@@ -2,7 +2,7 @@ import { useState } from "react";
 import { DEPLOYABLE_BUILDING_IDS, ITEM_BY_ID, ITEMS } from "../game/catalog";
 import type { GameController } from "../game/controller";
 import { formatMoney, warehouseBulkSellQuote, warehouseQuote, warehouseSellPrice } from "../game/engine";
-import { LANDMARK_BY_ID, LANDMARK_DEFINITIONS } from "../game/landmarks";
+import { landmarkDisplayName, LANDMARK_BY_ID, LANDMARK_DEFINITIONS, NAMED_LANDMARK_EMOJI } from "../game/landmarks";
 import type { LandmarkId } from "../game/types";
 
 interface PlacementFeedback {
@@ -119,12 +119,14 @@ export function BuildingPanel({
       <div className="section-heading"><h3>已建地标</h3><span>{state.landmarks.length} 座</span></div>
       {state.landmarks.length === 0 ? <div className="empty-state small">暂无地标。</div> : <div className="deployed-building-list landmark-list">
         {state.landmarks.map((landmark) => {
-          const definition = LANDMARK_BY_ID.get(landmark.landmarkId);
+          const definition = landmark.landmarkId ? LANDMARK_BY_ID.get(landmark.landmarkId) : null;
           return <div key={landmark.id} data-testid={`deployed-landmark-${landmark.id}`}>
-            <span>{definition?.emoji} {definition?.name} · ({landmark.position.x}, {landmark.position.y})</span>
+            <span>{definition?.emoji ?? NAMED_LANDMARK_EMOJI} {landmarkDisplayName(landmark)} · ({landmark.position.x}, {landmark.position.y})</span>
             <button onClick={() => {
               const result = controller.dismantleLandmark(landmark.id);
-              setMessage({ ok: result.ok, text: result.ok ? "地标已拆除，半数建材退回仓库。" : result.error ?? "拆除失败" });
+              setMessage({ ok: result.ok, text: result.ok
+                ? landmark.landmarkId ? "地标已拆除，半数建材退回仓库。" : "命名地标已拆除。"
+                : result.error ?? "拆除失败" });
             }}>拆除</button>
           </div>;
         })}

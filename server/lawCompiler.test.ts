@@ -18,6 +18,16 @@ describe("unified immutable law compiler", () => {
     expect(prompt).not.toContain("category");
   });
 
+  it("documents named landmarks as read-only dynamic law inputs", () => {
+    const prompt = buildLawSystemPrompt([], undefined, [
+      { name: "东区", position: { x: 3, y: -2 }, kind: "marker" },
+    ]);
+    expect(prompt).toContain("nearLandmark(name,maxDistance)");
+    expect(prompt).toContain("landmarkDistance(name)");
+    expect(prompt).toContain('"name":"东区"');
+    expect(prompt).toContain("曼哈顿距离");
+  });
+
   it("never mutates the shared behavior across independent compilations", async () => {
     const beforeSource = SHARED_BEHAVIOR_SOURCE;
     const beforeHash = SHARED_BEHAVIOR_HASH;
@@ -92,6 +102,19 @@ describe("unified immutable law compiler", () => {
     expect(draft.sourceCode).toContain("warehouseCount('wood') < 5");
     expect(draft.sourceCode).toContain("adjust('craft', 'wood'");
     expect(draft.program).toEqual({ version: 2 });
+    expect(draft.validation).toMatchObject({ syntax: true, safety: true });
+  });
+
+  it("compiles a named-landmark production request without embedding world state", async () => {
+    const draft = await compileLaw({
+      text: "东区地标周围3格的猫优先制作木材",
+      existingLaws: [],
+      landmarks: [{ name: "东区", position: { x: 3, y: -2 }, kind: "marker" }],
+    });
+    expect(draft.sourceCode).toContain("nearLandmark(\"东区\", 3)");
+    expect(draft.sourceCode).toContain("adjust('craft', 'wood'");
+    expect(draft.sourceCode).not.toContain("x: 3");
+    expect(draft.explanation).toContain("改名、拆除地标或废止法规后");
     expect(draft.validation).toMatchObject({ syntax: true, safety: true });
   });
 });

@@ -194,7 +194,7 @@ describe("reliable quotes and atomic bundle funding", () => {
     });
 
     const migrated = migrateSaveSnapshot(raw);
-    expect(migrated.schemaVersion).toBe(15);
+    expect(migrated.schemaVersion).toBe(17);
     expect(migrated.cats[0].escrowReservedCents).toBe(0);
     expect(migrated.procurementPlans.find((plan) => plan.id === "old-plan")?.status).toBe("cancelled");
     expect(migrated.demandOrders.find((order) => order.id === "open-order")?.status).toBe("cancelled");

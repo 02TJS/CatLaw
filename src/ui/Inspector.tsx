@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ITEM_BY_ID } from "../game/catalog";
 import type { GameController } from "../game/controller";
-import { catStockPurchaseQuote, formatMoney, harvestResourceAt, itemPrice } from "../game/engine";
+import { catLiquidationPreview, catStockPurchaseQuote, formatMoney, harvestResourceAt, itemPrice } from "../game/engine";
 import type { CatState } from "../game/types";
 import {
   bountyBroadcastsForCat,
@@ -10,7 +10,6 @@ import {
   buildingOfferBroadcastsForCat,
   creditAvailableCents,
   creditLimitCents,
-  externalNetCentsAt,
   netWorthCents,
   planForCatPublic,
   readyContractForCat,
@@ -40,13 +39,7 @@ export function Inspector({ cat, controller, totalItems, onRemoved }: { cat?: Ca
   const creditAvailable = creditAvailableCents(state, cat, (itemId) => itemPrice(state, itemId));
   const landmarkEffects = landmarkEffectsAt(state, cat.position);
   const coveredLandmarks = Object.entries(landmarkEffects.stacks).filter(([, count]) => count > 0);
-  const liquidationInventory = { ...cat.inventory };
-  for (const [itemId, quantity] of Object.entries(cat.action?.reserved ?? {})) liquidationInventory[itemId] = (liquidationInventory[itemId] ?? 0) + quantity;
-  const liquidationStockCents = Object.entries(liquidationInventory).reduce((sum, [itemId, quantity]) => (
-    sum + Math.max(0, quantity) * externalNetCentsAt(state, itemId, (id) => itemPrice(state, id), cat)
-  ), 0);
-  const liquidationAssetsCents = cat.coins + liquidationStockCents;
-  const liquidationDeltaCents = liquidationAssetsCents - cat.debtCents;
+  const liquidation = catLiquidationPreview(state, cat);
   const catPurchaseQuote = catStockPurchaseQuote(state, cat.id);
   const catPurchaseControls = <>
     <div className="section-heading"><h3>玩家收购</h3><span>可收购 {catPurchaseQuote.totalQuantity} 件 · {formatMoney(catPurchaseQuote.totalCostCents)}</span></div>
@@ -105,11 +98,11 @@ export function Inspector({ cat, controller, totalItems, onRemoved }: { cat?: Ca
     <section className="cat-removal-card" data-testid="cat-removal">
       <strong>删除猫咪并结算</strong>
       <span>先偿还贷款，再把现金和库存净值转入国库；未完成订单与运输合同会取消。</span>
-      <div><span>可清算资产</span><b>{formatMoney(liquidationAssetsCents)}</b></div>
-      <div><span>偿还贷款</span><b>{formatMoney(cat.debtCents)}</b></div>
-      <div><span>国库变化</span><b className={liquidationDeltaCents >= 0 ? "positive" : "negative"}>{formatSignedMoney(liquidationDeltaCents)}</b></div>
+      <div><span>可清算资产</span><b>{formatMoney(liquidation.assetsCents)}</b></div>
+      <div><span>偿还贷款</span><b>{formatMoney(liquidation.debtRepaidCents)}</b></div>
+      <div><span>国库变化</span><b className={liquidation.treasuryDeltaCents >= 0 ? "positive" : "negative"}>{formatSignedMoney(liquidation.treasuryDeltaCents)}</b></div>
       <button className="small-action danger" disabled={state.cats.length <= 1} onClick={() => {
-        const confirmed = window.confirm(`确定删除猫咪 #${cat.createdIndex} 吗？将偿还 ${formatMoney(cat.debtCents)} 贷款，国库变化 ${formatSignedMoney(liquidationDeltaCents)}。未完成市场事务会取消。`);
+        const confirmed = window.confirm(`确定删除猫咪 #${cat.createdIndex} 吗？将偿还 ${formatMoney(liquidation.debtRepaidCents)} 贷款，国库变化 ${formatSignedMoney(liquidation.treasuryDeltaCents)}。未完成市场事务会取消。`);
         if (!confirmed) return;
         const result = controller.removeCat(cat.id);
         if (result.ok) onRemoved();

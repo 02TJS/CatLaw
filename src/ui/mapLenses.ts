@@ -1,13 +1,18 @@
-import { ITEM_BY_ID, RECIPE_BY_OUTPUT, RECIPES } from "../game/catalog";
+import { ITEM_BY_ID, ITEMS, RECIPE_BY_ID, RECIPE_BY_OUTPUT, RECIPES } from "../game/catalog";
 import { difficultySiteRequirements } from "../game/difficulty";
-import { formatMoney, itemPrice } from "../game/engine";
+import { catWealthScoreCents, formatMoney } from "../game/engine";
 import { LANDMARK_BY_ID } from "../game/landmarks";
-import { creditAvailableCents, netWorthCents } from "../game/market";
 import type { CatState, GameState, ItemId, Position } from "../game/types";
 import { resourceNodesAtPosition } from "../game/world";
 import { itemQualityLevel, itemQualityPalette } from "./itemQuality";
 
 export type MapLensId = "none" | "inventory" | "orders" | "bottlenecks" | "environment" | "wealth" | "activity" | "law" | "stability" | "coordinates";
+export type WealthLensMode = "total" | "change";
+
+export interface MapLensOptions {
+  wealthMode?: WealthLensMode;
+  wealthWindowMs?: number;
+}
 
 export interface LensColor {
   id: string;
@@ -55,6 +60,9 @@ export interface MapLensSnapshot {
   legend: LensColor[];
   metric: null | {
     unit: "cents" | "milliseconds";
+    mode?: WealthLensMode;
+    windowMs?: number;
+    baselineAt?: number;
     min: number;
     median: number;
     max: number;
@@ -76,6 +84,39 @@ export const MAP_LENS_OPTIONS: ReadonlyArray<{ id: Exclude<MapLensId, "none">; l
 ];
 
 export const ITEM_SCOPED_LENSES = new Set<MapLensId>(["orders", "bottlenecks", "environment", "stability"]);
+export const WEALTH_LENS_WINDOW_OPTIONS_MS = [15_000, 30_000, 60_000, 180_000, 300_000] as const;
+export const DEFAULT_WEALTH_LENS_WINDOW_MS = 60_000;
+
+/**
+ * Products that the player can meaningfully inspect without leaking locked
+ * recipes.  An unlocked blueprint must be selectable before its first craft,
+ * and live market/history references remain selectable even after migration.
+ */
+export function mapLensSelectableItemIds(state: GameState): ItemId[] {
+  const visible = new Set<ItemId>(state.discoveredItems);
+  for (const recipeId of state.unlockedRecipes) {
+    const output = RECIPE_BY_ID.get(recipeId)?.output;
+    if (output) visible.add(output);
+  }
+  for (const cat of state.cats) {
+    for (const [itemId, quantity] of Object.entries(cat.inventory)) {
+      if (quantity > 0) visible.add(itemId);
+    }
+    if (cat.action?.itemId) visible.add(cat.action.itemId);
+  }
+  for (const plan of state.procurementPlans) visible.add(plan.outputItemId);
+  for (const order of state.demandOrders) visible.add(order.itemId);
+  for (const contract of state.shipmentContracts) visible.add(contract.itemId);
+  for (const flow of state.productionHistory.flows) {
+    visible.add(flow.itemId);
+    visible.add(flow.outputItemId);
+  }
+  for (const event of state.recentProductionEvents) visible.add(event.itemId);
+  for (const [itemId, quantity] of Object.entries(state.playerBuildingInventory)) {
+    if (quantity > 0) visible.add(itemId);
+  }
+  return ITEMS.filter((item) => visible.has(item.id)).map((item) => item.id);
+}
 
 const color = (
   id: string,
@@ -331,6 +372,7 @@ function environmentSnapshot(state: GameState, itemId: ItemId | null): Pick<MapL
     if (radius > 0) areas.push({ id: building.id, kind: "building", position: building.position, radius, color: buildingColor(building.itemId), itemId: building.itemId });
   }
   for (const landmark of state.landmarks) {
+    if (!landmark.landmarkId) continue;
     if (visibleBuildingIds) continue;
     areas.push({
       id: landmark.id,
@@ -352,9 +394,9 @@ function environmentSnapshot(state: GameState, itemId: ItemId | null): Pick<MapL
       if (visibleBuildingIds && !visibleBuildingIds.has(building.itemId)) return false;
       const radius = buildingRadius(building.itemId, state.difficulty);
       return radius > 0 && Math.abs(building.position.x - cat.position.x) + Math.abs(building.position.y - cat.position.y) <= radius;
-    }) || (!visibleBuildingIds && state.landmarks.some((landmark) => (
+    }) || (!visibleBuildingIds && state.landmarks.some((landmark) => landmark.landmarkId && (
       Math.abs(landmark.position.x - cat.position.x) + Math.abs(landmark.position.y - cat.position.y)
-        <= (LANDMARK_BY_ID.get(landmark.landmarkId)?.radius ?? 2)
+        <= (LANDMARK_BY_ID.get(landmark.landmarkId)?.radius ?? 0)
     )));
 
     if (itemId) {
@@ -388,34 +430,63 @@ function environmentSnapshot(state: GameState, itemId: ItemId | null): Pick<MapL
   };
 }
 
-function wealthSnapshot(state: GameState): Pick<MapLensSnapshot, "catColors" | "legend" | "metric"> {
-  const values = new Map(state.cats.map((cat) => {
-    const priceOf = (id: ItemId) => itemPrice(state, id, cat);
-    const worth = netWorthCents(state, cat, priceOf);
-    const score = worth + creditAvailableCents(state, cat, priceOf) - cat.escrowReservedCents;
-    return [cat.id, score] as const;
-  }));
+function wealthWindowLabel(windowMs: number): string {
+  return windowMs < 60_000 ? `${windowMs / 1_000}秒` : `${windowMs / 60_000}分钟`;
+}
+
+function signedMoney(cents: number): string {
+  return `${cents > 0 ? "+" : ""}${formatMoney(cents)}`;
+}
+
+function wealthSnapshot(
+  state: GameState,
+  mode: WealthLensMode = "total",
+  requestedWindowMs = DEFAULT_WEALTH_LENS_WINDOW_MS,
+): Pick<MapLensSnapshot, "catColors" | "legend" | "metric"> {
+  const windowMs = WEALTH_LENS_WINDOW_OPTIONS_MS.reduce((best, candidate) => (
+    Math.abs(candidate - requestedWindowMs) < Math.abs(best - requestedWindowMs) ? candidate : best
+  ), DEFAULT_WEALTH_LENS_WINDOW_MS);
+  const currentValues = new Map(state.cats.map((cat) => [cat.id, catWealthScoreCents(state, cat)] as const));
+  const cutoff = state.simTime - windowMs;
+  const baseline = [...state.wealthHistory].reverse().find((sample) => sample.at <= cutoff)
+    ?? state.wealthHistory[0]
+    ?? { at: state.simTime, values: Object.fromEntries(currentValues) };
+  const values = mode === "change"
+    ? new Map([...currentValues].map(([catId, value]) => [catId, value - (baseline.values[catId] ?? value)]))
+    : currentValues;
   const ordered = [...values.values()].sort((left, right) => left - right);
   const min = ordered[0] ?? 0;
   const max = ordered.at(-1) ?? min;
   const median = ordered.length === 0 ? 0 : ordered[Math.floor((ordered.length - 1) / 2)];
   const spread = max - min;
-  const normalized = new Map([...values].map(([catId, value]) => [catId, spread === 0 ? 0.5 : (value - min) / spread]));
+  const absoluteBound = Math.max(Math.abs(min), Math.abs(max));
+  const normalized = new Map([...values].map(([catId, value]) => [
+    catId,
+    spread === 0 ? 0.5 : mode === "change" ? (value + absoluteBound) / (absoluteBound * 2) : (value - min) / spread,
+  ]));
   const catColors = new Map(state.cats.map((cat) => [
     cat.id,
     spread === 0 ? LENS_COLORS.neutral : wealthHeatColor(normalized.get(cat.id) ?? 0.5),
   ]));
   const legend = spread === 0
-    ? [{ ...LENS_COLORS.neutral, label: `全部相同 · ${formatMoney(min)}` }]
-    : [
-        { ...wealthHeatColor(1), label: `最高 · ${formatMoney(max)}` },
-        { ...wealthHeatColor(0.5), label: `中位 · ${formatMoney(median)}` },
-        { ...wealthHeatColor(0), label: `最低 · ${formatMoney(min)}` },
-      ];
+    ? [{ ...LENS_COLORS.neutral, label: mode === "change"
+      ? `${wealthWindowLabel(windowMs)}内全部持平 · ${signedMoney(min)}`
+      : `全部相同 · ${formatMoney(min)}` }]
+    : mode === "change"
+      ? [
+          { ...wealthHeatColor((max + absoluteBound) / (absoluteBound * 2)), label: `${max >= 0 ? "最高增长" : "最少减少"} · ${signedMoney(max)}` },
+          { ...wealthHeatColor(0.5), label: "持平 · 0.00" },
+          { ...wealthHeatColor((min + absoluteBound) / (absoluteBound * 2)), label: `${min < 0 ? "最大减少" : "最低增长"} · ${signedMoney(min)}` },
+        ]
+      : [
+          { ...wealthHeatColor(1), label: `最高 · ${formatMoney(max)}` },
+          { ...wealthHeatColor(0.5), label: `中位 · ${formatMoney(median)}` },
+          { ...wealthHeatColor(0), label: `最低 · ${formatMoney(min)}` },
+        ];
   return {
     catColors,
     legend,
-    metric: { unit: "cents", min, median, max, values, normalized },
+    metric: { unit: "cents", mode, windowMs, baselineAt: baseline.at, min, median, max, values, normalized },
   };
 }
 
@@ -581,22 +652,32 @@ function stabilitySnapshot(state: GameState, itemId: ItemId | null): Pick<MapLen
   };
 }
 
-export function buildMapLensSnapshot(state: GameState, lensId: MapLensId, itemId: ItemId | null): MapLensSnapshot {
+export function buildMapLensSnapshot(
+  state: GameState,
+  lensId: MapLensId,
+  itemId: ItemId | null,
+  options: MapLensOptions = {},
+): MapLensSnapshot {
   const empty: MapLensSnapshot = { lensId, itemId, catColors: new Map(), edges: [], areas: [], orderFloors: new Map(), legend: [], metric: null };
   if (lensId === "none") return empty;
   if (lensId === "inventory") return { ...empty, ...inventorySnapshot(state) };
   if (lensId === "orders") return { ...empty, ...orderSnapshot(state, itemId) };
   if (lensId === "bottlenecks") return { ...empty, ...bottleneckSnapshot(state, itemId) };
   if (lensId === "environment") return { ...empty, ...environmentSnapshot(state, itemId) };
-  if (lensId === "wealth") return { ...empty, ...wealthSnapshot(state) };
+  if (lensId === "wealth") return { ...empty, ...wealthSnapshot(state, options.wealthMode, options.wealthWindowMs) };
   if (lensId === "activity") return { ...empty, ...activitySnapshot(state) };
   if (lensId === "law") return { ...empty, ...lawSnapshot(state) };
   if (lensId === "coordinates") return { ...empty, ...coordinateSnapshot(state) };
   return { ...empty, ...stabilitySnapshot(state, itemId) };
 }
 
-export function mapLensTitle(lensId: MapLensId, itemId: ItemId | null): string {
+export function mapLensTitle(lensId: MapLensId, itemId: ItemId | null, options: MapLensOptions = {}): string {
   const lens = MAP_LENS_OPTIONS.find((entry) => entry.id === lensId)?.label ?? "普通地图";
+  if (lensId === "wealth") {
+    const mode = options.wealthMode ?? "total";
+    const windowMs = options.wealthWindowMs ?? DEFAULT_WEALTH_LENS_WINDOW_MS;
+    return mode === "change" ? `${lens} · 近${wealthWindowLabel(windowMs)}增量` : `${lens} · 当前总量`;
+  }
   const item = ITEM_SCOPED_LENSES.has(lensId) && itemId ? ITEM_BY_ID.get(itemId) : null;
   return item ? `${lens} · ${item.emoji} ${item.name}` : lens;
 }

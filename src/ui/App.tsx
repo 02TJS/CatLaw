@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties } from "react";
 import { GameController } from "../game/controller";
-import { catStockPurchaseQuote, formatMoney, grossProductionValuePerMinute, inventoryTotal, itemPrice, purchasableParcels, warehouseBulkSellQuote, warehouseQuote, warehouseSellPrice } from "../game/engine";
+import { catLiquidationPreview, catStockPurchaseQuote, formatMoney, grossProductionValuePerMinute, inventoryTotal, itemPrice, purchasableParcels, warehouseBulkSellQuote, warehouseQuote, warehouseSellPrice, WEALTH_HISTORY_SAMPLE_INTERVAL_MS } from "../game/engine";
 import type { CatStockPurchaseQuote } from "../game/engine";
 import { GameCanvas } from "./GameCanvas";
 import { LawPanel } from "./LawPanel";
@@ -15,7 +15,7 @@ import type { DifficultyProfile } from "../game/difficulty";
 import type { DifficultyLevel, LandmarkId } from "../game/types";
 import type { AchievementEvent } from "../game/types";
 import { achievementGrade, pendingAchievements } from "../game/achievements";
-import { LANDMARK_DEFINITIONS, landmarkEffectsAt } from "../game/landmarks";
+import { landmarkDisplayName, LANDMARK_BY_ID, LANDMARK_DEFINITIONS, landmarkEffectsAt, NAMED_LANDMARK_EMOJI, NAMED_LANDMARK_WOOD_COST } from "../game/landmarks";
 import { lawProgramSummary, SHARED_BEHAVIOR_HASH } from "../game/lawProgram";
 import {
   DEFAULT_SPEECH_FREQUENCY,
@@ -28,7 +28,17 @@ import {
 import { positionKey, resourceHarvestTiles, resourceNodesAtPosition } from "../game/world";
 import { getDeepSeekStatus, setDeepSeekApiKey } from "../api";
 import { DeepSeekKeyDialog } from "./DeepSeekKeyDialog";
-import { buildMapLensSnapshot, ITEM_SCOPED_LENSES, MAP_LENS_OPTIONS, mapLensTitle, type MapLensId } from "./mapLenses";
+import {
+  buildMapLensSnapshot,
+  DEFAULT_WEALTH_LENS_WINDOW_MS,
+  ITEM_SCOPED_LENSES,
+  MAP_LENS_OPTIONS,
+  mapLensSelectableItemIds,
+  mapLensTitle,
+  WEALTH_LENS_WINDOW_OPTIONS_MS,
+  type MapLensId,
+  type WealthLensMode,
+} from "./mapLenses";
 import { itemQualityLevel, itemQualityPalette, qualityPaletteAtLevel } from "./itemQuality";
 import {
   CONTROL_SCALE_MAX,
@@ -51,7 +61,6 @@ import {
   broadcastsForCat,
   buildingOfferBroadcastsForCat,
   creditAvailableCents,
-  externalNetCentsAt,
   netWorthCents,
   planForCatPublic,
   readyContractForCat,
@@ -67,6 +76,21 @@ function loadUiPreferences(): UiPreferences {
     return parseUiPreferences(window.localStorage.getItem(UI_PREFERENCES_STORAGE_KEY));
   } catch {
     return { ...DEFAULT_UI_PREFERENCES };
+  }
+}
+
+const WEALTH_LENS_PREFERENCES_KEY = "cat-workshop-wealth-lens-v1";
+
+function loadWealthLensPreferences(): { mode: WealthLensMode; windowMs: number } {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(WEALTH_LENS_PREFERENCES_KEY) ?? "null");
+    const mode: WealthLensMode = parsed?.mode === "change" ? "change" : "total";
+    const windowMs = WEALTH_LENS_WINDOW_OPTIONS_MS.includes(parsed?.windowMs)
+      ? parsed.windowMs
+      : DEFAULT_WEALTH_LENS_WINDOW_MS;
+    return { mode, windowMs };
+  } catch {
+    return { mode: "total", windowMs: DEFAULT_WEALTH_LENS_WINDOW_MS };
   }
 }
 
@@ -224,6 +248,13 @@ export function App() {
   const mapLensIdRef = useRef<MapLensId>(mapLensId);
   const [mapLensItemId, setMapLensItemId] = useState<string | null>(null);
   const mapLensItemIdRef = useRef<string | null>(mapLensItemId);
+  const [mapLensItemPickerOpen, setMapLensItemPickerOpen] = useState(false);
+  const mapLensItemPickerOpenRef = useRef(mapLensItemPickerOpen);
+  const initialWealthLensPreferences = useRef(loadWealthLensPreferences());
+  const [wealthLensMode, setWealthLensMode] = useState<WealthLensMode>(initialWealthLensPreferences.current.mode);
+  const wealthLensModeRef = useRef(wealthLensMode);
+  const [wealthLensWindowMs, setWealthLensWindowMs] = useState(initialWealthLensPreferences.current.windowMs);
+  const wealthLensWindowMsRef = useRef(wealthLensWindowMs);
   const [placingBuildingItemId, setPlacingBuildingItemId] = useState<string | null>(null);
   const placingBuildingRef = useRef<string | null>(placingBuildingItemId);
   const [placingLandmarkId, setPlacingLandmarkId] = useState<LandmarkId | null>(null);
@@ -251,12 +282,16 @@ export function App() {
   const titlebarRef = useRef<HTMLElement>(null);
   const quickStatsRef = useRef<HTMLDivElement>(null);
   const dockRef = useRef<HTMLElement>(null);
+  const mapLensItemPickerRef = useRef<HTMLDivElement>(null);
   const state = controller.state;
 
   useEffect(() => { selectedCatRef.current = selectedCatId; }, [selectedCatId]);
   useEffect(() => { expansionModeRef.current = expansionMode; }, [expansionMode]);
   useEffect(() => { mapLensIdRef.current = mapLensId; }, [mapLensId]);
   useEffect(() => { mapLensItemIdRef.current = mapLensItemId; }, [mapLensItemId]);
+  useEffect(() => { mapLensItemPickerOpenRef.current = mapLensItemPickerOpen; }, [mapLensItemPickerOpen]);
+  useEffect(() => { wealthLensModeRef.current = wealthLensMode; }, [wealthLensMode]);
+  useEffect(() => { wealthLensWindowMsRef.current = wealthLensWindowMs; }, [wealthLensWindowMs]);
   useEffect(() => { placingBuildingRef.current = placingBuildingItemId; }, [placingBuildingItemId]);
   useEffect(() => { placingLandmarkRef.current = placingLandmarkId; }, [placingLandmarkId]);
   useEffect(() => { placementFeedbackRef.current = placementFeedback; }, [placementFeedback]);
@@ -271,6 +306,27 @@ export function App() {
       // Private browsing or a locked profile must not prevent the game from running.
     }
   }, [uiPreferences]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(WEALTH_LENS_PREFERENCES_KEY, JSON.stringify({ mode: wealthLensMode, windowMs: wealthLensWindowMs }));
+    } catch {
+      // A locked profile must not prevent the lens itself from working.
+    }
+  }, [wealthLensMode, wealthLensWindowMs]);
+
+  useEffect(() => {
+    if (!mapLensItemPickerOpen) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!mapLensItemPickerRef.current?.contains(event.target as Node)) setMapLensItemPickerOpen(false);
+    };
+    window.addEventListener("pointerdown", closeOutside, true);
+    return () => window.removeEventListener("pointerdown", closeOutside, true);
+  }, [mapLensItemPickerOpen]);
+
+  useEffect(() => {
+    if (!mapLensPaletteOpen || !ITEM_SCOPED_LENSES.has(mapLensId)) setMapLensItemPickerOpen(false);
+  }, [mapLensId, mapLensPaletteOpen]);
 
   useEffect(() => {
     const shell = petWindowRef.current;
@@ -448,6 +504,8 @@ export function App() {
       expansionModeRef.current,
       mapLensIdRef.current,
       mapLensItemIdRef.current,
+      wealthLensModeRef.current,
+      wealthLensWindowMsRef.current,
       commerceFeedbackRef.current,
       achievementReviewArmedRef.current,
     );
@@ -457,6 +515,11 @@ export function App() {
       setSpeed: (multiplier) => controller.setSpeed(multiplier),
       setSpeechFrequency: (frequency) => controller.setSpeechFrequency(frequency),
       removeCat: (catId) => controller.removeCat(catId),
+      placeNamedLandmark: (name, position) => controller.placeNamedLandmark(name, position),
+      renameLandmark: (landmarkId, name) => controller.renameLandmark(landmarkId, name),
+      dismantleLandmark: (landmarkId) => controller.dismantleLandmark(landmarkId),
+      createResource: (itemId, position) => controller.createResource(itemId, position),
+      removeResource: (resourceId) => controller.removeResource(resourceId),
       buyCatItem: (catId, itemId) => controller.buyCatItem(catId, itemId),
       buyAllCatStock: () => controller.buyAllCatStock(),
       buyAllCatStockAndSell: () => controller.buyAllCatStockAndSell(),
@@ -482,6 +545,10 @@ export function App() {
         }
       }
       if (event.key === "Escape") {
+        if (mapLensItemPickerOpenRef.current) {
+          setMapLensItemPickerOpen(false);
+          return;
+        }
         setExpansionMode(false);
         setMapLensPaletteOpen(false);
         setMapLensId("none");
@@ -514,7 +581,9 @@ export function App() {
   const selectedCat = state.cats.find((cat) => cat.id === selectedCatId) ?? state.cats[0];
   const selectedInventoryCount = useMemo(() => selectedCat ? Object.values(selectedCat.inventory).reduce((sum, value) => sum + value, 0) : 0, [selectedCat, state.simTime]);
   const warehouseKinds = ITEMS.filter((item) => (state.playerBuildingInventory[item.id] ?? 0) > 0).length;
-  const mapLensSnapshot = buildMapLensSnapshot(state, mapLensId, mapLensItemId);
+  const selectableMapLensItemIds = mapLensSelectableItemIds(state);
+  const selectedMapLensItem = mapLensItemId ? ITEM_BY_ID.get(mapLensItemId) : null;
+  const mapLensSnapshot = buildMapLensSnapshot(state, mapLensId, mapLensItemId, { wealthMode: wealthLensMode, wealthWindowMs: wealthLensWindowMs });
   const panelTitle = panel === "laws" ? "逻辑法典" : panel === "warehouse" ? "我的仓库" : panel === "recipes" ? "购买配方" : panel === "cat" ? "猫咪详情" : "桌宠设置";
   const togglePanel = (next: Exclude<Panel, null>) => setPanel((current) => current === next ? null : next);
   const cycleSpeed = () => {
@@ -638,6 +707,8 @@ export function App() {
             }}
             mapLensId={expansionMode ? mapLensId : "none"}
             mapLensItemId={mapLensItemId}
+            wealthLensMode={wealthLensMode}
+            wealthLensWindowMs={wealthLensWindowMs}
             onSelectCat={(id) => { setSelectedCatId(id); setPanel("cat"); }}
           />
         </section>
@@ -688,6 +759,7 @@ export function App() {
             setExpansionMode((value) => {
               if (value) {
                 setMapLensPaletteOpen(false);
+                setMapLensItemPickerOpen(false);
                 setMapLensId("none");
               }
               return !value;
@@ -701,7 +773,10 @@ export function App() {
               setPlacingBuildingItemId(null);
               setPlacingLandmarkId(null);
               setExpansionMode(true);
-              setMapLensPaletteOpen((value) => !value);
+              setMapLensPaletteOpen((value) => {
+                if (value) setMapLensItemPickerOpen(false);
+                return !value;
+              });
             }}
             data-testid="map-lens-button"
           ><span>🎨</span>滤镜</button>
@@ -711,13 +786,17 @@ export function App() {
         {expansionMode && mapLensPaletteOpen && <div className="map-lens-palette" data-testid="map-lens-palette" aria-label="地图滤镜选项">
           <button
             className={mapLensId === "none" ? "active" : ""}
-            onClick={() => setMapLensId("none")}
+            onClick={() => {
+              setMapLensItemPickerOpen(false);
+              setMapLensId("none");
+            }}
             data-testid="map-lens-none"
           >普通</button>
           {MAP_LENS_OPTIONS.map((lens) => <button
             key={lens.id}
             className={mapLensId === lens.id ? "active" : ""}
             onClick={() => {
+              setMapLensItemPickerOpen(false);
               setMapLensId((current) => current === lens.id ? "none" : lens.id);
               if (lens.id === "stability" && !mapLensItemId) {
                 setMapLensItemId(state.discoveredItems.includes("wood") ? "wood" : (state.discoveredItems[0] ?? "wood"));
@@ -725,22 +804,86 @@ export function App() {
             }}
             data-testid={`map-lens-${lens.id}`}
           >{lens.label}</button>)}
-          {ITEM_SCOPED_LENSES.has(mapLensId) && <select
-            value={mapLensItemId ?? ""}
-            onChange={(event) => setMapLensItemId(event.target.value || null)}
-            aria-label="滤镜商品"
-            data-testid="map-lens-item"
-          >
-            {mapLensId !== "stability" && <option value="">全部商品</option>}
-            {state.discoveredItems.map((itemId) => {
-              const item = ITEM_BY_ID.get(itemId);
-              return <option key={itemId} value={itemId}>{item?.emoji} {item?.name ?? itemId}</option>;
-            })}
-          </select>}
+          {mapLensId === "wealth" && <div className="map-lens-wealth-controls" data-testid="wealth-lens-controls">
+            <div className="map-lens-segments" role="group" aria-label="财富统计方式">
+              <button
+                type="button"
+                className={wealthLensMode === "total" ? "active" : ""}
+                onClick={() => setWealthLensMode("total")}
+                data-testid="wealth-lens-total"
+              >当前总量</button>
+              <button
+                type="button"
+                className={wealthLensMode === "change" ? "active" : ""}
+                onClick={() => setWealthLensMode("change")}
+                data-testid="wealth-lens-change"
+              >近期增量</button>
+            </div>
+            {wealthLensMode === "change" && <div className="map-lens-window-segments" role="group" aria-label="近期财富统计时段">
+              {WEALTH_LENS_WINDOW_OPTIONS_MS.map((windowMs) => <button
+                type="button"
+                key={windowMs}
+                className={wealthLensWindowMs === windowMs ? "active" : ""}
+                onClick={() => setWealthLensWindowMs(windowMs)}
+                data-testid={`wealth-window-${windowMs}`}
+              >{windowMs < 60_000 ? `${windowMs / 1_000}秒` : `${windowMs / 60_000}分`}</button>)}
+            </div>}
+          </div>}
+          {ITEM_SCOPED_LENSES.has(mapLensId) && <div className="map-lens-item-picker" ref={mapLensItemPickerRef}>
+            <button
+              type="button"
+              className="map-lens-item-trigger"
+              aria-label="选择滤镜商品"
+              aria-haspopup="listbox"
+              aria-expanded={mapLensItemPickerOpen}
+              aria-controls="map-lens-item-options"
+              data-testid="map-lens-item"
+              data-value={mapLensItemId ?? ""}
+              onClick={() => setMapLensItemPickerOpen((value) => !value)}
+            >
+              <span>{selectedMapLensItem ? `${selectedMapLensItem.emoji} ${selectedMapLensItem.name}` : "全部商品"}</span>
+              <i aria-hidden="true">⌄</i>
+            </button>
+            {mapLensItemPickerOpen && <div
+              className="map-lens-item-options"
+              id="map-lens-item-options"
+              role="listbox"
+              aria-label="可查看商品"
+              data-testid="map-lens-item-options"
+            >
+              {mapLensId !== "stability" && <button
+                type="button"
+                role="option"
+                aria-selected={!mapLensItemId}
+                className={!mapLensItemId ? "active" : ""}
+                data-testid="map-lens-item-all"
+                onClick={() => {
+                  setMapLensItemId(null);
+                  setMapLensItemPickerOpen(false);
+                }}
+              >全部商品</button>}
+              {selectableMapLensItemIds.map((itemId) => {
+                const item = ITEM_BY_ID.get(itemId);
+                return <button
+                  type="button"
+                  key={itemId}
+                  role="option"
+                  aria-selected={mapLensItemId === itemId}
+                  className={mapLensItemId === itemId ? "active" : ""}
+                  data-testid={`map-lens-item-${itemId}`}
+                  data-item-id={itemId}
+                  onClick={() => {
+                    setMapLensItemId(itemId);
+                    setMapLensItemPickerOpen(false);
+                  }}
+                >{item?.emoji} {item?.name ?? itemId}</button>;
+              })}
+            </div>}
+          </div>}
         </div>}
 
         {expansionMode && mapLensId !== "none" && <aside className="map-lens-legend" data-testid="map-lens-legend">
-          <strong>{mapLensTitle(mapLensId, mapLensItemId)}</strong>
+          <strong>{mapLensTitle(mapLensId, mapLensItemId, { wealthMode: wealthLensMode, wealthWindowMs: wealthLensWindowMs })}</strong>
           <div>{mapLensSnapshot.legend.map((entry) => <span key={entry.id}>
             <i style={{ background: entry.top }} />{entry.label}
           </span>)}</div>
@@ -920,6 +1063,8 @@ function renderGameToText(
   mapInteractionMode: boolean,
   mapLensId: MapLensId,
   mapLensItemId: string | null,
+  wealthLensMode: WealthLensMode,
+  wealthLensWindowMs: number,
   commerceFeedback: CommerceFeedback | null,
   achievementReviewArmed: boolean,
 ): string {
@@ -928,7 +1073,8 @@ function renderGameToText(
   const missingCertificationItems = MARKET_CERTIFICATION_ITEM_IDS.filter((itemId) => !certifiedItems.includes(itemId));
   const positionMap = new Map(state.cats.map((cat) => [positionKey(cat.position), cat]));
   const decisionLaws = state.laws.filter((law) => law.status === "active");
-  const activeMapLens = mapInteractionMode ? buildMapLensSnapshot(state, mapLensId, mapLensItemId) : null;
+  const wealthLensOptions = { wealthMode: wealthLensMode, wealthWindowMs: wealthLensWindowMs };
+  const activeMapLens = mapInteractionMode ? buildMapLensSnapshot(state, mapLensId, mapLensItemId, wealthLensOptions) : null;
   return JSON.stringify({
     coordinateSystem: "整数方格；原点(0,0)；x向右增加，y向下增加；只可向四邻传递",
     simTimeMs: Math.round(state.simTime),
@@ -1000,7 +1146,7 @@ function renderGameToText(
       mapInteractionMode,
       mapLens: {
         id: mapInteractionMode ? mapLensId : "none",
-        title: mapInteractionMode ? mapLensTitle(mapLensId, mapLensItemId) : "普通地图",
+        title: mapInteractionMode ? mapLensTitle(mapLensId, mapLensItemId, wealthLensOptions) : "普通地图",
         itemId: mapInteractionMode && ITEM_SCOPED_LENSES.has(mapLensId) ? mapLensItemId : null,
         colorOnly: mapLensId !== "inventory",
         inventoryMarkersEnhancedOnly: true,
@@ -1012,6 +1158,11 @@ function renderGameToText(
           : [],
         wealthNormalization: mapInteractionMode && mapLensId === "wealth" && activeMapLens?.metric ? {
           unit: activeMapLens.metric.unit,
+          mode: activeMapLens.metric.mode ?? "total",
+          windowMs: activeMapLens.metric.mode === "change" ? activeMapLens.metric.windowMs ?? wealthLensWindowMs : null,
+          baselineAtMs: activeMapLens.metric.mode === "change" ? activeMapLens.metric.baselineAt ?? null : null,
+          sampleIntervalMs: WEALTH_HISTORY_SAMPLE_INTERVAL_MS,
+          historySamples: state.wealthHistory.length,
           min: activeMapLens.metric.min,
           median: activeMapLens.metric.median,
           max: activeMapLens.metric.max,
@@ -1076,8 +1227,10 @@ function renderGameToText(
       unlockedParcels: state.unlockedParcels,
       purchasableParcels: purchasableParcels(state),
       resourceNodes: state.resourceNodes.map((node) => ({
+        id: node.id,
         itemId: node.itemId,
         position: node.position,
+        source: node.id.startsWith("resource-player-") ? "player-created" : "world-generated",
         centerOccupied: state.cats.some((cat) => cat.position.x === node.position.x && cat.position.y === node.position.y),
         harvestTiles: resourceHarvestTiles(node),
         harvestingCats: state.cats.filter((cat) => resourceNodesAtPosition([node], cat.position).length > 0).map((cat) => cat.id),
@@ -1116,8 +1269,20 @@ function renderGameToText(
           materials: definition.materials.map((material) => ({ ...material, stored: state.playerBuildingInventory[material.itemId] ?? 0 })),
           description: definition.description,
         })),
-        deployed: state.landmarks,
+        deployed: state.landmarks.map((landmark) => ({
+          ...landmark,
+          kind: landmark.landmarkId ? "engineered" : "marker",
+          name: landmarkDisplayName(landmark),
+          emoji: landmark.landmarkId ? LANDMARK_BY_ID.get(landmark.landmarkId)?.emoji ?? "🏛️" : NAMED_LANDMARK_EMOJI,
+          effects: landmark.landmarkId ? landmarkEffectsAt(state, landmark.position) : null,
+        })),
         placement: { landmarkId: placingLandmarkId, lastAttempt: landmarkFeedback },
+      },
+      rightClickWorldEditing: {
+        namedLandmarkCost: { itemId: "wood", quantity: NAMED_LANDMARK_WOOD_COST },
+        resourceCost: { quantity: 50, itemIds: ["wood", "stone", "sand", "water", "fiber", "ore"] },
+        optionVisibility: "缺少对应仓库材料时完全不显示创建选项",
+        objectActions: ["rename-landmark", "dismantle-landmark", "dismantle-building", "remove-resource", "audit-and-remove-cat"],
       },
     },
     logistics: state.logisticsStatus,
@@ -1253,14 +1418,4 @@ function renderGameToText(
     catalogInventory: Object.fromEntries(state.discoveredItems.map((id) => [id, inventoryTotal(state, id)])),
     itemStats: Object.fromEntries(state.discoveredItems.map((id) => [id, state.itemStats[id]])),
   });
-}
-
-function catLiquidationPreview(state: GameController["state"], cat: GameController["state"]["cats"][number]) {
-  const inventory = { ...cat.inventory };
-  for (const [itemId, quantity] of Object.entries(cat.action?.reserved ?? {})) inventory[itemId] = (inventory[itemId] ?? 0) + quantity;
-  const stockCents = Object.entries(inventory).reduce((sum, [itemId, quantity]) => (
-    sum + Math.max(0, quantity) * externalNetCentsAt(state, itemId, (id) => itemPrice(state, id), cat)
-  ), 0);
-  const assetsCents = cat.coins + stockCents;
-  return { assetsCents, debtRepaidCents: cat.debtCents, treasuryDeltaCents: assetsCents - cat.debtCents };
 }

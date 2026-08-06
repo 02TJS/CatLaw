@@ -1,6 +1,6 @@
 import { deleteDB, openDB } from "idb";
 import { CATALOG_VERSION, INTRO_RECIPE_IDS, ITEMS, RECIPE_BY_ID } from "./catalog";
-import { compactGameStateHistory, createInitialState, scheduleInternalWait } from "./engine";
+import { compactGameStateHistory, createInitialState, normalizeWealthHistory, scheduleInternalWait } from "./engine";
 import { LEGACY_SAVE_DIFFICULTY, normalizeDifficulty } from "./difficulty";
 import { validateLawSource } from "./lawInterpreter";
 import { appendLegacyEffects, normalizeProgram } from "./lawProgram";
@@ -11,6 +11,7 @@ import type { GameState, ItemStats, LawProgram, LawVersion, Position, ResourceNo
 import { generateParcelResourceNodes, normalizeWorldSeed, parcelBounds, parcelForPosition, parcelKey, positionKey } from "./world";
 import { normalizeAchievementState } from "./achievements";
 import { normalizeProductionHistory } from "./productionHistory";
+import { normalizeLandmarkNames } from "./landmarks";
 
 const DB_NAME = "cat-law-workshop";
 const STORE_NAME = "saves";
@@ -116,7 +117,7 @@ export async function loadGame(fallbackSeed?: number): Promise<GameState> {
 }
 
 export function migrateSaveSnapshot(raw: any, fallbackSeed?: number): GameState {
-  if (!raw || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].includes(raw.schemaVersion ?? 0) || !Array.isArray(raw.cats)) return createInitialState({ worldSeed: fallbackSeed });
+  if (!raw || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17].includes(raw.schemaVersion ?? 0) || !Array.isArray(raw.cats)) return createInitialState({ worldSeed: fallbackSeed });
   const legacy = raw.schemaVersion === 1;
   const needsResourceRegionMigration = raw.schemaVersion < 3;
   const needsMarketMigration = raw.schemaVersion < 4;
@@ -127,7 +128,7 @@ export function migrateSaveSnapshot(raw: any, fallbackSeed?: number): GameState 
   const worldSeed = normalizeWorldSeed(raw.worldSeed ?? (legacy ? legacySeed(raw) : fallbackSeed ?? 0));
   const fallback = createInitialState({ worldSeed, difficulty: needsDifficultyMigration ? LEGACY_SAVE_DIFFICULTY : normalizeDifficulty(raw.difficulty) });
   const state = { ...fallback, ...structuredClone(raw) } as GameState;
-  state.schemaVersion = 15;
+  state.schemaVersion = 17;
   state.difficulty = needsDifficultyMigration
     ? LEGACY_SAVE_DIFFICULTY
     : normalizeDifficulty(raw.difficulty, fallback.difficulty);
@@ -170,6 +171,12 @@ export function migrateSaveSnapshot(raw: any, fallbackSeed?: number): GameState 
   if (legacy) migrateLegacyWorld(state);
   else normalizeWorld(state, fallback);
   normalizeResourceRegions(state, needsResourceRegionMigration);
+  state.nextPlayerResourceIndex = Number.isInteger(raw.nextPlayerResourceIndex)
+    ? Math.max(0, raw.nextPlayerResourceIndex)
+    : state.resourceNodes.reduce((next, node) => {
+      const match = /^resource-player-(\d+)$/u.exec(node.id);
+      return match ? Math.max(next, Number(match[1]) + 1) : next;
+    }, 0);
   const emptyItemStats = Object.fromEntries(ITEMS.map((entry) => [entry.id, { crafted: 0, passed: 0, sold: 0, revenue: 0 }])) as Record<string, ItemStats>;
   state.itemStats = { ...emptyItemStats, ...(state.itemStats ?? {}) };
   state.recentProductionEvents = Array.isArray(raw.recentProductionEvents)
@@ -238,6 +245,7 @@ export function migrateSaveSnapshot(raw: any, fallbackSeed?: number): GameState 
   state.nextMarketEventIndex = Number.isInteger(state.nextMarketEventIndex) ? state.nextMarketEventIndex : state.marketEvents.length;
   state.discoveredItems = (state.discoveredItems ?? []).filter((id) => ITEMS.some((entry) => entry.id === id));
   state.landmarks = Array.isArray(state.landmarks) ? state.landmarks : [];
+  normalizeLandmarkNames(state);
   state.unlockedLandmarkIds = Array.isArray(state.unlockedLandmarkIds) ? state.unlockedLandmarkIds : [];
   state.nextLandmarkIndex = Number.isInteger(state.nextLandmarkIndex) ? state.nextLandmarkIndex : state.landmarks.length;
   state.lockedWarehouseItemIds = [...new Set(Array.isArray(state.lockedWarehouseItemIds)
@@ -340,6 +348,7 @@ export function migrateSaveSnapshot(raw: any, fallbackSeed?: number): GameState 
       state.lawHistory.push(structuredClone(required));
     }
   }
+  normalizeWealthHistory(state, raw.wealthHistory);
   for (const cat of state.cats) if (!cat.action) scheduleInternalWait(state, cat);
   compactGameStateHistory(state);
   return state;

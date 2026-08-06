@@ -12,6 +12,8 @@ const FUNCTION_SIGNATURES = {
   nearbyCatCount: [],
   onResource: ["item"],
   nearBuilding: ["building"],
+  nearLandmark: ["name", "maxDistance"],
+  landmarkDistance: ["name"],
   canCraft: ["itemOrRecipe"],
   at: ["x", "y"],
   cash: [],

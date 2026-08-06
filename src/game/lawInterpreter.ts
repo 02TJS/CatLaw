@@ -6,7 +6,7 @@ import type { CatAction, CatObservation, DecisionResult, Direction } from "./typ
 type AstNode = { type: string; [key: string]: unknown };
 
 const BANNED_PROPERTIES = new Set(["__proto__", "prototype", "constructor"]);
-const HELPER_NAMES = new Set(["count", "has", "warehouseCount", "crafted", "recentCrafted", "marketNeed", "neighborExists", "neighborCount", "nearbyCount", "nearbyCatCount", "onResource", "nearBuilding", "canCraft", "at", "cash", "debt", "netWorth", "bestBid", "orderCount", "bounty", "buildingAsk", "broadcastCount", "carrying", "earnCoins", "weighted", "adjust", "choose", "setPrice", "addPrice", "setCredit", "setBounty"]);
+const HELPER_NAMES = new Set(["count", "has", "warehouseCount", "crafted", "recentCrafted", "marketNeed", "neighborExists", "neighborCount", "nearbyCount", "nearbyCatCount", "onResource", "nearBuilding", "nearLandmark", "landmarkDistance", "canCraft", "at", "cash", "debt", "netWorth", "bestBid", "orderCount", "bounty", "buildingAsk", "broadcastCount", "carrying", "earnCoins", "weighted", "adjust", "choose", "setPrice", "addPrice", "setCredit", "setBounty"]);
 export const MAX_CACHED_LAW_ASTS = 128;
 const cache = new BoundedLruCache<string, { source: string; body: AstNode }>(MAX_CACHED_LAW_ASTS);
 
@@ -174,6 +174,20 @@ export function executeLawSource(source: string, observation: CatObservation, st
       ?? ctx.site?.resourceItemId === String(itemId),
     nearBuilding: (itemId) => (ctx.nearby ?? []).some((cat) => cat.buildingItemId === String(itemId))
       || ctx.site?.buildingItemId === String(itemId),
+    landmarkDistance: (name) => {
+      const key = String(name).normalize("NFKC").trim().toLocaleLowerCase("zh-CN");
+      const distances = (ctx.landmarks ?? [])
+        .filter((landmark) => landmark.name.normalize("NFKC").trim().toLocaleLowerCase("zh-CN") === key)
+        .map((landmark) => landmark.distance);
+      return distances.length ? Math.min(...distances) : -1;
+    },
+    nearLandmark: (name, maxDistance = 2) => {
+      const key = String(name).normalize("NFKC").trim().toLocaleLowerCase("zh-CN");
+      const limit = Math.max(0, Math.floor(Number(maxDistance)));
+      return (ctx.landmarks ?? []).some((landmark) => (
+        landmark.name.normalize("NFKC").trim().toLocaleLowerCase("zh-CN") === key && landmark.distance <= limit
+      ));
+    },
     canCraft: (recipeId) => {
       if (runtime.canCraft) return runtime.canCraft(String(recipeId));
       const entry = RECIPE_BY_ID.get(String(recipeId)) ?? RECIPE_BY_OUTPUT.get(String(recipeId));

@@ -116,10 +116,12 @@ try {
   await page.getByTestId("map-lens-button").click();
   await page.getByTestId("map-lens-stability").click();
   const select = page.getByTestId("map-lens-item");
-  const optionValues = await select.locator("option").evaluateAll((options) => options.map((option) => option.value));
+  await select.click();
+  const optionValues = await page.getByTestId("map-lens-item-options").locator("[data-item-id]")
+    .evaluateAll((options) => options.map((option) => option.getAttribute("data-item-id")));
   const selectedItemId = optionValues.includes("plank") ? "plank" : optionValues.find(Boolean);
   if (!selectedItemId) throw new Error("没有可供生产稳定滤镜选择的商品");
-  await select.selectOption(selectedItemId);
+  await page.getByTestId(`map-lens-item-${selectedItemId}`).click();
   await page.waitForTimeout(150);
   const stateBeforeReload = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
   const stability = stateBeforeReload.world.mapLens.stabilityHistory;

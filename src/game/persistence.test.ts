@@ -19,7 +19,7 @@ describe("schema 10 unified-law and recent-production migration", () => {
     raw.lawHistory = structuredClone(raw.laws);
 
     const migrated = migrateSaveSnapshot(raw);
-    expect(migrated.schemaVersion).toBe(15);
+    expect(migrated.schemaVersion).toBe(17);
     expect(migrated.laws.some((law) => law.id.includes("tax") || law.sourceCode.includes("setTax"))).toBe(false);
     expect(migrated.lawHistory.some((law) => law.id.includes("tax") || law.sourceCode.includes("setTax"))).toBe(false);
   });
@@ -79,7 +79,7 @@ describe("schema 10 unified-law and recent-production migration", () => {
 
     const migrated = migrateSaveSnapshot(raw);
     const expectedStarterIds = createInitialState({ worldSeed: 1 }).laws.map((law) => law.id);
-    expect(migrated.schemaVersion).toBe(15);
+    expect(migrated.schemaVersion).toBe(17);
     expect(migrated.laws.every((law) => law.speechTemplates?.length === 5)).toBe(true);
     expect(migrated.laws[0]).toMatchObject({ id: "player-glass-law", sourceCode: playerSource });
     expect(migrated.laws.filter((law) => law.id.startsWith("starter-law-")).map((law) => law.id)).toEqual(expectedStarterIds);
@@ -126,7 +126,7 @@ describe("schema 10 unified-law and recent-production migration", () => {
     delete legacy.logisticsStatus;
 
     const migrated = migrateSaveSnapshot(legacy, 999);
-    expect(migrated.schemaVersion).toBe(15);
+    expect(migrated.schemaVersion).toBe(17);
     expect(migrated.difficulty).toBe(2);
     expect(migrated.treasuryCoins).toBe(32_100);
     expect(migrated.cats).toHaveLength(original.cats.length);
@@ -159,7 +159,7 @@ describe("schema 10 unified-law and recent-production migration", () => {
       position: { ...cat.position },
     }));
     const migrated = migrateSaveSnapshot(schema2);
-    expect(migrated.schemaVersion).toBe(15);
+    expect(migrated.schemaVersion).toBe(17);
     expect(migrated.cats.map((cat) => cat.position)).toEqual(schema2.cats.map((cat: any) => cat.position));
     expect(migrated.resourceNodes.every((node) => !migrated.cats.some((cat) => node.position.x === cat.position.x
       && node.position.y === cat.position.y))).toBe(true);
@@ -216,5 +216,21 @@ describe("schema 10 unified-law and recent-production migration", () => {
       expect.objectContaining({ kind: "demand-open", subjectId: "order-legacy-broadcast", sourceCatId: "cat-0" }),
       expect.objectContaining({ kind: "bounty-open", sourceCatId: "cat-0" }),
     ]));
+  });
+
+  it("migrates schema 16 landmarks to stable unique names and resource edit counters", () => {
+    const raw: any = structuredClone(createInitialState({ worldSeed: 101 }));
+    raw.schemaVersion = 16;
+    raw.landmarks = [
+      { id: "landmark-8", landmarkId: "founders_plaza", position: { x: 3, y: 3 }, deployedAt: 1 },
+      { id: "landmark-9", landmarkId: "founders_plaza", name: "创业广场", position: { x: 4, y: 3 }, deployedAt: 2 },
+    ];
+    delete raw.nextPlayerResourceIndex;
+    raw.resourceNodes.push({ id: "resource-player-12", itemId: "wood", position: { x: 4, y: 4 } });
+
+    const migrated = migrateSaveSnapshot(raw);
+    expect(migrated.schemaVersion).toBe(17);
+    expect(migrated.landmarks.map((landmark) => landmark.name)).toEqual(["创业广场", "创业广场 2"]);
+    expect(migrated.nextPlayerResourceIndex).toBe(13);
   });
 });

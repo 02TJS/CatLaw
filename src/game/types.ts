@@ -20,6 +20,15 @@ export interface NearbyObservation extends NeighborObservation {
   buildingItemId: ItemId | null;
 }
 
+export interface NamedLandmarkObservation {
+  id: string;
+  name: string;
+  position: Position;
+  distance: number;
+  kind: "marker" | "engineered";
+  landmarkId: LandmarkId | null;
+}
+
 export interface CatObservation {
   position: Position;
   inventory: Readonly<Record<ItemId, number>>;
@@ -63,6 +72,8 @@ export interface CatObservation {
     amountCents: number;
     claimedBySelf: boolean;
   }>;
+  /** Named player landmarks, nearest first. Names are unique world references. */
+  landmarks?: ReadonlyArray<NamedLandmarkObservation>;
   landmarkEffects?: LandmarkEffects;
 }
 
@@ -207,7 +218,10 @@ export interface LandmarkDefinition {
 
 export interface DeployedLandmark {
   id: string;
-  landmarkId: LandmarkId;
+  /** null identifies a one-wood named map marker with no automatic bonus. */
+  landmarkId: LandmarkId | null;
+  /** Unique player-facing name used by law helpers such as nearLandmark(). */
+  name?: string;
   position: Position;
   deployedAt: number;
 }
@@ -425,6 +439,13 @@ export interface ProductionHistory {
   flows: ProductionHistoryFlow[];
 }
 
+export interface WealthHistorySample {
+  /** Deterministic simulation timestamp; no wall-clock or offline time. */
+  at: number;
+  /** Wealth-plus-available-credit score captured for every cat alive at `at`. */
+  values: Record<string, number>;
+}
+
 export interface FloatingEvent {
   id: string;
   catId: string;
@@ -442,7 +463,7 @@ export interface FloatingEvent {
 }
 
 export interface GameState {
-  schemaVersion: 15;
+  schemaVersion: 17;
   difficulty: DifficultyLevel;
   catalogVersion: string;
   worldSeed: number;
@@ -454,6 +475,7 @@ export interface GameState {
   nextCatIndex: number;
   unlockedParcels: Position[];
   resourceNodes: ResourceNode[];
+  nextPlayerResourceIndex: number;
   buildings: DeployedBuilding[];
   landmarks: DeployedLandmark[];
   unlockedLandmarkIds: LandmarkId[];
@@ -496,6 +518,8 @@ export interface GameState {
   achievements: AchievementEvent[];
   /** Compact lifetime production-plan graph used by the persistent stability lens. */
   productionHistory: ProductionHistory;
+  /** Five-second snapshots retained for adjustable recent-wealth map lenses. */
+  wealthHistory: WealthHistorySample[];
   /** Craft completions retained for the public rolling 60-second law input. */
   recentProductionEvents: Array<{ itemId: ItemId; at: number; catId: string; valueCents?: number }>;
   floatingEvents: FloatingEvent[];
@@ -513,7 +537,8 @@ export type PlayerCommandKind =
   | "sell-warehouse" | "compile-law" | "enact-law" | "reorder-law" | "repeal-law"
   | "advance-time" | "place-cat" | "remove-cat" | "expand-parcel"
   | "queue-building" | "cancel-building" | "dismantle-building"
-  | "toggle-warehouse-lock" | "buy-landmark-blueprint" | "place-landmark" | "dismantle-landmark"
+  | "toggle-warehouse-lock" | "buy-landmark-blueprint" | "place-landmark" | "rename-landmark" | "dismantle-landmark"
+  | "create-resource" | "remove-resource"
   | "set-paused" | "set-speech-frequency" | "ack-achievement" | "forbidden-debug";
 
 export interface CommandAuditEntry {
@@ -583,6 +608,11 @@ declare global {
       setSpeed: (multiplier: number) => void;
       setSpeechFrequency: (frequency: number) => number;
       removeCat: (catId: string) => { ok: boolean; error?: string; settledCents?: number; debtRepaidCents?: number; treasuryDeltaCents?: number };
+      placeNamedLandmark: (name: string, position: Position) => { ok: boolean; error?: string };
+      renameLandmark: (landmarkId: string, name: string) => { ok: boolean; error?: string };
+      dismantleLandmark: (landmarkId: string) => { ok: boolean; error?: string };
+      createResource: (itemId: ItemId, position: Position) => { ok: boolean; error?: string };
+      removeResource: (resourceId: string) => { ok: boolean; error?: string };
       buyCatItem: (catId: string, itemId: ItemId) => { ok: boolean; error?: string; cost?: number; sellerCatId?: string };
       buyAllCatStock: () => { ok: boolean; error?: string; costCents?: number; quantity?: number };
       buyAllCatStockAndSell: () => { ok: boolean; error?: string; costCents?: number; revenueCents?: number; netCents?: number; quantity?: number };
