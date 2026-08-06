@@ -16,9 +16,23 @@ let localPort = 18788;
 let appIsQuitting = false;
 let windowScale = 1;
 const windowDragState = new Map();
+let rendererRecoveryCount = 0;
+let rendererRecoveryScheduled = false;
+let qaRendererCrashInjected = false;
+const MAX_RENDERER_RECOVERIES = 2;
+const DISPOSABLE_CHROMIUM_CACHE_NAMES = [
+  "Cache",
+  "Code Cache",
+  "GPUCache",
+  "DawnGraphiteCache",
+  "DawnWebGPUCache",
+];
 
 app.setName("猫咪工坊");
 app.disableHardwareAcceleration();
+app.commandLine.appendSwitch("disable-gpu-shader-disk-cache");
+app.commandLine.appendSwitch("disable-gpu-program-cache");
+app.commandLine.appendSwitch("disable-features", "Vulkan,CanvasOopRasterization");
 
 function executableDirectory() {
   return app.isPackaged
@@ -33,6 +47,33 @@ function startupLog(message, error) {
     fs.appendFileSync(path.join(executableDirectory(), "CatWorkshop-startup.log"), line, "utf8");
   } catch {
     // A read-only launch directory must not prevent the game from starting.
+  }
+}
+
+function clearDisposableChromiumCaches(reason) {
+  const userDataRoot = path.resolve(app.getPath("userData"));
+  const cleared = [];
+  for (const name of DISPOSABLE_CHROMIUM_CACHE_NAMES) {
+    const target = path.resolve(userDataRoot, name);
+    if (path.dirname(target) !== userDataRoot) continue;
+    try {
+      if (!fs.existsSync(target)) continue;
+      fs.rmSync(target, { recursive: true, force: true });
+      cleared.push(name);
+    } catch (error) {
+      startupLog(`could not clear disposable Chromium cache ${name}`, error);
+    }
+  }
+  if (cleared.length > 0) startupLog(`cleared disposable Chromium caches for ${reason}: ${cleared.join(", ")}`);
+}
+
+async function clearLiveSessionCaches(reason) {
+  const results = await Promise.allSettled([
+    session.defaultSession.clearCache(),
+    session.defaultSession.clearCodeCaches({}),
+  ]);
+  for (const result of results) {
+    if (result.status === "rejected") startupLog(`could not clear live Chromium caches for ${reason}`, result.reason);
   }
 }
 
@@ -141,11 +182,44 @@ function physicalScreenPointer(target, rawValue, axis) {
   return origin + (rawValue - origin) / zoom;
 }
 
+async function recoverRenderer(targetWindow, details) {
+  if (appIsQuitting || rendererRecoveryScheduled || targetWindow.isDestroyed()) return;
+  if (rendererRecoveryCount >= MAX_RENDERER_RECOVERIES) {
+    reportWindowFailure("渲染进程反复异常退出", new Error(`${details.reason}; exitCode=${details.exitCode}`));
+    startupLog("renderer recovery limit reached; quitting instead of retaining a dead single-instance shell");
+    try {
+      targetWindow.destroy();
+    } catch (error) {
+      startupLog("failed to destroy the renderer window after exhausting recovery", error);
+    }
+    app.quit();
+    return;
+  }
+  rendererRecoveryScheduled = true;
+  rendererRecoveryCount += 1;
+  startupLog(
+    `renderer recovery ${rendererRecoveryCount}/${MAX_RENDERER_RECOVERIES} scheduled after ${details.reason}; exitCode=${details.exitCode}`,
+  );
+  if (mainWindow === targetWindow) mainWindow = null;
+  try {
+    targetWindow.destroy();
+  } catch (error) {
+    startupLog("failed to destroy the crashed renderer window", error);
+  }
+  await clearLiveSessionCaches(`renderer recovery ${rendererRecoveryCount}`);
+  await new Promise((resolve) => setTimeout(resolve, 350 * rendererRecoveryCount));
+  if (!appIsQuitting) {
+    createWindow();
+    startupLog(`renderer recovery ${rendererRecoveryCount}/${MAX_RENDERER_RECOVERIES} created a replacement window`);
+  }
+  rendererRecoveryScheduled = false;
+}
+
 function createWindow() {
   const origin = `http://${HOST}:${localPort}`;
   let windowCloseRequested = false;
   let loadAttempt = 0;
-  mainWindow = new BrowserWindow({
+  const targetWindow = new BrowserWindow({
     title: "猫咪工坊",
     width: Math.round(BASE_WINDOW_WIDTH * windowScale),
     height: Math.round(BASE_WINDOW_HEIGHT * windowScale),
@@ -167,18 +241,19 @@ function createWindow() {
       devTools: !app.isPackaged,
     },
   });
-  mainWindow.webContents.setZoomFactor(windowScale);
+  mainWindow = targetWindow;
+  targetWindow.webContents.setZoomFactor(windowScale);
 
   startupLog("main window created and shown");
-  mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  mainWindow.webContents.on("will-navigate", (event, target) => {
+  targetWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  targetWindow.webContents.on("will-navigate", (event, target) => {
     if (!target.startsWith(origin)) event.preventDefault();
   });
   const loadLocalPage = () => {
-    if (appIsQuitting || windowCloseRequested || !mainWindow || mainWindow.isDestroyed()) return;
+    if (appIsQuitting || windowCloseRequested || targetWindow.isDestroyed()) return;
     loadAttempt += 1;
-    void mainWindow.loadURL(origin).catch((error) => {
-      if (appIsQuitting || windowCloseRequested || !mainWindow || mainWindow.isDestroyed()) {
+    void targetWindow.loadURL(origin).catch((error) => {
+      if (appIsQuitting || windowCloseRequested || targetWindow.isDestroyed()) {
         startupLog("local page load cancelled while closing");
         return;
       }
@@ -190,20 +265,27 @@ function createWindow() {
       reportWindowFailure("无法打开本地游戏页面", error);
     });
   };
-  mainWindow.webContents.on("did-finish-load", () => {
-    mainWindow.webContents.setZoomFactor(windowScale);
+  targetWindow.webContents.on("did-finish-load", () => {
+    targetWindow.webContents.setZoomFactor(windowScale);
     startupLog(`renderer finished loading at window scale ${windowScale}`);
+    if (process.env.CAT_WORKSHOP_QA_CRASH_RENDERER_ONCE === "1" && !qaRendererCrashInjected) {
+      qaRendererCrashInjected = true;
+      setTimeout(() => {
+        if (!targetWindow.isDestroyed()) targetWindow.webContents.forcefullyCrashRenderer();
+      }, 500);
+    }
   });
-  mainWindow.webContents.on("render-process-gone", (_event, details) => {
+  targetWindow.webContents.on("render-process-gone", (_event, details) => {
     if (appIsQuitting || windowCloseRequested) return;
-    reportWindowFailure("渲染进程意外退出", new Error(`${details.reason}; exitCode=${details.exitCode}`));
+    startupLog("渲染进程意外退出", new Error(`${details.reason}; exitCode=${details.exitCode}`));
+    void recoverRenderer(targetWindow, details);
   });
-  mainWindow.on("unresponsive", () => startupLog("main window became unresponsive"));
-  mainWindow.on("close", () => {
+  targetWindow.on("unresponsive", () => startupLog("main window became unresponsive"));
+  targetWindow.on("close", () => {
     windowCloseRequested = true;
   });
-  mainWindow.on("closed", () => {
-    mainWindow = null;
+  targetWindow.on("closed", () => {
+    if (mainWindow === targetWindow) mainWindow = null;
   });
   loadLocalPage();
 }
@@ -298,7 +380,13 @@ if (!hasSingleInstanceLock) {
 } else {
   app.on("second-instance", () => {
     startupLog("second launch requested; focusing the existing window");
-    if (!mainWindow) return;
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      if (!appIsQuitting && !rendererRecoveryScheduled && server) {
+        createWindow();
+        startupLog("second launch rebuilt the missing main window");
+      }
+      return;
+    }
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.show();
     mainWindow.focus();
@@ -306,6 +394,7 @@ if (!hasSingleInstanceLock) {
 
   app.whenReady().then(async () => {
     startupLog(`application ready; packaged=${app.isPackaged}`);
+    clearDisposableChromiumCaches("startup");
     loadLocalEnvironment();
     session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
     try {
@@ -329,7 +418,9 @@ app.on("child-process-gone", (_event, details) => {
   startupLog(`child process gone: ${details.type} ${details.reason}; exitCode=${details.exitCode}`);
 });
 
-app.on("window-all-closed", () => app.quit());
+app.on("window-all-closed", () => {
+  if (!rendererRecoveryScheduled) app.quit();
+});
 app.on("before-quit", () => {
   appIsQuitting = true;
   startupLog("application quitting");
