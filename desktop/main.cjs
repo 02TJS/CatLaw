@@ -85,6 +85,10 @@ function secureKeyPath() {
   return path.join(app.getPath("userData"), "deepseek-key.bin");
 }
 
+function deepSeekSettingsPath() {
+  return path.join(app.getPath("userData"), "deepseek-settings.json");
+}
+
 function loadSecureDeepSeekKey() {
   try {
     const keyFile = secureKeyPath();
@@ -122,6 +126,39 @@ function persistSecureDeepSeekKey(apiKey) {
   }
 }
 
+function loadDeepSeekBaseUrl() {
+  try {
+    const settingsFile = deepSeekSettingsPath();
+    if (!fs.existsSync(settingsFile)) return undefined;
+    const value = JSON.parse(fs.readFileSync(settingsFile, "utf8"))?.baseUrl;
+    if (typeof value !== "string") return undefined;
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? value : undefined;
+  } catch (error) {
+    startupLog("DeepSeek API URL could not be loaded", error);
+    return undefined;
+  }
+}
+
+function persistDeepSeekBaseUrl(baseUrl) {
+  const target = deepSeekSettingsPath();
+  const temporary = `${target}.tmp-${process.pid}`;
+  try {
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(temporary, JSON.stringify({ baseUrl }, null, 2), { encoding: "utf8", mode: 0o600 });
+    fs.renameSync(temporary, target);
+    return true;
+  } catch (error) {
+    try {
+      if (fs.existsSync(temporary)) fs.unlinkSync(temporary);
+    } catch {
+      // Ignore cleanup errors; no secret is stored in this file.
+    }
+    startupLog("DeepSeek API URL could not be saved", error);
+    throw new Error("无法写入本机模型连接设置");
+  }
+}
+
 async function startLocalServer() {
   const appRoot = app.getAppPath();
   const moduleUrl = pathToFileURL(path.join(appRoot, "dist-server", "server", "app.js")).href;
@@ -130,7 +167,9 @@ async function startLocalServer() {
   const expressApp = createCatWorkshopApp({
     webDist: path.join(appRoot, "dist"),
     apiKey: initialApiKey,
+    baseUrl: loadDeepSeekBaseUrl() || process.env.DEEPSEEK_BASE_URL,
     persistApiKey: safeStorage.isEncryptionAvailable() ? persistSecureDeepSeekKey : undefined,
+    persistBaseUrl: persistDeepSeekBaseUrl,
   });
 
   const configuredPort = Number(process.env.CAT_WORKSHOP_PORT || 18788);

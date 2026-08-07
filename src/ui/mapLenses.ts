@@ -565,7 +565,7 @@ function inventorySnapshot(state: GameState): Pick<MapLensSnapshot, "catColors" 
     catColors,
     legend: representativeIds.map((itemId) => {
       const item = ITEM_BY_ID.get(itemId)!;
-      return { ...inventoryLensColor(itemId), label: `${item.emoji} ${item.name}档` };
+      return { ...inventoryLensColor(itemId), label: `${item.name}档` };
     }).concat([{ ...LENS_COLORS.neutral, label: "没有库存" }]),
   };
 }
@@ -679,7 +679,7 @@ export function mapLensTitle(lensId: MapLensId, itemId: ItemId | null, options: 
     return mode === "change" ? `${lens} · 近${wealthWindowLabel(windowMs)}增量` : `${lens} · 当前总量`;
   }
   const item = ITEM_SCOPED_LENSES.has(lensId) && itemId ? ITEM_BY_ID.get(itemId) : null;
-  return item ? `${lens} · ${item.emoji} ${item.name}` : lens;
+  return item ? `${lens} · ${item.name}` : lens;
 }
 
 export function resourceColor(itemId: ItemId): string {

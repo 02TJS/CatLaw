@@ -21,6 +21,7 @@
 * { box-sizing: border-box; }
 html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 button, textarea, select { font: inherit; }
+.emoji-image { display: inline-block; width: var(--emoji-size, 1.25em); height: var(--emoji-size, 1.25em); flex: 0 0 auto; object-fit: contain; vertical-align: -0.22em; }
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: .42; }
 button:focus-visible, textarea:focus-visible, select:focus-visible, canvas:focus-visible { outline: 2px solid #2f74c0; outline-offset: 2px; }
@@ -100,7 +101,7 @@ button:focus-visible, textarea:focus-visible, select:focus-visible, canvas:focus
 .panel-summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; padding: 8px 10px; color: #68717b; border-radius: 8px; background: #f4f6f7; font-size: calc(10px * var(--pet-font-scale, 1)); }
 .panel-summary strong { color: #343a42; font-size: calc(11px * var(--pet-font-scale, 1)); }
 .recipe-graph-entry { position: sticky; top: calc(-12px * var(--pet-control-scale, 1)); z-index: 4; width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: calc(9px * var(--pet-control-scale, 1)); margin: calc(-12px * var(--pet-control-scale, 1)) 0 calc(10px * var(--pet-control-scale, 1)); padding: calc(11px * var(--pet-control-scale, 1)); color: #365d43; border: 1px solid #bcd4c3; border-radius: 0 0 calc(11px * var(--pet-control-scale, 1)) calc(11px * var(--pet-control-scale, 1)); background: rgba(241,248,243,.98); box-shadow: 0 calc(5px * var(--pet-control-scale, 1)) calc(14px * var(--pet-control-scale, 1)) rgba(45,82,58,.1); text-align: left; }
-.recipe-graph-entry > span:first-child { font: calc(22px * var(--pet-font-scale, 1)) "Segoe UI Emoji", "Apple Color Emoji", sans-serif; }
+.recipe-graph-entry > span:first-child { display: grid; place-items: center; }
 .recipe-graph-entry strong, .recipe-graph-entry small { display: block; }
 .recipe-graph-entry strong { color: #315e3f; font-size: calc(10px * var(--pet-font-scale, 1)); }
 .recipe-graph-entry small { margin-top: 2px; color: #718078; font-size: calc(7px * var(--pet-font-scale, 1)); line-height: 1.35; }
@@ -182,7 +183,7 @@ pre { max-height: 180px; overflow: auto; padding: 8px; color: #e7ece7; backgroun
 .item-card.locked { border-style: dashed; background: #fafafa; }
 .item-card.available { border-color: #d7c48e; background: #fffdf5; }
 .item-card.unlocked { border-color: #cfe2d4; }
-.item-emoji { width: 31px; flex: none; text-align: center; font: 22px "Segoe UI Emoji", "Apple Color Emoji"; }
+.item-emoji { width: 31px; flex: none; text-align: center; }
 .item-card > div:last-child { min-width: 0; }
 .item-card strong, .item-card small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item-card strong { color: #3c434b; font-size: calc(9px * var(--pet-font-scale, 1)); }
@@ -257,7 +258,7 @@ pre { max-height: 180px; overflow: auto; padding: 8px; color: #e7ece7; backgroun
 .placement-mode-card span { margin: 4px 0 7px; color: #698173; font-size: calc(8px * var(--pet-font-scale, 1)); }
 .building-offer-list, .owned-building-list, .deployed-building-list { display: grid; gap: 5px; }
 .building-offer-card { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: 7px; padding: 8px; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
-.building-offer-emoji { font: 24px "Segoe UI Emoji", "Apple Color Emoji"; text-align: center; }
+.building-offer-emoji { text-align: center; }
 .building-offer-card strong, .building-offer-card small { display: block; }
 .building-offer-card strong { color: #394149; font-size: calc(9px * var(--pet-font-scale, 1)); }
 .building-offer-card small { margin-top: 2px; color: #838b94; font-size: calc(7px * var(--pet-font-scale, 1)); }
@@ -269,7 +270,7 @@ pre { max-height: 180px; overflow: auto; padding: 8px; color: #e7ece7; backgroun
 .warehouse-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
 .warehouse-item-card { min-width: 0; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 6px; padding: 7px; border: 1px solid var(--line); border-radius: 8px; background: #fafafa; }
 .warehouse-item-card.stocked { border-color: #bdd9c6; background: #f4faf5; box-shadow: inset 0 0 0 1px rgba(67,165,101,.06); }
-.warehouse-emoji { align-self: start; text-align: center; font: 21px "Segoe UI Emoji", "Apple Color Emoji"; filter: grayscale(.55); opacity: .62; }
+.warehouse-emoji { align-self: start; text-align: center; filter: grayscale(.55); opacity: .62; }
 .warehouse-item-card.stocked .warehouse-emoji { filter: none; opacity: 1; }
 .warehouse-item-main { min-width: 0; }
 .warehouse-item-main strong, .warehouse-item-main small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -297,7 +298,7 @@ pre { max-height: 180px; overflow: auto; padding: 8px; color: #e7ece7; backgroun
 .landmark-card.unlocked { border-color: #aeb9e6; box-shadow: inset 0 0 0 1px rgba(79, 96, 183, .06); }
 .landmark-card.locked { background: #fafafa; }
 .landmark-title { display: grid; grid-template-columns: 29px minmax(0, 1fr); align-items: start; gap: 6px; }
-.landmark-title > span { font: 23px "Segoe UI Emoji", "Apple Color Emoji"; text-align: center; }
+.landmark-title > span { text-align: center; }
 .landmark-title strong, .landmark-title small, .landmark-progress { display: block; }
 .landmark-title strong { color: #3e4755; font-size: calc(9px * var(--pet-font-scale, 1)); }
 .landmark-title small, .landmark-progress { margin-top: 2px; color: #7c8492; font-size: calc(7px * var(--pet-font-scale, 1)); line-height: 1.4; }
@@ -324,7 +325,10 @@ pre { max-height: 180px; overflow: auto; padding: 8px; color: #e7ece7; backgroun
 .api-key-heading > span { color: #4d8961; font-size: calc(9px * var(--pet-font-scale, 1)); font-weight: 900; letter-spacing: .15em; }
 .api-key-heading h1 { margin: 5px 0 8px; color: #252c28; font-size: calc(22px * var(--pet-font-scale, 1)); }
 .api-key-heading p { margin: 0 0 19px; color: #69736c; font-size: calc(11px * var(--pet-font-scale, 1)); line-height: 1.65; }
-.api-key-dialog form > label { display: block; margin-bottom: 7px; color: #3d4740; font-size: calc(10px * var(--pet-font-scale, 1)); font-weight: 800; }
+.api-key-dialog form > label { display: block; margin: 13px 0 7px; color: #3d4740; font-size: calc(10px * var(--pet-font-scale, 1)); font-weight: 800; }
+.api-key-dialog form > label:first-child { margin-top: 0; }
+.api-url-input { width: 100%; min-width: 0; padding: 11px 12px; color: #253029; border: 1px solid #cfd8d2; border-radius: 9px; background: #fbfcfb; outline: none; font: calc(11px * var(--pet-font-scale, 1)) ui-monospace, Consolas, monospace; }
+.api-url-input:focus { border-color: #68a07a; box-shadow: 0 0 0 3px rgba(78,148,101,.12); }
 .api-key-input-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
 .api-key-input-row input { min-width: 0; padding: 11px 12px; color: #253029; border: 1px solid #cfd8d2; border-radius: 9px; background: #fbfcfb; outline: none; font: calc(12px * var(--pet-font-scale, 1)) ui-monospace, Consolas, monospace; }
 .api-key-input-row input:focus { border-color: #68a07a; box-shadow: 0 0 0 3px rgba(78,148,101,.12); }
@@ -393,7 +397,7 @@ pre { max-height: 180px; overflow: auto; padding: 8px; color: #e7ece7; backgroun
 .pet-tile-action-menu > button:disabled { opacity: .48; cursor: not-allowed; }
 .pet-tile-action-menu > .add-cat-action { display: block; color: #315e3f; font-size: calc(9px * var(--pet-font-scale, 1)); font-weight: 900; text-align: center; }
 .pet-tile-action-menu > .tile-object-title { display: flex; align-items: center; gap: calc(6px * var(--pet-control-scale)); padding: calc(4px * var(--pet-control-scale)) calc(6px * var(--pet-control-scale)); color: #3f4d44; border-bottom: 1px solid #e0e5e1; }
-.tile-object-title > span { font: calc(16px * var(--pet-font-scale, 1)) "Segoe UI Emoji", "Apple Color Emoji", system-ui; }
+.tile-object-title > span { display: grid; place-items: center; }
 .tile-object-title > strong { overflow: hidden; font-size: calc(9px * var(--pet-font-scale, 1)); text-overflow: ellipsis; }
 .pet-tile-action-menu > button.danger-action { color: #8b4b47; border-color: #e4c4c0; background: #fff8f7; }
 .pet-tile-action-menu > button.danger-action:not(:disabled):hover { color: #fff; border-color: #b95750; background: #bd5d56; }
@@ -416,13 +420,13 @@ pre { max-height: 180px; overflow: auto; padding: 8px; color: #e7ece7; backgroun
 .pet-commerce-feedback > span { display: block; }
 .pet-commerce-items { display: flex; flex-wrap: wrap; justify-content: center; gap: calc(3px * var(--pet-control-scale)); margin-top: calc(5px * var(--pet-control-scale)); }
 .pet-commerce-items { max-height: calc(118px * var(--pet-control-scale)); overflow: auto; scrollbar-width: thin; }
-.pet-commerce-items i { min-width: calc(30px * var(--pet-control-scale)); padding: calc(2px * var(--pet-control-scale)) calc(5px * var(--pet-control-scale)); color: color-mix(in srgb, var(--commerce-rarity, #6f8b78) 76%, #202a23); border: 1px solid color-mix(in srgb, var(--commerce-rarity, #6f8b78) 84%, #354038); border-left-width: calc(4px * var(--pet-control-scale)); border-radius: calc(6px * var(--pet-control-scale)); background: linear-gradient(135deg, color-mix(in srgb, var(--commerce-rarity-bg, #fff) 58%, var(--commerce-rarity, #6f8b78) 26%), color-mix(in srgb, var(--commerce-rarity-bg, #fff) 72%, white)); box-shadow: inset 0 0 0 1px rgba(255,255,255,.46), 0 1px 3px color-mix(in srgb, var(--commerce-rarity, #6f8b78) 26%, transparent); font: 900 calc(8px * var(--pet-font-scale, 1)) "Segoe UI Emoji", "Microsoft YaHei UI", system-ui; white-space: nowrap; }
+.pet-commerce-items i { min-width: calc(30px * var(--pet-control-scale)); padding: calc(2px * var(--pet-control-scale)) calc(5px * var(--pet-control-scale)); color: color-mix(in srgb, var(--commerce-rarity, #6f8b78) 76%, #202a23); border: 1px solid color-mix(in srgb, var(--commerce-rarity, #6f8b78) 84%, #354038); border-left-width: calc(4px * var(--pet-control-scale)); border-radius: calc(6px * var(--pet-control-scale)); background: linear-gradient(135deg, color-mix(in srgb, var(--commerce-rarity-bg, #fff) 58%, var(--commerce-rarity, #6f8b78) 26%), color-mix(in srgb, var(--commerce-rarity-bg, #fff) 72%, white)); box-shadow: inset 0 0 0 1px rgba(255,255,255,.46), 0 1px 3px color-mix(in srgb, var(--commerce-rarity, #6f8b78) 26%, transparent); font: 900 calc(8px * var(--pet-font-scale, 1)) "Microsoft YaHei UI", system-ui; white-space: nowrap; }
 
 .pet-achievement-backdrop { position: absolute; inset: 0; z-index: 90; display: grid; place-items: center; padding: calc(56px * var(--pet-control-scale)) calc(18px * var(--pet-control-scale)) calc(78px * var(--pet-control-scale)); background: radial-gradient(circle at center, rgba(255,255,255,.36), rgba(238,243,239,.12) 48%, rgba(226,234,228,.22)); backdrop-filter: blur(2px); }
 .pet-achievement-card { --achievement-accent: #78a884; --achievement-halo: rgba(120,168,132,.34); --achievement-surface-a: #f7fbf7; --achievement-surface-b: #e8f1e9; position: relative; width: min(calc(350px * var(--pet-control-scale)), calc(100% - (12px * var(--pet-control-scale)))); max-height: 100%; display: flex; flex-direction: column; align-items: center; overflow: auto; padding: calc(27px * var(--pet-control-scale)) calc(24px * var(--pet-control-scale)) calc(20px * var(--pet-control-scale)); color: #3e4942; border: calc(2px * var(--pet-control-scale)) solid color-mix(in srgb, var(--achievement-accent) 56%, white); border-radius: calc(22px * var(--pet-control-scale)); background: linear-gradient(145deg, color-mix(in srgb, var(--achievement-surface-a) 88%, white), color-mix(in srgb, var(--achievement-surface-b) 76%, white)); box-shadow: 0 0 calc(42px * var(--pet-control-scale)) var(--achievement-halo), 0 calc(18px * var(--pet-control-scale)) calc(50px * var(--pet-control-scale)) rgba(38,53,43,.22), inset 0 1px 0 rgba(255,255,255,.88); text-align: center; animation: achievement-card-in .42s cubic-bezier(.18,.82,.28,1.12) both; }
 .pet-achievement-card::before { content: ""; position: absolute; inset: calc(7px * var(--pet-control-scale)); pointer-events: none; border: 1px solid color-mix(in srgb, var(--achievement-accent) 24%, transparent); border-radius: calc(16px * var(--pet-control-scale)); }
 .achievement-medallion { position: relative; width: calc(76px * var(--pet-control-scale)); height: calc(76px * var(--pet-control-scale)); flex: none; display: grid; place-items: center; margin-bottom: calc(11px * var(--pet-control-scale)); border: calc(3px * var(--pet-control-scale)) solid color-mix(in srgb, var(--achievement-accent) 58%, white); border-radius: 50%; background: radial-gradient(circle at 34% 28%, #fff, var(--achievement-surface-a) 46%, var(--achievement-surface-b)); box-shadow: 0 0 0 calc(7px * var(--pet-control-scale)) color-mix(in srgb, var(--achievement-accent) 12%, transparent), 0 calc(8px * var(--pet-control-scale)) calc(18px * var(--pet-control-scale)) var(--achievement-halo); animation: achievement-medallion 1.65s ease-in-out infinite; }
-.achievement-medallion span { font: calc(37px * var(--pet-font-scale, 1)) "Segoe UI Emoji", "Apple Color Emoji", system-ui; filter: drop-shadow(0 3px 3px rgba(47,55,49,.13)); }
+.achievement-medallion span { filter: drop-shadow(0 3px 3px rgba(47,55,49,.13)); }
 .pet-achievement-card > small { color: var(--achievement-accent); font-size: calc(8px * var(--pet-font-scale, 1)); font-weight: 950; letter-spacing: .14em; }
 .pet-achievement-card h2 { margin: calc(6px * var(--pet-control-scale)) 0 0; color: #303a33; font-size: calc(17px * var(--pet-font-scale, 1)); line-height: 1.3; }
 .pet-achievement-card p { max-width: 31em; margin: calc(8px * var(--pet-control-scale)) 0 0; color: #69746d; font-size: calc(9px * var(--pet-font-scale, 1)); line-height: 1.6; }
@@ -447,7 +451,7 @@ pre { max-height: 180px; overflow: auto; padding: 8px; color: #e7ece7; backgroun
 .achievement-burst i:nth-child(12) { --dx: -46px; --dy: -80px; }
 .pet-dock { position: absolute; left: 50%; bottom: calc(12px * var(--pet-control-scale)); width: max-content; max-width: calc(100% - (24px * var(--pet-control-scale))); transform: translateX(-50%); display: flex; flex-wrap: wrap; align-items: stretch; justify-content: center; gap: calc(3px * var(--pet-control-scale)); padding: calc(5px * var(--pet-control-scale)); border: 1px solid rgba(209,218,212,.94); border-radius: calc(15px * var(--pet-control-scale)); background: rgba(255,255,255,.94); box-shadow: 0 calc(12px * var(--pet-control-scale)) calc(30px * var(--pet-control-scale)) rgba(35,49,40,.14); backdrop-filter: blur(10px); z-index: 25; }
 .pet-dock button { position: relative; min-width: calc(54px * var(--pet-control-scale)); height: calc(48px * var(--pet-control-scale)); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: calc(2px * var(--pet-control-scale)); padding: calc(4px * var(--pet-control-scale)) calc(7px * var(--pet-control-scale)); color: #6d776f; border: 0; border-radius: calc(10px * var(--pet-control-scale)); background: transparent; font-size: calc(7px * var(--pet-font-scale, 1)); font-weight: 800; white-space: nowrap; }
-.pet-dock button > span { min-height: calc(17px * var(--pet-control-scale)); display: grid; place-items: center; color: #475149; font: calc(14px * var(--pet-font-scale)) "Segoe UI Emoji", "Apple Color Emoji", system-ui; }
+.pet-dock button > span { min-height: calc(17px * var(--pet-control-scale)); display: grid; place-items: center; color: #475149; }
 .pet-dock button:hover { color: #355d42; background: #f0f5f1; }
 .pet-dock button.active { color: #fff; background: #55946a; }
 .pet-dock button.active > span { color: #fff; }

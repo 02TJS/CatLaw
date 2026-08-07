@@ -17,6 +17,15 @@ async function startApi(persistApiKey?: (apiKey: string) => boolean | Promise<bo
   return `http://127.0.0.1:${address.port}`;
 }
 
+async function startSettingsApi(options: Omit<Parameters<typeof createCatWorkshopApp>[0], "webDist">) {
+  const server = createServer(createCatWorkshopApp({ webDist: process.cwd(), ...options }));
+  servers.push(server);
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("测试服务启动失败");
+  return `http://127.0.0.1:${address.port}`;
+}
+
 describe("DeepSeek startup key settings", () => {
   it("changes an unconfigured server to configured without echoing the secret", async () => {
     let persistedValue = "";
@@ -59,6 +68,45 @@ describe("DeepSeek startup key settings", () => {
       body: JSON.stringify({ apiKey: `sk-${"b".repeat(32)}` }),
     });
     expect(foreign.status).toBe(403);
+  });
+
+  it("stores a configurable OpenAI-compatible URL and defaults to DeepSeek", async () => {
+    let persistedUrl = "";
+    const origin = await startSettingsApi({
+      persistApiKey: () => true,
+      persistBaseUrl: (value) => {
+        persistedUrl = value;
+        return true;
+      },
+    });
+    const before = await fetch(`${origin}/api/health`).then((response) => response.json()) as { baseUrl: string };
+    expect(before.baseUrl).toBe("https://api.deepseek.com");
+
+    const response = await fetch(`${origin}/api/settings/deepseek`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: origin },
+      body: JSON.stringify({
+        apiKey: `sk-${"c".repeat(32)}`,
+        baseUrl: "http://127.0.0.1:8318/v1/chat/completions/",
+      }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      configured: true,
+      persisted: true,
+      baseUrl: "http://127.0.0.1:8318/v1",
+    });
+    expect(persistedUrl).toBe("http://127.0.0.1:8318/v1");
+  });
+
+  it("rejects non-HTTP model URLs", async () => {
+    const origin = await startApi();
+    const response = await fetch(`${origin}/api/settings/deepseek`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: origin },
+      body: JSON.stringify({ apiKey: `sk-${"d".repeat(32)}`, baseUrl: "file:///tmp/model" }),
+    });
+    expect(response.status).toBe(400);
   });
 
   it("does not compile through the local fallback while startup setup is incomplete", async () => {

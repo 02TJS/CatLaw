@@ -9,12 +9,14 @@ export interface DeepSeekStatus {
   model: string;
   configured: boolean;
   keyStorage: "secure-local" | "session";
+  baseUrl: string;
 }
 
 export interface DeepSeekKeyResult {
   ok: true;
   configured: true;
   persisted: boolean;
+  baseUrl: string;
 }
 
 async function apiJson<T>(response: Response): Promise<T> {
@@ -29,11 +31,11 @@ export async function getDeepSeekStatus(): Promise<DeepSeekStatus> {
   return apiJson<DeepSeekStatus>(await fetch("/api/health", { cache: "no-store" }));
 }
 
-export async function setDeepSeekApiKey(apiKey: string): Promise<DeepSeekKeyResult> {
-  return apiJson<DeepSeekKeyResult>(await fetch("/api/settings/deepseek-key", {
+export async function setDeepSeekSettings(apiKey: string, baseUrl: string): Promise<DeepSeekKeyResult> {
+  return apiJson<DeepSeekKeyResult>(await fetch("/api/settings/deepseek", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ apiKey }),
+    body: JSON.stringify({ apiKey, baseUrl }),
   }));
 }
 

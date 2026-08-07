@@ -1,25 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ITEM_BY_ID, ITEMS, RECIPES, RECIPE_BY_OUTPUT } from "../game/catalog";
 import { difficultySiteRequirements } from "../game/difficulty";
-import type { DifficultyLevel } from "../game/types";
 import { formatMoney } from "../game/engine";
+import { RECIPE_BRIDGE_CHANNEL_NAME, type RecipeBridgeMessage, type RecipeInterfaceState } from "../recipeBridge";
 import { layoutRecipeGraph, type RecipeGraphLayout } from "./recipeGraphLayout";
+import { EmojiIcon } from "./EmojiIcon";
+import { emojiAssetUrl } from "./emojiAssets";
 
 const ERA_NAMES = ["基础采集", "手工作坊", "机械制造", "电气工业", "电子自动化", "计算与核能", "航天时代", "量子时代", "星门工程"];
 const ERA_COLORS = ["#718096", "#4c956c", "#438ab5", "#6772c8", "#8b67bd", "#bd668e", "#c97942", "#3b9c91", "#b28a35"];
-const CHANNEL_NAME = "cat-workshop-interface-v1";
-
-interface RecipeInterfaceState {
-  unlockedRecipes: string[];
-  craftedItems: string[];
-  treasuryCoins: number;
-  difficulty: DifficultyLevel;
-}
-
-type BridgeMessage =
-  | { type: "recipe-state"; state: RecipeInterfaceState }
-  | { type: "recipe-state-request" };
-
 const overviewLayout = layoutRecipeGraph(ITEMS, RECIPES);
 
 export function RecipeGraphPage() {
@@ -32,11 +21,11 @@ export function RecipeGraphPage() {
   const [scale, setScale] = useState(0.48);
 
   useEffect(() => {
-    const channel = new BroadcastChannel(CHANNEL_NAME);
-    channel.onmessage = (event: MessageEvent<BridgeMessage>) => {
+    const channel = new BroadcastChannel(RECIPE_BRIDGE_CHANNEL_NAME);
+    channel.onmessage = (event: MessageEvent<RecipeBridgeMessage>) => {
       if (event.data.type === "recipe-state") setBridgeState(event.data.state);
     };
-    channel.postMessage({ type: "recipe-state-request" } satisfies BridgeMessage);
+    channel.postMessage({ type: "recipe-state-request" } satisfies RecipeBridgeMessage);
     return () => channel.close();
   }, []);
 
@@ -66,7 +55,7 @@ export function RecipeGraphPage() {
 
   return <div className="recipe-page">
     <header className="recipe-toolbar">
-      <div className="recipe-brand"><span>🧶</span><div><strong>猫咪工坊配方一图流</strong><small>点击商品只高亮直接原料、成品与关系线</small></div></div>
+      <div className="recipe-brand"><span><EmojiIcon emoji="🧶" size={28} /></span><div><strong>猫咪工坊配方一图流</strong><small>点击商品只高亮直接原料、成品与关系线</small></div></div>
       <label className="recipe-search"><span>搜索</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="商品名称或 ID" /></label>
       <select value={tier} onChange={(event) => setTier(event.target.value === "all" ? "all" : Number(event.target.value))} aria-label="筛选时代">
         <option value="all">全部时代</option>
@@ -107,7 +96,7 @@ export function RecipeGraphPage() {
       }}
     >
       {selectedId && <div className="recipe-focus-heading" aria-live="polite">
-        <span>全图保持不变</span><b>·</b><strong>{ITEM_BY_ID.get(selectedId)?.emoji} {ITEM_BY_ID.get(selectedId)?.name}</strong><b>·</b><span>点击空白取消高亮</span>
+        <span>全图保持不变</span><b>·</b><strong><EmojiIcon emoji={ITEM_BY_ID.get(selectedId)?.emoji ?? "❔"} /> {ITEM_BY_ID.get(selectedId)?.name}</strong><b>·</b><span>点击空白取消高亮</span>
       </div>}
       <svg className={`recipe-map ${selectedId ? "has-selection" : ""}`} width={overviewLayout.width * scale} height={overviewLayout.height * scale} viewBox={`0 0 ${overviewLayout.width} ${overviewLayout.height}`} role="img" aria-label="65 项商品配方依赖一图流">
         <defs>
@@ -146,7 +135,7 @@ export function RecipeGraphPage() {
             const related = selectedRelations.items.has(item.id);
             const matchesFilter = searchMatches.has(item.id) && (tier === "all" || tier === item.tier);
             const dimmed = !matchesFilter || Boolean(selectedId && !related);
-            const formula = recipe.inputs.length === 0 ? "资源采集" : recipe.inputs.map((input) => `${ITEM_BY_ID.get(input.itemId)?.emoji}${input.quantity > 1 ? `×${input.quantity}` : ""}`).join(" + ");
+            const formula = recipe.inputs.length === 0 ? "资源采集" : recipe.inputs.map((input) => `${ITEM_BY_ID.get(input.itemId)?.name ?? input.itemId}${input.quantity > 1 ? `×${input.quantity}` : ""}`).join(" + ");
             const siteRequirements = difficultySiteRequirements(recipe, difficulty);
             return <g
               key={item.id}
@@ -154,13 +143,13 @@ export function RecipeGraphPage() {
               transform={`translate(${node.x} ${node.y})`}
               role="button"
               tabIndex={0}
-              aria-label={`${item.emoji} ${item.name} = ${formula}${siteRequirements.length > 0 ? `；需在${siteRequirements.map((entry) => `${ITEM_BY_ID.get(entry.buildingItemId)?.name}${entry.maxManhattanDistance}格内`).join("、")}` : ""}`}
+              aria-label={`${item.name} = ${formula}${siteRequirements.length > 0 ? `；需在${siteRequirements.map((entry) => `${ITEM_BY_ID.get(entry.buildingItemId)?.name}${entry.maxManhattanDistance}格内`).join("、")}` : ""}`}
               onClick={(event) => { event.stopPropagation(); setSelectedId((current) => current === item.id ? null : item.id); }}
               onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setSelectedId((current) => current === item.id ? null : item.id); }}
             >
               <rect width={node.width} height={node.height} rx="13" fill="#fff" stroke={selected ? "#d4a72c" : ERA_COLORS[item.tier]} />
               <rect width="5" height={node.height} rx="3" fill={ERA_COLORS[item.tier]} />
-              <text className="recipe-node-emoji" x="16" y="37">{item.emoji}</text>
+              <image className="recipe-node-emoji-image" href={emojiAssetUrl(item.emoji)} x="15" y="16" width="30" height="30" />
               <text className="recipe-node-name" x="54" y="27">{item.name}</text>
               <text className="recipe-node-formula" x="54" y="49">{formula}</text>
               <text className="recipe-node-index" x={node.width - 10} y="18" textAnchor="end">#{node.order + 1}</text>
@@ -168,7 +157,7 @@ export function RecipeGraphPage() {
                 ? <g className="recipe-node-sites" aria-label="制造建筑要求">
                     {siteRequirements.map((requirement, index) => <g key={`${requirement.buildingItemId}-${index}`} transform={`translate(13 ${67 + index * 21})`}>
                       <rect width={node.width - 26} height="18" rx="6" />
-                      <text x="7" y="13">{ITEM_BY_ID.get(requirement.buildingItemId)?.emoji} {ITEM_BY_ID.get(requirement.buildingItemId)?.name} ≤ {requirement.maxManhattanDistance} 格</text>
+                      <text x="7" y="13">{ITEM_BY_ID.get(requirement.buildingItemId)?.name} ≤ {requirement.maxManhattanDistance} 格</text>
                     </g>)}
                   </g>
                 : <text className="recipe-node-site-free" x="14" y="83">普通工位可制造</text>}

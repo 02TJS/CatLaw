@@ -1,4 +1,10 @@
+import type { SaveSchemaVersion } from "./saveSchema.js";
+import type { Cents, InternalSimulationRate } from "./domainUnits.js";
+
+export type { Cents, InternalSimulationRate, RuntimeSpeedMultiplier } from "./domainUnits.js";
+
 export type ItemId = string;
+export type PlayerWarehouseInventory = Record<ItemId, number>;
 export type DifficultyLevel = 1 | 2 | 3 | 4 | 5;
 export type Direction = "north" | "east" | "south" | "west";
 export type LandmarkId = "founders_plaza" | "craft_academy" | "logistics_hub" | "market_center" | "energy_spire" | "quantum_beacon";
@@ -36,28 +42,28 @@ export interface CatObservation {
   nearby?: ReadonlyArray<NearbyObservation>;
   site?: { resourceItemId: ItemId | null; resourceItemIds?: ReadonlyArray<ItemId>; buildingItemId: ItemId | null };
   wallet?: {
-    cashCents: number;
-    debtCents: number;
-    netWorthCents: number;
-    creditAvailableCents: number;
+    cashCents: Cents;
+    debtCents: Cents;
+    netWorthCents: Cents;
+    creditAvailableCents: Cents;
   };
   heardOrders?: ReadonlyArray<{
     id: string;
     itemId: ItemId;
-    effectiveBidCents: number;
+    effectiveBidCents: Cents;
     sourceCatId: string;
     /** Number of open orders represented by this per-item market summary. */
     count?: number;
   }>;
   heardBounties?: ReadonlyArray<{
     itemId: ItemId;
-    amountCents: number;
+    amountCents: Cents;
     sourceCatId: string;
   }>;
   heardBuildingOffers?: ReadonlyArray<{
     offerId: string;
     itemId: ItemId;
-    askCents: number;
+    askCents: Cents;
     sourceCatId: string;
   }>;
   broadcasts?: ReadonlyArray<MarketBroadcast>;
@@ -65,7 +71,7 @@ export interface CatObservation {
   ownPlan?: {
     outputItemId: ItemId;
     reason: "bounty" | "order" | "external-sale";
-    expectedRevenueCents: number;
+    expectedRevenueCents: Cents;
   } | null;
   discoveryBounties?: ReadonlyArray<{
     itemId: ItemId;
@@ -97,8 +103,8 @@ export type LawSpeechTemplates = [string, string, string, string, string];
 export interface LawRuntimePolicy {
   priceMultipliers: Record<ItemId | "*", number>;
   /** Temporary flat price adjustments, in cents, evaluated for one cat snapshot. */
-  priceAdditionsCents: Record<ItemId | "*", number>;
-  creditBaseCents: number;
+  priceAdditionsCents: Record<ItemId | "*", Cents>;
+  creditBaseCents: Cents;
   creditNetWorthFactor: number;
   bountyMultiplier: number;
   /** False means no active law has supplied a bounty override. */
@@ -161,9 +167,9 @@ export interface ActionCommand {
   reserved: Record<ItemId, number>;
   lawId: string;
   contractId?: string;
-  expectedGainCents?: number;
+  expectedGainCents?: Cents;
   /** Value captured when this action started; law overlays never rewrite it. */
-  outputValueCents?: number;
+  outputValueCents?: Cents;
   /** Human-readable explanation captured from the winning local candidate. */
   decisionReason?: string;
   /** Landmark speed reduction locked when the action starts. */
@@ -176,9 +182,9 @@ export interface CatState {
   position: Position;
   inventory: Record<ItemId, number>;
   /** Schema 4: despite the legacy field name, all monetary values are integer cents. */
-  coins: number;
-  debtCents: number;
-  escrowReservedCents: number;
+  coins: Cents;
+  debtCents: Cents;
+  escrowReservedCents: Cents;
   action: ActionCommand | null;
   lastDecision: string;
   decisionTrace: string[];
@@ -208,7 +214,7 @@ export interface LandmarkDefinition {
   emoji: string;
   name: string;
   radius: number;
-  blueprintPriceCents: number;
+  blueprintPriceCents: Cents;
   materials: Ingredient[];
   description: string;
   effects: Partial<Pick<LandmarkEffects,
@@ -232,7 +238,7 @@ export interface LandmarkEffects {
   craftSpeedReduction: number;
   passSpeedReduction: number;
   saleValueBonus: number;
-  creditBonusCents: number;
+  creditBonusCents: Cents;
   carrierFeeBonus: number;
   visionRadiusBonus: number;
   stacks: Record<LandmarkId, number>;
@@ -244,7 +250,7 @@ export interface BuildingOffer {
   id: string;
   sellerCatId: string;
   itemId: ItemId;
-  askCents: number;
+  askCents: Cents;
   createdAt: number;
   status: BuildingOfferStatus;
   closedAt: number | null;
@@ -257,7 +263,7 @@ export interface BuildingOrder {
   targetCatId: string;
   createdAt: number;
   demandOrderId?: string;
-  budgetCents?: number;
+  budgetCents?: Cents;
   contractId?: string;
 }
 
@@ -269,9 +275,9 @@ export interface ProcurementPlan {
   outputItemId: ItemId;
   recipeId: string;
   terminalOrderId: string | null;
-  expectedRevenueCents: number;
+  expectedRevenueCents: Cents;
   /** Discovery reward locked when this plan claimed the bounty. */
-  bountyCents?: number;
+  bountyCents?: Cents;
   createdAt: number;
   /** The one shared behavior law that authorized creation of this plan. */
   createdByBehaviorLawId?: string;
@@ -279,12 +285,12 @@ export interface ProcurementPlan {
   reason: "bounty" | "order" | "external-sale";
   /** Market funding state. A plan may act only after its complete input bundle is funded. */
   phase?: "quoting" | "funded" | "procuring" | "ready";
-  terminalRevenueCents?: number;
-  alternativeGainCents?: number;
-  bundleCostCents?: number;
-  financingReserveCents?: number;
-  expectedProfitCents?: number;
-  budgetSlackCents?: number;
+  terminalRevenueCents?: Cents;
+  alternativeGainCents?: Cents;
+  bundleCostCents?: Cents;
+  financingReserveCents?: Cents;
+  expectedProfitCents?: Cents;
+  budgetSlackCents?: Cents;
   bundleOrderIds?: string[];
   blockedReason?: string | null;
   quoteRevision?: number;
@@ -298,8 +304,8 @@ export interface DemandOrder {
   buyerCatId: string | null;
   destinationCatId: string;
   itemId: ItemId;
-  maxDeliveredCents: number;
-  reservedCents: number;
+  maxDeliveredCents: Cents;
+  reservedCents: Cents;
   planId: string | null;
   createdAt: number;
   status: DemandOrderStatus;
@@ -307,11 +313,11 @@ export interface DemandOrder {
   closeReason: string | null;
   /** A firm quote names its supplier and locks the route and settlement amounts. */
   committedSellerCatId?: string | null;
-  quotedSellerCents?: number;
+  quotedSellerCents?: Cents;
   quotedRouteCatIds?: string[];
-  quotedFeesByCatId?: Record<string, number>;
+  quotedFeesByCatId?: Record<string, Cents>;
   /** Worst-case loan fee reserved together with this order's delivered quote. */
-  quoteFinancingReserveCents?: number;
+  quoteFinancingReserveCents?: Cents;
   quoteRevision?: number;
 }
 
@@ -320,8 +326,8 @@ export interface OrderSignal {
   catId: string;
   routeCatIds: string[];
   hops: number;
-  estimatedFreightCents: number;
-  effectiveBidCents: number;
+  estimatedFreightCents: Cents;
+  effectiveBidCents: Cents;
   receivedAt: number;
 }
 
@@ -343,7 +349,7 @@ export interface MarketBroadcast {
   subjectId: string;
   itemId: ItemId;
   sourceCatId: string;
-  amountCents: number;
+  amountCents: Cents;
   publishedAt: number;
   reason: string | null;
 }
@@ -361,9 +367,9 @@ export interface ShipmentContract {
   routeCatIds: string[];
   currentLeg: number;
   custodianCatId: string;
-  sellerPriceCents: number;
-  feesByCatId: Record<string, number>;
-  escrowCents: number;
+  sellerPriceCents: Cents;
+  feesByCatId: Record<string, Cents>;
+  escrowCents: Cents;
   acceptedAt: number;
   deliveredAt: number | null;
   status: ShipmentContractStatus;
@@ -371,7 +377,7 @@ export interface ShipmentContract {
 
 export interface DiscoveryBounty {
   itemId: ItemId;
-  amountCents: number;
+  amountCents: Cents;
   claimedByCatId: string | null;
   paid: boolean;
 }
@@ -396,7 +402,8 @@ export interface ItemStats {
   crafted: number;
   passed: number;
   sold: number;
-  revenue: number;
+  /** Legacy key; value has used integer cents since schema 4. */
+  revenue: Cents;
 }
 
 export type AchievementKind = "first-craft" | "production-rate" | "total-production";
@@ -405,7 +412,7 @@ export interface AchievementEvent {
   id: string;
   kind: AchievementKind;
   itemId: ItemId | null;
-  thresholdCents: number | null;
+  thresholdCents: Cents | null;
   unlockedAt: number;
   acknowledgedAt: number | null;
 }
@@ -443,7 +450,7 @@ export interface WealthHistorySample {
   /** Deterministic simulation timestamp; no wall-clock or offline time. */
   at: number;
   /** Wealth-plus-available-credit score captured for every cat alive at `at`. */
-  values: Record<string, number>;
+  values: Record<string, Cents>;
 }
 
 export interface FloatingEvent {
@@ -456,14 +463,14 @@ export interface FloatingEvent {
   lawId?: string;
   reason?: string;
   itemId?: ItemId;
-  gainCents?: number;
+  gainCents?: Cents;
   direction?: Direction;
   destinationCatId?: string;
   scheduledDelayMs?: number;
 }
 
 export interface GameState {
-  schemaVersion: 17;
+  schemaVersion: SaveSchemaVersion;
   difficulty: DifficultyLevel;
   catalogVersion: string;
   worldSeed: number;
@@ -482,7 +489,7 @@ export interface GameState {
   nextLandmarkIndex: number;
   buildingOffers: BuildingOffer[];
   /** Legacy field name retained for save compatibility; stores every item in the player's warehouse. */
-  playerBuildingInventory: Record<ItemId, number>;
+  playerBuildingInventory: PlayerWarehouseInventory;
   /** Purchased warehouse stock, kept separate from cat-made/delivered stock for provenance audits. */
   playerWarehousePurchases: Record<ItemId, number>;
   /** Item kinds protected from bulk warehouse sales and buy-then-resell operations. */
@@ -503,17 +510,18 @@ export interface GameState {
   nextMarketBroadcastIndex: number;
   nextContractIndex: number;
   nextMarketEventIndex: number;
-  simulationSpeed: number;
+  /** Legacy save key for the engine-only test rate; unrelated to runtime playback speed. */
+  simulationSpeed: InternalSimulationRate;
   laws: LawVersion[];
   lawHistory: LawVersion[];
   enactmentCount: number;
-  treasuryCoins: number;
-  totalSales: number;
+  treasuryCoins: Cents;
+  totalSales: Cents;
   discoveredItems: ItemId[];
   unlockedRecipes: string[];
   itemStats: Record<ItemId, ItemStats>;
   /** Gross value captured at craft completion; later price laws never rewrite history. */
-  totalProductionValueCents: number;
+  totalProductionValueCents: Cents;
   /** Persistent, deterministic achievement queue. */
   achievements: AchievementEvent[];
   /** Compact lifetime production-plan graph used by the persistent stability lens. */
@@ -521,7 +529,7 @@ export interface GameState {
   /** Five-second snapshots retained for adjustable recent-wealth map lenses. */
   wealthHistory: WealthHistorySample[];
   /** Craft completions retained for the public rolling 60-second law input. */
-  recentProductionEvents: Array<{ itemId: ItemId; at: number; catId: string; valueCents?: number }>;
+  recentProductionEvents: Array<{ itemId: ItemId; at: number; catId: string; valueCents?: Cents }>;
   floatingEvents: FloatingEvent[];
   stargatesBuilt: number;
   milestoneAt: number | null;
@@ -596,30 +604,4 @@ export interface DecisionResult {
   action: CatAction;
   error?: string;
   steps: number;
-}
-
-declare global {
-  interface Window {
-    advanceTime: (ms: number) => void;
-    render_game_to_text: () => string;
-    __CAT_WORKSHOP__?: {
-      reset: (difficulty?: DifficultyLevel) => Promise<void>;
-      state: () => GameState;
-      setSpeed: (multiplier: number) => void;
-      setSpeechFrequency: (frequency: number) => number;
-      removeCat: (catId: string) => { ok: boolean; error?: string; settledCents?: number; debtRepaidCents?: number; treasuryDeltaCents?: number };
-      placeNamedLandmark: (name: string, position: Position) => { ok: boolean; error?: string };
-      renameLandmark: (landmarkId: string, name: string) => { ok: boolean; error?: string };
-      dismantleLandmark: (landmarkId: string) => { ok: boolean; error?: string };
-      createResource: (itemId: ItemId, position: Position) => { ok: boolean; error?: string };
-      removeResource: (resourceId: string) => { ok: boolean; error?: string };
-      buyCatItem: (catId: string, itemId: ItemId) => { ok: boolean; error?: string; cost?: number; sellerCatId?: string };
-      buyAllCatStock: () => { ok: boolean; error?: string; costCents?: number; quantity?: number };
-      buyAllCatStockAndSell: () => { ok: boolean; error?: string; costCents?: number; revenueCents?: number; netCents?: number; quantity?: number };
-      sellWarehouseItem: (itemId: ItemId, quantity?: number) => { ok: boolean; error?: string; revenueCents?: number; quantity?: number };
-      sellAllUnlockedWarehouseItems: () => { ok: boolean; error?: string; revenueCents?: number; quantity?: number };
-      toggleWarehouseItemLock: (itemId: ItemId) => { ok: boolean; error?: string; locked?: boolean };
-      acknowledgeAchievement: (achievementId: string) => boolean;
-    };
-  }
 }

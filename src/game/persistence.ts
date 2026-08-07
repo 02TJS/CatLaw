@@ -12,6 +12,10 @@ import { generateParcelResourceNodes, normalizeWorldSeed, parcelBounds, parcelFo
 import { normalizeAchievementState } from "./achievements";
 import { normalizeProductionHistory } from "./productionHistory";
 import { normalizeLandmarkNames } from "./landmarks";
+import { SAVE_SCHEMA_VERSION, isSupportedSaveSchemaVersion } from "./saveSchema";
+import { saveMigrationPlanFor } from "./saveMigrationRegistry";
+import { cloneGameStateForPersistence } from "./stateLifecycle";
+import { DEFAULT_INTERNAL_SIMULATION_RATE } from "./domainUnits";
 
 const DB_NAME = "cat-law-workshop";
 const STORE_NAME = "saves";
@@ -33,15 +37,7 @@ async function database() {
  * that accidentally attached a legacy `lawPolicy` property to a cat.
  */
 export function serializeGameState(state: GameState): GameState {
-  const snapshot = structuredClone(state) as GameState & {
-    cats: Array<GameState["cats"][number] & { lawPolicy?: unknown }>;
-  };
-  snapshot.cats = snapshot.cats.map((cat) => {
-    const persistedCat = { ...cat } as typeof cat & { lawPolicy?: unknown };
-    delete persistedCat.lawPolicy;
-    return persistedCat;
-  });
-  snapshot.floatingEvents = [];
+  const snapshot = cloneGameStateForPersistence(state);
   compactGameStateHistory(snapshot);
   return snapshot;
 }
@@ -71,7 +67,7 @@ export async function loadGame(fallbackSeed?: number): Promise<GameState> {
   state.worldSeed = worldSeed;
   state.paused = false;
   state.catalogVersion = CATALOG_VERSION;
-  state.simulationSpeed = 1;
+  state.simulationSpeed = DEFAULT_INTERNAL_SIMULATION_RATE;
   state.floatingEvents = [];
   state.dirtyDecisions = true;
   state.treasuryCoins = Number.isFinite(state.treasuryCoins) ? state.treasuryCoins : 0;
@@ -117,25 +113,27 @@ export async function loadGame(fallbackSeed?: number): Promise<GameState> {
 }
 
 export function migrateSaveSnapshot(raw: any, fallbackSeed?: number): GameState {
-  if (!raw || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17].includes(raw.schemaVersion ?? 0) || !Array.isArray(raw.cats)) return createInitialState({ worldSeed: fallbackSeed });
-  const legacy = raw.schemaVersion === 1;
-  const needsResourceRegionMigration = raw.schemaVersion < 3;
-  const needsMarketMigration = raw.schemaVersion < 4;
-  const needsBuildingMarketMigration = raw.schemaVersion < 5;
-  const needsDifficultyMigration = raw.schemaVersion < 6;
-  const needsStarterLawMigration = raw.schemaVersion < 12;
-  const needsReliableMarketMigration = raw.schemaVersion < 14;
+  if (!raw || !isSupportedSaveSchemaVersion(raw.schemaVersion ?? 0) || !Array.isArray(raw.cats)) return createInitialState({ worldSeed: fallbackSeed });
+  const {
+    legacy,
+    needsResourceRegionMigration,
+    needsMarketMigration,
+    needsBuildingMarketMigration,
+    needsDifficultyMigration,
+    needsStarterLawMigration,
+    needsReliableMarketMigration,
+  } = saveMigrationPlanFor(raw.schemaVersion);
   const worldSeed = normalizeWorldSeed(raw.worldSeed ?? (legacy ? legacySeed(raw) : fallbackSeed ?? 0));
   const fallback = createInitialState({ worldSeed, difficulty: needsDifficultyMigration ? LEGACY_SAVE_DIFFICULTY : normalizeDifficulty(raw.difficulty) });
   const state = { ...fallback, ...structuredClone(raw) } as GameState;
-  state.schemaVersion = 17;
+  state.schemaVersion = SAVE_SCHEMA_VERSION;
   state.difficulty = needsDifficultyMigration
     ? LEGACY_SAVE_DIFFICULTY
     : normalizeDifficulty(raw.difficulty, fallback.difficulty);
   state.worldSeed = worldSeed;
   state.paused = false;
   state.catalogVersion = CATALOG_VERSION;
-  state.simulationSpeed = 1;
+  state.simulationSpeed = DEFAULT_INTERNAL_SIMULATION_RATE;
   state.speechFrequency = normalizeSpeechFrequency(raw.speechFrequency);
   state.floatingEvents = [];
   state.dirtyDecisions = false;

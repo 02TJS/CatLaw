@@ -17,6 +17,7 @@ import {
 import type { GameController } from "../game/controller";
 import { formatMoney, inventoryTotal, itemPrice } from "../game/engine";
 import { difficultySiteRequirements, effectiveRecipeInputs } from "../game/difficulty";
+import { EmojiIcon } from "./EmojiIcon";
 
 const TIER_NAMES = ["基础采集", "手工作坊", "机械制造", "电气工业", "电子自动化", "计算与核能", "航天时代", "量子时代", "星门工程"];
 
@@ -29,7 +30,7 @@ export function CatalogPanel({ controller, onOpenGraph }: { controller: GameCont
 
   return <div className="catalog-panel">
     <button className="recipe-graph-entry" type="button" onClick={onOpenGraph} data-testid="open-recipe-graph">
-      <span>🧶</span>
+      <span><EmojiIcon emoji="🧶" size={28} /></span>
       <span><strong>打开配方一图流</strong><small>浏览器中查看全部 65 项、建筑条件与关系高亮</small></span>
       <b>↗</b>
     </button>
@@ -42,7 +43,7 @@ export function CatalogPanel({ controller, onOpenGraph }: { controller: GameCont
       <div><strong>产业认证 {certifiedItems.length}/{MARKET_CERTIFICATION_ITEM_IDS.length}</strong><span>解锁第 16–20 项的共同门槛</span></div>
       <small>{missingCertificationItems.length === 0
         ? "✓ 五种付费中间品均已实际制造"
-        : `待认证：${missingCertificationItems.map((id) => `${ITEM_BY_ID.get(id)?.emoji} ${ITEM_BY_ID.get(id)?.name}`).join("、")}`}</small>
+        : `待认证：${missingCertificationItems.map((id) => ITEM_BY_ID.get(id)?.name).join("、")}`}</small>
     </div>
     {message && <div className={message.includes("已解锁") ? "success-box" : "error-box"}>{message}</div>}
     {TIER_NAMES.map((tierName, tier) => {
@@ -65,7 +66,7 @@ export function CatalogPanel({ controller, onOpenGraph }: { controller: GameCont
             const affordable = state.treasuryCoins >= cost;
             const siteLabel = difficultySiteRequirements(entry, state.difficulty).map((requirement) => {
               const building = ITEM_BY_ID.get(requirement.buildingItemId);
-              return `${building?.emoji ?? "🏗️"} ${building?.name ?? requirement.buildingItemId} ${requirement.maxManhattanDistance}格内`;
+              return `${building?.name ?? requirement.buildingItemId} ${requirement.maxManhattanDistance}格内`;
             }).join("、");
             return <article
               className={`item-card recipe-card ${unlocked ? "unlocked" : available ? "available" : "locked"}`}
@@ -73,7 +74,7 @@ export function CatalogPanel({ controller, onOpenGraph }: { controller: GameCont
               title={describeRecipe(entry.id)}
               data-testid={`recipe-${entry.id}`}
             >
-              <div className="item-emoji">{item.emoji}</div>
+              <div className="item-emoji"><EmojiIcon emoji={item.emoji} label={item.name} size={32} /></div>
               <div className="recipe-card-main">
                 {siteLabel && <small className="site-requirement">制造地点：{siteLabel}</small>}
                 <div className="recipe-title"><strong>{item.name}</strong>{state.discoveredItems.includes(item.id) && <span>已制造</span>}</div>
@@ -90,7 +91,7 @@ export function CatalogPanel({ controller, onOpenGraph }: { controller: GameCont
                         data-testid={`unlock-${entry.id}`}
                         onClick={() => {
                           const result = controller.unlockRecipe(entry.id);
-                          setMessage(result.ok ? `${item.emoji} ${item.name}配方已解锁，所有猫都已学会。` : result.error ?? "解锁失败");
+                          setMessage(result.ok ? `${item.name}配方已解锁，所有猫都已学会。` : result.error ?? "解锁失败");
                         }}
                       >{affordable ? `解锁 · ${formatMoney(cost)}` : `还差 ${formatMoney(cost - state.treasuryCoins)}`}</button>
                     : <span className="recipe-status prerequisite">{missing.length > 0

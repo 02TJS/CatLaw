@@ -17,6 +17,7 @@ import {
 } from "../game/market";
 import catSpriteUrl from "../assets/cat-workshop-sprite.png?url";
 import { LANDMARK_BY_ID, landmarkEffectsAt } from "../game/landmarks";
+import { EmojiIcon } from "./EmojiIcon";
 
 export function Inspector({ cat, controller, totalItems, onRemoved }: { cat?: CatState; controller: GameController; totalItems: number; onRemoved: () => void }) {
   const state = controller.state;
@@ -52,14 +53,14 @@ export function Inspector({ cat, controller, totalItems, onRemoved }: { cat?: Ca
       const lowest = lines.reduce((price, line) => Math.min(price, line.unitPriceCents), Number.POSITIVE_INFINITY);
       if (available < 1) return null;
       return <div key={`purchase-${id}`} className="cat-stock-row">
-        <span>{item?.emoji} {item?.name ?? id} · 可收购 {available}</span>
+        <span><EmojiIcon emoji={item?.emoji ?? "❔"} label={item?.name} /> {item?.name ?? id} · 可收购 {available}</span>
         <button
           data-testid={`buy-cat-${cat.id}-${id}`}
           disabled={state.treasuryCoins < lowest}
           onClick={() => {
             const result = controller.buyCatItem(cat.id, id);
             setPurchaseMessage({ ok: result.ok, text: result.ok
-              ? `${item?.emoji ?? ""} 已收购 1 件，支付 ${formatMoney(result.cost ?? 0)}。`
+              ? `已收购 1 件，支付 ${formatMoney(result.cost ?? 0)}。`
               : result.error ?? "收购失败" });
           }}
         >收购 1 件 · {formatMoney(lowest)}</button>
@@ -71,12 +72,12 @@ export function Inspector({ cat, controller, totalItems, onRemoved }: { cat?: Ca
     {catPurchaseControls}
     <section className="cat-profile">
       <div className="cat-avatar" style={{ backgroundImage: `url(${catSpriteUrl})` }} role="img" aria-label="姜黄色工匠猫" />
-      <div><span className="eyebrow">猫咪 #{cat.createdIndex}</span><h2>工位 ({cat.position.x}, {cat.position.y})</h2><p>{resourceItemId ? `${ITEM_BY_ID.get(resourceItemId)?.emoji} ${ITEM_BY_ID.get(resourceItemId)?.name}采集区` : "普通工位"}</p></div>
+      <div><span className="eyebrow">猫咪 #{cat.createdIndex}</span><h2>工位 ({cat.position.x}, {cat.position.y})</h2><p>{resourceItemId ? <><EmojiIcon emoji={ITEM_BY_ID.get(resourceItemId)?.emoji ?? "❔"} /> {ITEM_BY_ID.get(resourceItemId)?.name}采集区</> : "普通工位"}</p></div>
     </section>
 
     <div className="section-heading"><h3>地标加成</h3><span>{coveredLandmarks.length ? `${coveredLandmarks.length} 类覆盖` : "无覆盖"}</span></div>
     <section className="detail-block landmark-effect-block" data-testid="cat-landmark-effects">
-      <Detail label="覆盖层数" value={coveredLandmarks.length ? coveredLandmarks.map(([id, count]) => `${LANDMARK_BY_ID.get(id as import("../game/types").LandmarkId)?.emoji ?? ""}${LANDMARK_BY_ID.get(id as import("../game/types").LandmarkId)?.name ?? id}×${count}`).join(" · ") : "无"} />
+      <Detail label="覆盖层数" value={coveredLandmarks.length ? coveredLandmarks.map(([id, count]) => `${LANDMARK_BY_ID.get(id as import("../game/types").LandmarkId)?.name ?? id}×${count}`).join(" · ") : "无"} />
       <Detail label="有效视野" value={`曼哈顿半径 ${landmarkEffects.effectiveVisionRadius}`} />
       <Detail label="全部动作加速" value={`${Math.round(landmarkEffects.actionSpeedReduction * 100)}%`} />
       <Detail label="制作专项加速" value={`${Math.round(landmarkEffects.craftSpeedReduction * 100)}%`} />
@@ -111,7 +112,7 @@ export function Inspector({ cat, controller, totalItems, onRemoved }: { cat?: Ca
     {inventory.length === 0 ? <div className="empty-state small">库存为空</div> : <div className="inventory-list compact-inventory">{inventory.map(([id, quantity]) => {
       const item = ITEM_BY_ID.get(id);
       const offered = buildingOfferReservedQuantity(state, cat.id, id);
-      return <div key={id}><span>{item?.emoji} {item?.name ?? id}{offered ? ` · 挂牌预留 ${offered}` : ""}</span><strong>×{quantity}</strong></div>;
+      return <div key={id}><span><EmojiIcon emoji={item?.emoji ?? "❔"} label={item?.name} /> {item?.name ?? id}{offered ? ` · 挂牌预留 ${offered}` : ""}</span><strong>×{quantity}</strong></div>;
     })}</div>}
 
     <div className="section-heading"><h3>市场</h3><span>猫咪署名 · 全局即时广播</span></div>
@@ -132,13 +133,13 @@ export function Inspector({ cat, controller, totalItems, onRemoved }: { cat?: Ca
 
     <div className="section-heading"><h3>行动</h3><span>{cat.action ? "工作中" : "待机"}</span></div>
     <section className="detail-block action-block" data-testid="cat-action-detail">
-      <Detail label="生产计划" value={productionPlan ? `${ITEM_BY_ID.get(productionPlan.outputItemId)?.emoji ?? ""} ${productionPlan.outputItemId} · ${productionPlan.reason}` : "无"} />
+      <Detail label="生产计划" value={productionPlan ? `${ITEM_BY_ID.get(productionPlan.outputItemId)?.name ?? productionPlan.outputItemId} · ${productionPlan.reason}` : "无"} />
       <Detail label="预计收入" value={productionPlan ? formatMoney(productionPlan.expectedRevenueCents) : "—"} />
       <Detail label="计划阶段" value={productionPlan?.phase ?? "—"} />
       <Detail label="可靠原料包" value={productionPlan ? formatMoney(productionPlan.bundleCostCents ?? 0) : "—"} />
       <Detail label="融资预留" value={productionPlan ? formatMoney(productionPlan.financingReserveCents ?? 0) : "—"} />
       <Detail label="预计净收益" value={productionPlan ? formatMoney(productionPlan.expectedProfitCents ?? 0) : "—"} />
-      <Detail label="当前动作" value={cat.action ? `${actionName(cat.action.type)} ${ITEM_BY_ID.get(cat.action.itemId)?.emoji ?? ""} ${cat.action.itemId}` : "待机"} />
+      <Detail label="当前动作" value={cat.action ? `${actionName(cat.action.type)} ${ITEM_BY_ID.get(cat.action.itemId)?.name ?? cat.action.itemId}` : "待机"} />
       <Detail label="剩余时间" value={cat.action ? `${Math.max(0, (cat.action.endsAt - state.simTime) / 1_000).toFixed(1)} 秒` : "—"} />
       <Detail label="决策理由" value={cat.lastDecision} />
     </section>
@@ -155,7 +156,7 @@ function Detail({ label, value }: { label: string; value: string }) {
 
 function formatSignedMoney(cents: number): string {
   const sign = cents > 0 ? "+" : cents < 0 ? "−" : "";
-  return `${sign}${(Math.abs(cents) / 100).toFixed(2)} 🪙`;
+  return `${sign}${(Math.abs(cents) / 100).toFixed(2)} 金币`;
 }
 
 function actionName(type: "craft" | "pass" | "wait") {

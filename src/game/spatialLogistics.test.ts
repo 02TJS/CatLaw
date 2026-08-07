@@ -46,7 +46,7 @@ describe("spatial logistics and buildings", () => {
     decideIdleCats(state);
     expect(state.cats[0].action).toMatchObject({ type: "pass", itemId: "wood", direction: "east" });
     const speech = state.floatingEvents.find((event) => event.kind === "speech" && event.catId === "cat-0");
-    expect(speech?.text).toContain("把🪵木材运到东边的2号猫");
+    expect(speech?.text).toContain("把木材运到东边的2号猫");
     expect(speech?.text).toContain("2.01金币");
     expect(speech?.text).toContain("履行有偿运输合同");
     expect(speech?.text).toContain("喵");

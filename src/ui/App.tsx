@@ -1,36 +1,34 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties } from "react";
 import { GameController } from "../game/controller";
-import { catLiquidationPreview, catStockPurchaseQuote, formatMoney, grossProductionValuePerMinute, inventoryTotal, itemPrice, purchasableParcels, warehouseBulkSellQuote, warehouseQuote, warehouseSellPrice, WEALTH_HISTORY_SAMPLE_INTERVAL_MS } from "../game/engine";
+import {
+  catCashCents,
+  playerWarehouseInventory,
+  treasuryCashCents,
+} from "../game/domainSemantics";
+import { catStockPurchaseQuote, formatMoney, grossProductionValuePerMinute } from "../game/engine";
 import type { CatStockPurchaseQuote } from "../game/engine";
 import { GameCanvas } from "./GameCanvas";
 import { LawPanel } from "./LawPanel";
 import { CatalogPanel } from "./CatalogPanel";
 import { Inspector } from "./Inspector";
 import { BuildingPanel } from "./BuildingPanel";
-import { canUnlockRecipe, ITEM_BY_ID, ITEMS, MARKET_CERTIFICATION_ITEM_IDS, RECIPES, recipeUnlockCost } from "../game/catalog";
-import { localVisibleCats, LOCAL_VISION_RADIUS } from "../game/localPlanner";
+import { ITEM_BY_ID, ITEMS } from "../game/catalog";
 import { DIFFICULTY_PROFILES } from "../game/difficulty";
 import type { DifficultyProfile } from "../game/difficulty";
 import type { DifficultyLevel, LandmarkId } from "../game/types";
 import type { AchievementEvent } from "../game/types";
 import { achievementGrade, pendingAchievements } from "../game/achievements";
-import { landmarkDisplayName, LANDMARK_BY_ID, LANDMARK_DEFINITIONS, landmarkEffectsAt, NAMED_LANDMARK_EMOJI, NAMED_LANDMARK_WOOD_COST } from "../game/landmarks";
-import { lawProgramSummary, SHARED_BEHAVIOR_HASH } from "../game/lawProgram";
 import {
   DEFAULT_SPEECH_FREQUENCY,
-  safeSpeechTemplates,
   SPEECH_FREQUENCY_MAX,
   SPEECH_FREQUENCY_MIN,
   speechCapacityForFrequency,
-  speechEventIsVisible,
 } from "../game/speech";
-import { positionKey, resourceHarvestTiles, resourceNodesAtPosition } from "../game/world";
-import { getDeepSeekStatus, setDeepSeekApiKey } from "../api";
 import { DeepSeekKeyDialog } from "./DeepSeekKeyDialog";
+import { EmojiIcon } from "./EmojiIcon";
 import {
   buildMapLensSnapshot,
-  DEFAULT_WEALTH_LENS_WINDOW_MS,
   ITEM_SCOPED_LENSES,
   MAP_LENS_OPTIONS,
   mapLensSelectableItemIds,
@@ -49,77 +47,20 @@ import {
   MAP_SCALE_MAX,
   MAP_SCALE_MIN,
   normalizeUiPreferences,
-  parseUiPreferences,
-  serializeUiPreferences,
   SPEECH_BUBBLE_SCALE_MAX,
   SPEECH_BUBBLE_SCALE_MIN,
-  UI_PREFERENCES_STORAGE_KEY,
   type UiPreferences,
 } from "./uiPreferences";
-import {
-  bountyBroadcastsForCat,
-  broadcastsForCat,
-  buildingOfferBroadcastsForCat,
-  creditAvailableCents,
-  netWorthCents,
-  planForCatPublic,
-  readyContractForCat,
-  signalsForCat,
-} from "../game/market";
+import type { CommerceFeedback, CommerceItemDelta, LandmarkPlacementFeedback, PlacementFeedback } from "./appTypes";
+import { loadUiPreferences, loadWealthLensPreferences, useAppPreferencePersistence } from "./appPreferences";
+import { beginDesktopWindowDrag, openRecipeInterface, useDesktopShellInteractions, useResponsiveShellLayout } from "./appPlatform";
+import { useRecipeBridge } from "./appRecipeBridge";
+import { useDeepSeekSettings } from "./appDeepSeekSettings";
+import { startAppSession } from "./appSession";
 
 const controller = new GameController();
 
 type Panel = "laws" | "warehouse" | "recipes" | "cat" | "settings" | null;
-
-function loadUiPreferences(): UiPreferences {
-  try {
-    return parseUiPreferences(window.localStorage.getItem(UI_PREFERENCES_STORAGE_KEY));
-  } catch {
-    return { ...DEFAULT_UI_PREFERENCES };
-  }
-}
-
-const WEALTH_LENS_PREFERENCES_KEY = "cat-workshop-wealth-lens-v1";
-
-function loadWealthLensPreferences(): { mode: WealthLensMode; windowMs: number } {
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(WEALTH_LENS_PREFERENCES_KEY) ?? "null");
-    const mode: WealthLensMode = parsed?.mode === "change" ? "change" : "total";
-    const windowMs = WEALTH_LENS_WINDOW_OPTIONS_MS.includes(parsed?.windowMs)
-      ? parsed.windowMs
-      : DEFAULT_WEALTH_LENS_WINDOW_MS;
-    return { mode, windowMs };
-  } catch {
-    return { mode: "total", windowMs: DEFAULT_WEALTH_LENS_WINDOW_MS };
-  }
-}
-
-interface PlacementFeedback {
-  itemId: string;
-  position: { x: number; y: number };
-  ok: boolean;
-  error?: string;
-}
-
-interface LandmarkPlacementFeedback {
-  landmarkId: LandmarkId;
-  position: { x: number; y: number };
-  ok: boolean;
-  error?: string;
-}
-
-interface CommerceItemDelta {
-  itemId: string;
-  quantity: number;
-}
-
-interface CommerceFeedback {
-  id: number;
-  ok: boolean;
-  text: string;
-  itemDeltas?: CommerceItemDelta[];
-  treasuryDeltaCents?: number;
-}
 
 function aggregatePurchaseItems(quote: CatStockPurchaseQuote): CommerceItemDelta[] {
   const quantities = new Map<string, number>();
@@ -193,7 +134,7 @@ function AchievementDialog({ achievement, state, onAcknowledge }: {
       <div className="achievement-burst" aria-hidden="true">
         {Array.from({ length: 12 }, (_, index) => <i key={index} style={{ "--spark-index": index } as CSSProperties} />)}
       </div>
-      <div className="achievement-medallion" aria-hidden="true"><span>{presentation.emoji}</span></div>
+      <div className="achievement-medallion" aria-hidden="true"><span><EmojiIcon emoji={presentation.emoji} size={48} /></span></div>
       <small>{presentation.eyebrow}</small>
       <h2 id="achievement-title">{presentation.title}</h2>
       <p>{presentation.description}</p>
@@ -263,11 +204,6 @@ export function App() {
   const placementFeedbackRef = useRef<PlacementFeedback | null>(placementFeedback);
   const [landmarkFeedback, setLandmarkFeedback] = useState<LandmarkPlacementFeedback | null>(null);
   const landmarkFeedbackRef = useRef<LandmarkPlacementFeedback | null>(landmarkFeedback);
-  const [deepSeekConfigured, setDeepSeekConfigured] = useState(false);
-  const [deepSeekChecking, setDeepSeekChecking] = useState(true);
-  const [deepSeekStorage, setDeepSeekStorage] = useState<"secure-local" | "session">("session");
-  const [deepSeekDialogOpen, setDeepSeekDialogOpen] = useState(false);
-  const [deepSeekError, setDeepSeekError] = useState<string | null>(null);
   const [alwaysOnTop, setAlwaysOnTop] = useState(true);
   const [commerceFeedback, setCommerceFeedback] = useState<CommerceFeedback | null>(null);
   const commerceFeedbackRef = useRef<CommerceFeedback | null>(commerceFeedback);
@@ -298,22 +234,12 @@ export function App() {
   useEffect(() => { landmarkFeedbackRef.current = landmarkFeedback; }, [landmarkFeedback]);
   useEffect(() => { commerceFeedbackRef.current = commerceFeedback; }, [commerceFeedback]);
   useEffect(() => { achievementReviewArmedRef.current = achievementReviewArmed; }, [achievementReviewArmed]);
-  useEffect(() => {
-    uiPreferencesRef.current = uiPreferences;
-    try {
-      window.localStorage.setItem(UI_PREFERENCES_STORAGE_KEY, serializeUiPreferences(uiPreferences));
-    } catch {
-      // Private browsing or a locked profile must not prevent the game from running.
-    }
-  }, [uiPreferences]);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(WEALTH_LENS_PREFERENCES_KEY, JSON.stringify({ mode: wealthLensMode, windowMs: wealthLensWindowMs }));
-    } catch {
-      // A locked profile must not prevent the lens itself from working.
-    }
-  }, [wealthLensMode, wealthLensWindowMs]);
+  useAppPreferencePersistence(
+    uiPreferences,
+    uiPreferencesRef,
+    wealthLensMode,
+    wealthLensWindowMs,
+  );
 
   useEffect(() => {
     if (!mapLensItemPickerOpen) return;
@@ -328,247 +254,58 @@ export function App() {
     if (!mapLensPaletteOpen || !ITEM_SCOPED_LENSES.has(mapLensId)) setMapLensItemPickerOpen(false);
   }, [mapLensId, mapLensPaletteOpen]);
 
-  useEffect(() => {
-    const shell = petWindowRef.current;
-    const titlebar = titlebarRef.current;
-    const quickStats = quickStatsRef.current;
-    const dock = dockRef.current;
-    if (!shell || !titlebar || !quickStats || !dock || !titlebar.closest(".desktop-shell")) return;
+  useResponsiveShellLayout(
+    petWindowRef,
+    titlebarRef,
+    quickStatsRef,
+    dockRef,
+    uiPreferencesRef,
+    uiPreferences.controlScale,
+    uiPreferences.interfaceFontScale,
+  );
 
-    let frame = 0;
-    const numericStyle = (style: CSSStyleDeclaration, property: string) => Number.parseFloat(style.getPropertyValue(property)) || 0;
-    const naturalWidth = (element: HTMLElement) => {
-      const style = window.getComputedStyle(element);
-      const children = [...element.children].filter((child): child is HTMLElement => child instanceof HTMLElement);
-      const childWidth = children.reduce((sum, child) => sum + Math.max(child.scrollWidth, child.getBoundingClientRect().width), 0);
-      const gap = numericStyle(style, "column-gap") * Math.max(0, children.length - 1);
-      const chrome = numericStyle(style, "padding-left") + numericStyle(style, "padding-right")
-        + numericStyle(style, "border-left-width") + numericStyle(style, "border-right-width");
-      return Math.max(element.scrollWidth, childWidth + gap + chrome);
-    };
-    const updateLayout = () => {
-      frame = 0;
-      const drag = titlebar.querySelector<HTMLElement>(".pet-drag-region");
-      const headline = titlebar.querySelector<HTMLElement>(".pet-headline-stats");
-      const controls = titlebar.querySelector<HTMLElement>(".pet-window-controls");
-      if (!drag || !headline || !controls) return;
+  const {
+    configured: deepSeekConfigured,
+    checking: deepSeekChecking,
+    storage: deepSeekStorage,
+    baseUrl: deepSeekBaseUrl,
+    dialogOpen: deepSeekDialogOpen,
+    error: deepSeekError,
+    refresh: refreshDeepSeekStatus,
+    open: openDeepSeekSettings,
+    cancel: cancelDeepSeekSettings,
+    submit: submitDeepSeekSettings,
+  } = useDeepSeekSettings(controller);
 
-      const titleStyle = window.getComputedStyle(titlebar);
-      const requiredWidth = naturalWidth(drag) + naturalWidth(headline) + naturalWidth(controls)
-        + numericStyle(titleStyle, "column-gap") * 2;
-      titlebar.classList.toggle("stacked", requiredWidth > titlebar.clientWidth + 0.5);
+  useDesktopShellInteractions(expansionModeRef, windowDragActive);
 
-      const stage = shell.querySelector<HTMLElement>(".pet-stage");
-      if (!stage) return;
-      const stageTop = stage.getBoundingClientRect().top;
-      const titleBottom = Math.max(
-        drag.getBoundingClientRect().bottom,
-        headline.getBoundingClientRect().bottom,
-        controls.getBoundingClientRect().bottom,
-      );
-      const controlScale = uiPreferencesRef.current.controlScale;
-      shell.style.setProperty("--pet-title-safe-bottom", `${Math.ceil(titleBottom - stageTop + 8 * controlScale)}px`);
-      const quickRect = quickStats.getBoundingClientRect();
-      const quickBottom = quickRect.bottom;
-      shell.style.setProperty("--pet-quick-safe-bottom", `${Math.ceil(quickBottom - stageTop + 8 * controlScale)}px`);
-      const drawer = shell.querySelector<HTMLElement>(".pet-drawer");
-      const drawerRect = drawer?.getBoundingClientRect();
-      const drawerCrossesQuickStats = drawerRect
-        ? quickRect.left < drawerRect.right && quickRect.right > drawerRect.left
-        : false;
-      shell.style.setProperty(
-        "--pet-drawer-safe-top",
-        `${Math.ceil((drawerCrossesQuickStats ? quickBottom : titleBottom) - stageTop + 8 * controlScale)}px`,
-      );
-      const stageBottom = stage.getBoundingClientRect().bottom;
-      const dockTop = dock.getBoundingClientRect().top;
-      shell.style.setProperty("--pet-dock-safe-bottom", `${Math.ceil(stageBottom - dockTop + 8 * controlScale)}px`);
-    };
-    const scheduleLayout = () => {
-      if (frame) return;
-      frame = window.requestAnimationFrame(updateLayout);
-    };
+  useRecipeBridge(controller);
 
-    const resizeObserver = new ResizeObserver(scheduleLayout);
-    resizeObserver.observe(shell);
-    resizeObserver.observe(titlebar);
-    resizeObserver.observe(quickStats);
-    resizeObserver.observe(dock);
-    for (const child of titlebar.children) resizeObserver.observe(child);
-    const mutationObserver = new MutationObserver(scheduleLayout);
-    mutationObserver.observe(titlebar, { childList: true, subtree: true, characterData: true });
-    const shellMutationObserver = new MutationObserver(scheduleLayout);
-    shellMutationObserver.observe(shell, { childList: true, subtree: true });
-    scheduleLayout();
-    return () => {
-      if (frame) window.cancelAnimationFrame(frame);
-      resizeObserver.disconnect();
-      mutationObserver.disconnect();
-      shellMutationObserver.disconnect();
-    };
-  }, [uiPreferences.controlScale, uiPreferences.interfaceFontScale]);
+  useEffect(() => startAppSession(controller, {
+    selectedCatRef,
+    placingBuildingRef,
+    placementFeedbackRef,
+    placingLandmarkRef,
+    landmarkFeedbackRef,
+    uiPreferencesRef,
+    expansionModeRef,
+    mapLensIdRef,
+    mapLensItemIdRef,
+    wealthLensModeRef,
+    wealthLensWindowMsRef,
+    commerceFeedbackRef,
+    achievementReviewArmedRef,
+    mapLensItemPickerOpenRef,
+    commerceFeedbackTimer,
+    setMapLensItemPickerOpen,
+    setExpansionMode,
+    setMapLensPaletteOpen,
+    setMapLensId,
+    setPlacingBuildingItemId,
+    setPlacingLandmarkId,
+  }), []);
 
-  const refreshDeepSeekStatus = async (showDialog = false) => {
-    setDeepSeekChecking(true);
-    setDeepSeekError(null);
-    if (showDialog) setDeepSeekDialogOpen(true);
-    try {
-      const status = await getDeepSeekStatus();
-      setDeepSeekConfigured(status.configured);
-      setDeepSeekStorage(status.keyStorage);
-    } catch (error) {
-      setDeepSeekConfigured(false);
-      setDeepSeekError(error instanceof Error ? error.message : "无法连接本地服务");
-    } finally {
-      setDeepSeekChecking(false);
-    }
-  };
-
-  useEffect(() => {
-    void refreshDeepSeekStatus(false);
-  }, []);
-
-  useEffect(() => {
-    const onDesktopWheel = (event: WheelEvent) => {
-      if (!window.catWorkshopDesktop) return;
-      if ((event.target as HTMLElement | null)?.closest(".pet-drawer-content")) return;
-      if (expansionModeRef.current) return;
-      void window.catWorkshopDesktop.scaleWindow(event.deltaY, event.screenX, event.screenY);
-    };
-    window.addEventListener("wheel", onDesktopWheel, { capture: true, passive: false });
-    return () => window.removeEventListener("wheel", onDesktopWheel, true);
-  }, []);
-
-  useEffect(() => {
-    const onPointerMove = (event: PointerEvent) => {
-      if (!windowDragActive.current) return;
-      window.catWorkshopDesktop?.moveWindowDrag(event.screenX, event.screenY);
-    };
-    const endWindowDrag = () => {
-      if (!windowDragActive.current) return;
-      windowDragActive.current = false;
-      window.catWorkshopDesktop?.endWindowDrag();
-    };
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", endWindowDrag);
-    window.addEventListener("pointercancel", endWindowDrag);
-    window.addEventListener("blur", endWindowDrag);
-    return () => {
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", endWindowDrag);
-      window.removeEventListener("pointercancel", endWindowDrag);
-      window.removeEventListener("blur", endWindowDrag);
-    };
-  }, []);
-
-  useEffect(() => {
-    const channel = new BroadcastChannel("cat-workshop-interface-v1");
-    const sendState = () => channel.postMessage({
-      type: "recipe-state",
-      state: {
-        unlockedRecipes: [...controller.state.unlockedRecipes],
-        craftedItems: ITEMS.filter((item) => controller.state.itemStats[item.id].crafted > 0).map((item) => item.id),
-        treasuryCoins: controller.state.treasuryCoins,
-        difficulty: controller.state.difficulty,
-      },
-    });
-    channel.onmessage = (event) => {
-      if (event.data?.type === "recipe-state-request") sendState();
-      if (event.data?.type === "recipe-unlock" && typeof event.data.recipeId === "string") {
-        const result = controller.unlockRecipe(event.data.recipeId);
-        channel.postMessage({ type: "recipe-unlock-result", recipeId: event.data.recipeId, ...result });
-        sendState();
-      }
-    };
-    const timer = window.setInterval(sendState, 1_000);
-    sendState();
-    return () => {
-      window.clearInterval(timer);
-      channel.close();
-    };
-  }, []);
-
-  useEffect(() => {
-    controller.setRuntimeBlocked(false);
-    void controller.initialize();
-    window.advanceTime = (ms) => controller.advance(ms);
-    window.render_game_to_text = () => renderGameToText(
-      controller.state,
-      controller.getSpeedMultiplier(),
-      selectedCatRef.current,
-      placingBuildingRef.current,
-      placementFeedbackRef.current,
-      placingLandmarkRef.current,
-      landmarkFeedbackRef.current,
-      uiPreferencesRef.current,
-      expansionModeRef.current,
-      mapLensIdRef.current,
-      mapLensItemIdRef.current,
-      wealthLensModeRef.current,
-      wealthLensWindowMsRef.current,
-      commerceFeedbackRef.current,
-      achievementReviewArmedRef.current,
-    );
-    window.__CAT_WORKSHOP__ = {
-      reset: (difficulty) => controller.reset(difficulty),
-      state: () => structuredClone(controller.state),
-      setSpeed: (multiplier) => controller.setSpeed(multiplier),
-      setSpeechFrequency: (frequency) => controller.setSpeechFrequency(frequency),
-      removeCat: (catId) => controller.removeCat(catId),
-      placeNamedLandmark: (name, position) => controller.placeNamedLandmark(name, position),
-      renameLandmark: (landmarkId, name) => controller.renameLandmark(landmarkId, name),
-      dismantleLandmark: (landmarkId) => controller.dismantleLandmark(landmarkId),
-      createResource: (itemId, position) => controller.createResource(itemId, position),
-      removeResource: (resourceId) => controller.removeResource(resourceId),
-      buyCatItem: (catId, itemId) => controller.buyCatItem(catId, itemId),
-      buyAllCatStock: () => controller.buyAllCatStock(),
-      buyAllCatStockAndSell: () => controller.buyAllCatStockAndSell(),
-      sellWarehouseItem: (itemId, quantity) => controller.sellWarehouseItem(itemId, quantity),
-      sellAllUnlockedWarehouseItems: () => controller.sellAllUnlockedWarehouseItems(),
-      toggleWarehouseItemLock: (itemId) => controller.toggleWarehouseItemLock(itemId),
-      acknowledgeAchievement: (achievementId) => controller.acknowledgeAchievement(achievementId),
-    };
-    const onKey = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const typing = Boolean(target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
-      if (!typing && event.key.toLowerCase() === "p") {
-        event.preventDefault();
-        controller.togglePause();
-        return;
-      }
-      if (!typing) {
-        const speedByKey: Record<string, number> = { "1": 1, "2": 2, "3": 4, "4": 8 };
-        const nextSpeed = speedByKey[event.key];
-        if (nextSpeed) {
-          controller.setSpeed(nextSpeed);
-          return;
-        }
-      }
-      if (event.key === "Escape") {
-        if (mapLensItemPickerOpenRef.current) {
-          setMapLensItemPickerOpen(false);
-          return;
-        }
-        setExpansionMode(false);
-        setMapLensPaletteOpen(false);
-        setMapLensId("none");
-        setPlacingBuildingItemId(null);
-        setPlacingLandmarkId(null);
-      }
-      if (event.key.toLowerCase() === "f" && !["INPUT", "TEXTAREA"].includes((event.target as HTMLElement)?.tagName)) {
-        if (document.fullscreenElement) void document.exitFullscreen();
-        else void document.getElementById("game-shell")?.requestFullscreen();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => {
-      if (commerceFeedbackTimer.current !== null) window.clearTimeout(commerceFeedbackTimer.current);
-      controller.destroy();
-      window.removeEventListener("keydown", onKey);
-    };
-  }, []);
-
-  const personalCoins = state.cats.reduce((sum, cat) => sum + cat.coins, 0);
+  const personalCashCents = state.cats.reduce((sum, cat) => sum + catCashCents(cat), 0);
   const productionValuePerMinute = grossProductionValuePerMinute(state);
   const allCatStock = catStockPurchaseQuote(state);
   const queuedAchievements = pendingAchievements(state);
@@ -580,16 +317,19 @@ export function App() {
   }, [achievementReviewArmed, queuedAchievements.length]);
   const selectedCat = state.cats.find((cat) => cat.id === selectedCatId) ?? state.cats[0];
   const selectedInventoryCount = useMemo(() => selectedCat ? Object.values(selectedCat.inventory).reduce((sum, value) => sum + value, 0) : 0, [selectedCat, state.simTime]);
-  const warehouseKinds = ITEMS.filter((item) => (state.playerBuildingInventory[item.id] ?? 0) > 0).length;
+  const warehouse = playerWarehouseInventory(state);
+  const warehouseKinds = ITEMS.filter((item) => (warehouse[item.id] ?? 0) > 0).length;
   const selectableMapLensItemIds = mapLensSelectableItemIds(state);
   const selectedMapLensItem = mapLensItemId ? ITEM_BY_ID.get(mapLensItemId) : null;
   const mapLensSnapshot = buildMapLensSnapshot(state, mapLensId, mapLensItemId, { wealthMode: wealthLensMode, wealthWindowMs: wealthLensWindowMs });
   const panelTitle = panel === "laws" ? "逻辑法典" : panel === "warehouse" ? "我的仓库" : panel === "recipes" ? "购买配方" : panel === "cat" ? "猫咪详情" : "桌宠设置";
   const togglePanel = (next: Exclude<Panel, null>) => setPanel((current) => current === next ? null : next);
   const cycleSpeed = () => {
-    const current = controller.getSpeedMultiplier();
-    const index = GameController.SPEED_PRESETS.indexOf(current as typeof GameController.SPEED_PRESETS[number]);
-    controller.setSpeed(GameController.SPEED_PRESETS[(index + 1) % GameController.SPEED_PRESETS.length]);
+    const current = controller.getRuntimeSpeedMultiplier();
+    const index = GameController.RUNTIME_SPEED_PRESETS.indexOf(current);
+    controller.setRuntimeSpeedMultiplier(
+      GameController.RUNTIME_SPEED_PRESETS[(index + 1) % GameController.RUNTIME_SPEED_PRESETS.length],
+    );
   };
   const showCommerceFeedback = (feedback: Omit<CommerceFeedback, "id">) => {
     if (commerceFeedbackTimer.current !== null) window.clearTimeout(commerceFeedbackTimer.current);
@@ -601,21 +341,10 @@ export function App() {
     }, 3_200);
   };
   const formatSignedMoney = (cents: number) => `${cents >= 0 ? "+" : "−"}${formatMoney(Math.abs(cents))}`;
-  const openRecipes = () => {
-    if (window.catWorkshopDesktop) {
-      void window.catWorkshopDesktop.openRecipesInBrowser();
-      return;
-    }
-    const recipeWindow = window.open("/recipes.html", "cat-workshop-recipes", "popup,width=1280,height=820");
-    recipeWindow?.focus();
-  };
+  const openRecipes = openRecipeInterface;
 
   const beginWindowDrag = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || !window.catWorkshopDesktop) return;
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    windowDragActive.current = true;
-    window.catWorkshopDesktop.beginWindowDrag(event.screenX, event.screenY);
+    beginDesktopWindowDrag(event, windowDragActive);
   };
 
   const petStyle = {
@@ -631,12 +360,12 @@ export function App() {
           onPointerDown={beginWindowDrag}
           title="左键拖动桌宠"
         >
-          <span className="pet-title-emoji">🐾</span>
+          <span className="pet-title-emoji"><EmojiIcon emoji="🐾" size={22} /></span>
           <strong>猫咪工坊</strong>
           <span className={`pet-live-dot ${state.paused ? "paused" : ""}`} title={state.paused ? "已暂停" : "正在运行"} />
         </div>
         <div className="pet-headline-stats">
-          <span className="pet-treasury-stat"><small>国库</small><AnimatedTreasury cents={state.treasuryCoins} />
+          <span className="pet-treasury-stat"><small>国库</small><AnimatedTreasury cents={treasuryCashCents(state)} />
             {commerceFeedback?.ok && commerceFeedback.treasuryDeltaCents !== undefined && <em
               key={commerceFeedback.id}
               className={commerceFeedback.treasuryDeltaCents >= 0 ? "gain" : "cost"}
@@ -716,7 +445,7 @@ export function App() {
         <div className="pet-quick-stats" ref={quickStatsRef}>
           <span data-testid="gross-production-rate" title="最近一分钟商品完工价值，不是国库增速"><b>{formatMoney(productionValuePerMinute)}</b> 产值/分</span>
           <span data-testid="total-production-value" title="所有商品在完工时记录的累计生产价值"><b>{formatMoney(state.totalProductionValueCents)}</b> 总产值</span>
-          <span title="猫咪持有现金"><b>{formatMoney(personalCoins)}</b> 猫币</span>
+          <span title="猫咪持有现金"><b>{formatMoney(personalCashCents)}</b> 猫币</span>
         </div>
 
         {commerceFeedback && <div className={`pet-commerce-feedback ${commerceFeedback.ok ? "ok" : "error"}`} data-testid="main-commerce-message">
@@ -732,7 +461,7 @@ export function App() {
                 data-rarity={palette.id}
                 data-rarity-level={itemQualityLevel(entry.itemId)}
                 style={{ "--commerce-rarity": palette.accent, "--commerce-rarity-bg": palette.topStops[0] } as CSSProperties}
-              >+{entry.quantity} {item?.emoji ?? "❔"}</i>;
+              >+{entry.quantity} <EmojiIcon emoji={item?.emoji ?? "❔"} label={item?.name} /></i>;
             })}
           </div>}
         </div>}
@@ -745,10 +474,10 @@ export function App() {
 
         <nav className="pet-dock" aria-label="工坊操作" ref={dockRef}>
           <button className={state.paused ? "active" : ""} onClick={() => controller.togglePause()} data-testid="pause-button"><span>{state.paused ? "▶" : "Ⅱ"}</span>{state.paused ? "继续" : "暂停"}</button>
-          <button onClick={cycleSpeed} data-testid="speed-cycle"><span>×{controller.getSpeedMultiplier()}</span>速度</button>
-          <button className={panel === "laws" ? "active" : ""} onClick={() => togglePanel("laws")}><span>📜</span>法典</button>
-          <button className={panel === "warehouse" ? "active" : ""} onClick={() => { togglePanel("warehouse"); setLandmarkFeedback(null); }}><span>📦</span>仓库{warehouseKinds > 0 && <i>{warehouseKinds}</i>}</button>
-          <button className={panel === "recipes" ? "active" : ""} onClick={() => togglePanel("recipes")} data-testid="open-recipes"><span>🧶</span>配方</button>
+          <button onClick={cycleSpeed} data-testid="speed-cycle"><span>×{controller.getRuntimeSpeedMultiplier()}</span>速度</button>
+          <button className={panel === "laws" ? "active" : ""} onClick={() => togglePanel("laws")}><span><EmojiIcon emoji="📜" /></span>法典</button>
+          <button className={panel === "warehouse" ? "active" : ""} onClick={() => { togglePanel("warehouse"); setLandmarkFeedback(null); }}><span><EmojiIcon emoji="📦" /></span>仓库{warehouseKinds > 0 && <i>{warehouseKinds}</i>}</button>
+          <button className={panel === "recipes" ? "active" : ""} onClick={() => togglePanel("recipes")} data-testid="open-recipes"><span><EmojiIcon emoji="🧶" /></span>配方</button>
           <button
             className={expansionMode ? "active" : ""}
             title="地图模式：拖动与滚轮调整地图，也可点击相邻地块开拓"
@@ -764,7 +493,7 @@ export function App() {
               }
               return !value;
             });
-          }} data-testid="expand-mode-button"><span>🗺️</span>{expansionMode ? "完成" : "地图与开拓"}</button>
+          }} data-testid="expand-mode-button"><span><EmojiIcon emoji="🗺️" /></span>{expansionMode ? "完成" : "地图与开拓"}</button>
           <button
             className={mapLensPaletteOpen || mapLensId !== "none" ? "active" : ""}
             title="打开地图滤镜：订单供需、生产瓶颈、生产环境、财富信用、活跃热力、法规影响、生产稳定与坐标索引"
@@ -779,8 +508,8 @@ export function App() {
               });
             }}
             data-testid="map-lens-button"
-          ><span>🎨</span>滤镜</button>
-          <button className={panel === "settings" ? "active" : ""} data-testid="open-settings" onClick={() => togglePanel("settings")}><span>⚙️</span>设置</button>
+          ><span><EmojiIcon emoji="🎨" /></span>滤镜</button>
+          <button className={panel === "settings" ? "active" : ""} data-testid="open-settings" onClick={() => togglePanel("settings")}><span><EmojiIcon emoji="⚙️" /></span>设置</button>
         </nav>
 
         {expansionMode && mapLensPaletteOpen && <div className="map-lens-palette" data-testid="map-lens-palette" aria-label="地图滤镜选项">
@@ -841,7 +570,7 @@ export function App() {
               data-value={mapLensItemId ?? ""}
               onClick={() => setMapLensItemPickerOpen((value) => !value)}
             >
-              <span>{selectedMapLensItem ? `${selectedMapLensItem.emoji} ${selectedMapLensItem.name}` : "全部商品"}</span>
+              <span>{selectedMapLensItem ? <><EmojiIcon emoji={selectedMapLensItem.emoji} label={selectedMapLensItem.name} /> {selectedMapLensItem.name}</> : "全部商品"}</span>
               <i aria-hidden="true">⌄</i>
             </button>
             {mapLensItemPickerOpen && <div
@@ -876,7 +605,7 @@ export function App() {
                     setMapLensItemId(itemId);
                     setMapLensItemPickerOpen(false);
                   }}
-                >{item?.emoji} {item?.name ?? itemId}</button>;
+                ><EmojiIcon emoji={item?.emoji ?? "❔"} label={item?.name} /> {item?.name ?? itemId}</button>;
               })}
             </div>}
           </div>}
@@ -922,7 +651,7 @@ export function App() {
               onRemoved={() => setSelectedCatId(controller.state.cats[0]?.id ?? "")}
             />}
             {panel === "settings" && <div className="pet-settings">
-              <section><strong>运行</strong><p>当前速度 ×{controller.getSpeedMultiplier()} · {state.paused ? "已暂停" : "自动运行中"}</p></section>
+              <section><strong>运行</strong><p>当前速度 ×{controller.getRuntimeSpeedMultiplier()} · {state.paused ? "已暂停" : "自动运行中"}</p></section>
               <section className="pet-speech-settings">
                 <div className="pet-range-heading"><label htmlFor="pet-speech-frequency">猫咪说话频率</label><output>{state.speechFrequency}%</output></div>
                 <input
@@ -1005,7 +734,7 @@ export function App() {
                   {(Object.values(DIFFICULTY_PROFILES) as DifficultyProfile[]).map((profile) => <option key={profile.level} value={profile.level}>{profile.level} · {profile.name}</option>)}
                 </select>
               </section>
-              <button className={`pet-setting-action ${deepSeekConfigured ? "ok" : "attention"}`} onClick={() => { setDeepSeekError(null); setDeepSeekDialogOpen(true); }} data-testid="open-deepseek-settings">
+              <button className={`pet-setting-action ${deepSeekConfigured ? "ok" : "attention"}`} onClick={openDeepSeekSettings} data-testid="open-deepseek-settings">
                 <span>DeepSeek 法规</span><strong>{deepSeekConfigured ? "已配置安全密钥" : "需要配置"}</strong>
               </button>
               <button className="pet-danger-action" onClick={async () => {
@@ -1028,394 +757,12 @@ export function App() {
         required={!deepSeekConfigured}
         checking={deepSeekChecking}
         storage={deepSeekStorage}
+        baseUrl={deepSeekBaseUrl}
         error={deepSeekError}
-        onCancel={() => {
-          controller.setRuntimeBlocked(false);
-          setDeepSeekDialogOpen(false);
-        }}
+        onCancel={cancelDeepSeekSettings}
         onRetry={refreshDeepSeekStatus}
-        onSubmit={async (apiKey) => {
-          setDeepSeekError(null);
-          try {
-            const result = await setDeepSeekApiKey(apiKey.trim());
-            setDeepSeekConfigured(result.configured);
-            setDeepSeekStorage(result.persisted ? "secure-local" : "session");
-            controller.setRuntimeBlocked(false);
-            setDeepSeekDialogOpen(false);
-          } catch (error) {
-            setDeepSeekError(error instanceof Error ? error.message : "密钥保存失败");
-          }
-        }}
+        onSubmit={submitDeepSeekSettings}
       />
     </div>
   );
-}
-
-function renderGameToText(
-  state: GameController["state"],
-  speedMultiplier: number,
-  selectedCatId: string,
-  placingBuildingItemId: string | null,
-  placementFeedback: PlacementFeedback | null,
-  placingLandmarkId: LandmarkId | null,
-  landmarkFeedback: LandmarkPlacementFeedback | null,
-  uiPreferences: UiPreferences,
-  mapInteractionMode: boolean,
-  mapLensId: MapLensId,
-  mapLensItemId: string | null,
-  wealthLensMode: WealthLensMode,
-  wealthLensWindowMs: number,
-  commerceFeedback: CommerceFeedback | null,
-  achievementReviewArmed: boolean,
-): string {
-  const craftedItems = ITEMS.filter((item) => state.itemStats[item.id].crafted > 0).map((item) => item.id);
-  const certifiedItems = MARKET_CERTIFICATION_ITEM_IDS.filter((itemId) => state.itemStats[itemId].crafted > 0);
-  const missingCertificationItems = MARKET_CERTIFICATION_ITEM_IDS.filter((itemId) => !certifiedItems.includes(itemId));
-  const positionMap = new Map(state.cats.map((cat) => [positionKey(cat.position), cat]));
-  const decisionLaws = state.laws.filter((law) => law.status === "active");
-  const wealthLensOptions = { wealthMode: wealthLensMode, wealthWindowMs: wealthLensWindowMs };
-  const activeMapLens = mapInteractionMode ? buildMapLensSnapshot(state, mapLensId, mapLensItemId, wealthLensOptions) : null;
-  return JSON.stringify({
-    coordinateSystem: "整数方格；原点(0,0)；x向右增加，y向下增加；只可向四邻传递",
-    simTimeMs: Math.round(state.simTime),
-    difficulty: DIFFICULTY_PROFILES[state.difficulty],
-    paused: state.paused,
-    runtimeSpeedMultiplier: speedMultiplier,
-    visualPreferences: {
-      controlScale: uiPreferences.controlScale,
-      interfaceFontScale: uiPreferences.interfaceFontScale,
-      speechBubbleScale: uiPreferences.speechBubbleScale,
-      mapScale: uiPreferences.mapScale,
-      speechFrequencyPercent: state.speechFrequency,
-      speechBubbleAvoidsControls: [
-        "dragRegion", "headlineStats", "mainCommerce", "windowControls", "dock",
-        "filterPalette", "legend", "drawer", "commerceFeedback", "quickStats", "tileActionMenu",
-      ],
-    },
-    speedShortcuts: { "1": "1x", "2": "2x", "3": "4x", "4": "8x", p: "pause" },
-    treasuryCents: state.treasuryCoins,
-    personalCashCents: state.cats.reduce((sum, cat) => sum + cat.coins, 0),
-    totalDebtCents: state.cats.reduce((sum, cat) => sum + cat.debtCents, 0),
-    totalSalesCents: state.totalSales,
-    totalProductionValueCents: state.totalProductionValueCents,
-    grossProductionValuePerMinuteCents: grossProductionValuePerMinute(state),
-    commerceAnimation: commerceFeedback ? {
-      active: true,
-      ok: commerceFeedback.ok,
-      message: commerceFeedback.text,
-      treasuryDeltaCents: commerceFeedback.treasuryDeltaCents ?? null,
-      items: (commerceFeedback.itemDeltas ?? []).map((entry) => ({
-        ...entry,
-        emoji: ITEM_BY_ID.get(entry.itemId)?.emoji ?? "❔",
-        name: ITEM_BY_ID.get(entry.itemId)?.name ?? entry.itemId,
-        tier: ITEM_BY_ID.get(entry.itemId)?.tier ?? 0,
-        rarity: itemQualityPalette(entry.itemId).id,
-        rarityLevel: itemQualityLevel(entry.itemId),
-      })),
-    } : { active: false, items: [], treasuryDeltaCents: null },
-    achievements: {
-      unlockedCount: state.achievements.length,
-      acknowledgedCount: state.achievements.filter((achievement) => achievement.acknowledgedAt !== null).length,
-      pending: pendingAchievements(state).map((achievement) => ({
-        id: achievement.id,
-        kind: achievement.kind,
-        itemId: achievement.itemId,
-        thresholdCents: achievement.thresholdCents,
-        grade: achievementGrade(achievement),
-      })),
-      presentationTrigger: "successful-main-commerce-action",
-      reviewArmed: achievementReviewArmed,
-      awaitingCommerceTrigger: !achievementReviewArmed && pendingAchievements(state).length > 0,
-      currentDialogId: !achievementReviewArmed ? null : (pendingAchievements(state)[0]?.id ?? null),
-      concurrentWithCommerce: Boolean(achievementReviewArmed && commerceFeedback && pendingAchievements(state).length > 0),
-      deferredByCommerce: false,
-    },
-    decisionModel: {
-      visionRadius: LOCAL_VISION_RADIUS,
-      sharedByAllCats: true,
-      sharedBehaviorHash: SHARED_BEHAVIOR_HASH,
-      decisionLaws: decisionLaws.map((law) => ({ id: law.id, title: law.title, astHash: law.astHash, speechTemplates: safeSpeechTemplates(law.speechTemplates) })),
-      actionAuthority: "唯一共享 behavior 按优先级解释统一法典；每条法规每次决策最多执行一次",
-      marketPlanningRequiresLawHelper: true,
-      bountyPlanningAuthority: "悬赏是公开法规数据；只有共享 behavior 函数调用 earnCoins/choose/weighted 后才能认领并创建计划",
-      fallback: null,
-    },
-    discoveredItems: state.discoveredItems,
-    unlockedRecipes: state.unlockedRecipes,
-    world: {
-      mapInteractionMode,
-      mapLens: {
-        id: mapInteractionMode ? mapLensId : "none",
-        title: mapInteractionMode ? mapLensTitle(mapLensId, mapLensItemId, wealthLensOptions) : "普通地图",
-        itemId: mapInteractionMode && ITEM_SCOPED_LENSES.has(mapLensId) ? mapLensItemId : null,
-        colorOnly: mapLensId !== "inventory",
-        inventoryMarkersEnhancedOnly: true,
-        actionItemsHidden: mapInteractionMode && mapLensId !== "none",
-        craftActionItemsHidden: mapInteractionMode && mapLensId !== "none",
-        speechBubblesHidden: mapInteractionMode && mapLensId !== "none",
-        catCoordinates: mapInteractionMode && mapLensId === "coordinates"
-          ? state.cats.map((cat) => ({ catId: cat.id, serial: cat.createdIndex + 1, position: cat.position }))
-          : [],
-        wealthNormalization: mapInteractionMode && mapLensId === "wealth" && activeMapLens?.metric ? {
-          unit: activeMapLens.metric.unit,
-          mode: activeMapLens.metric.mode ?? "total",
-          windowMs: activeMapLens.metric.mode === "change" ? activeMapLens.metric.windowMs ?? wealthLensWindowMs : null,
-          baselineAtMs: activeMapLens.metric.mode === "change" ? activeMapLens.metric.baselineAt ?? null : null,
-          sampleIntervalMs: WEALTH_HISTORY_SAMPLE_INTERVAL_MS,
-          historySamples: state.wealthHistory.length,
-          min: activeMapLens.metric.min,
-          median: activeMapLens.metric.median,
-          max: activeMapLens.metric.max,
-          cats: state.cats.map((cat) => ({
-            catId: cat.id,
-            value: activeMapLens.metric?.values.get(cat.id) ?? 0,
-            normalized: activeMapLens.metric?.normalized.get(cat.id) ?? 0.5,
-          })),
-        } : null,
-        activityHeat: mapInteractionMode && mapLensId === "activity" && activeMapLens?.metric ? {
-          unit: activeMapLens.metric.unit,
-          activeMeaning: "当前正在制作或运输",
-          stalledAfterMs: 60_000,
-          cats: state.cats.map((cat) => ({
-            catId: cat.id,
-            inactiveMs: activeMapLens.metric?.values.get(cat.id) ?? 60_000,
-            normalizedInactivity: activeMapLens.metric?.normalized.get(cat.id) ?? 1,
-          })),
-        } : null,
-        stationInventoryMarkers: (mapInteractionMode && mapLensId === "inventory")
-          ? state.cats.map((cat) => {
-              const entries = Object.entries(cat.inventory)
-                .filter(([itemId, quantity]) => quantity > 0 && ITEM_BY_ID.has(itemId))
-                .sort(([leftId], [rightId]) => (ITEM_BY_ID.get(rightId)?.tier ?? -1) - (ITEM_BY_ID.get(leftId)?.tier ?? -1)
-                  || leftId.localeCompare(rightId));
-              return {
-                catId: cat.id,
-                shown: entries.slice(0, 3).map(([itemId, quantity]) => ({ itemId, quantity })),
-                hiddenKinds: Math.max(0, entries.length - 3),
-              };
-            })
-          : [],
-        orderParticipants: [...(activeMapLens?.orderFloors.values() ?? [])].map((floor) => ({
-          catId: floor.catId,
-          demands: floor.demandItemIds,
-          demandTargets: floor.demandTargets,
-          supplies: floor.supplyItemIds,
-          carrier: floor.carrier,
-        })) ?? [],
-        stabilityHistory: mapInteractionMode && mapLensId === "stability" ? {
-          persistentAcrossSaves: true,
-          selectedItemId: mapLensItemId,
-          producers: state.cats.map((cat) => ({
-            catId: cat.id,
-            plannedCount: mapLensItemId ? (state.productionHistory.byCat[cat.id]?.[mapLensItemId]?.plannedCount ?? 0) : 0,
-            craftedCount: mapLensItemId ? (state.productionHistory.byCat[cat.id]?.[mapLensItemId]?.craftedCount ?? 0) : 0,
-            lastCraftedAt: mapLensItemId ? (state.productionHistory.byCat[cat.id]?.[mapLensItemId]?.lastCraftedAt ?? null) : null,
-          })).filter((entry) => entry.plannedCount > 0 || entry.craftedCount > 0),
-          relations: activeMapLens?.edges.map((edge) => ({
-            id: edge.id,
-            kind: edge.kind ?? null,
-            itemId: edge.itemId ?? null,
-            sourceCatId: edge.sourceCatId,
-            targetCatId: edge.targetCatId,
-            count: edge.count ?? 1,
-          })) ?? [],
-          arrowEncoding: "线宽与箭头大小按累计计划次数的 log2 缩放",
-        } : null,
-      },
-      parcelSize: 9,
-      worldSeed: state.worldSeed,
-      unlockedParcels: state.unlockedParcels,
-      purchasableParcels: purchasableParcels(state),
-      resourceNodes: state.resourceNodes.map((node) => ({
-        id: node.id,
-        itemId: node.itemId,
-        position: node.position,
-        source: node.id.startsWith("resource-player-") ? "player-created" : "world-generated",
-        centerOccupied: state.cats.some((cat) => cat.position.x === node.position.x && cat.position.y === node.position.y),
-        harvestTiles: resourceHarvestTiles(node),
-        harvestingCats: state.cats.filter((cat) => resourceNodesAtPosition([node], cat.position).length > 0).map((cat) => cat.id),
-      })),
-      buildings: state.buildings,
-      buildingOrders: state.buildingOrders,
-      buildingOffers: state.buildingOffers.filter((offer) => offer.status === "open"),
-      warehouse: {
-        inventory: state.playerBuildingInventory,
-        purchasedSource: state.playerWarehousePurchases,
-        lockedItemIds: state.lockedWarehouseItemIds,
-        fixedSellPricesCents: Object.fromEntries(ITEMS.map((item) => [item.id, warehouseSellPrice(item.id)])),
-        sellPriceRule: "catalog base price × 2; unaffected by laws, difficulty, or landmarks",
-        distinctItems: ITEMS.filter((item) => (state.playerBuildingInventory[item.id] ?? 0) > 0).length,
-        totalItems: Object.values(state.playerBuildingInventory).reduce((sum, quantity) => sum + quantity, 0),
-        purchasable: ITEMS.map((item) => warehouseQuote(state, item.id)).filter((quote) => quote.availableQuantity > 0),
-        allCatStockQuote: catStockPurchaseQuote(state),
-        bulkUnlockedSellQuote: warehouseBulkSellQuote(state),
-      },
-      playerBuildingInventory: state.playerBuildingInventory,
-      buildingPlacement: {
-        itemId: placingBuildingItemId,
-        lastAttempt: placementFeedback,
-        blockedTileRules: ["locked parcel", "cat", "building", "landmark", "resource center"],
-      },
-      landmarkEngineering: {
-        blueprints: LANDMARK_DEFINITIONS.map((definition) => ({
-          id: definition.id,
-          name: definition.name,
-          emoji: definition.emoji,
-          radius: definition.radius,
-          blueprintPriceCents: definition.blueprintPriceCents,
-          unlocked: state.unlockedLandmarkIds.includes(definition.id),
-          discoveredMaterials: definition.materials.filter((material) => state.discoveredItems.includes(material.itemId)).length,
-          materialCount: definition.materials.length,
-          materials: definition.materials.map((material) => ({ ...material, stored: state.playerBuildingInventory[material.itemId] ?? 0 })),
-          description: definition.description,
-        })),
-        deployed: state.landmarks.map((landmark) => ({
-          ...landmark,
-          kind: landmark.landmarkId ? "engineered" : "marker",
-          name: landmarkDisplayName(landmark),
-          emoji: landmark.landmarkId ? LANDMARK_BY_ID.get(landmark.landmarkId)?.emoji ?? "🏛️" : NAMED_LANDMARK_EMOJI,
-          effects: landmark.landmarkId ? landmarkEffectsAt(state, landmark.position) : null,
-        })),
-        placement: { landmarkId: placingLandmarkId, lastAttempt: landmarkFeedback },
-      },
-      rightClickWorldEditing: {
-        namedLandmarkCost: { itemId: "wood", quantity: NAMED_LANDMARK_WOOD_COST },
-        resourceCost: { quantity: 50, itemIds: ["wood", "stone", "sand", "water", "fiber", "ore"] },
-        optionVisibility: "缺少对应仓库材料时完全不显示创建选项",
-        objectActions: ["rename-landmark", "dismantle-landmark", "dismantle-building", "remove-resource", "audit-and-remove-cat"],
-      },
-    },
-    logistics: state.logisticsStatus,
-    market: {
-      nextDecisionReviewMs: null,
-      broadcastMode: "global-immediate",
-      broadcasts: [...state.marketBroadcasts].slice(-64).reverse(),
-      openOrders: state.demandOrders.filter((order) => order.status === "open").map((order) => ({
-        id: order.id,
-        itemId: order.itemId,
-        buyerCatId: order.buyerCatId,
-        destinationCatId: order.destinationCatId,
-        maxDeliveredCents: order.maxDeliveredCents,
-        reservedCents: order.reservedCents,
-        committedSellerCatId: order.committedSellerCatId ?? null,
-        quotedSellerCents: order.quotedSellerCents ?? null,
-        quotedRouteCatIds: order.quotedRouteCatIds ?? [],
-        quotedFeesByCatId: order.quotedFeesByCatId ?? {},
-      })),
-      activePlans: state.procurementPlans.filter((plan) => plan.status === "active").map((plan) => ({
-        id: plan.id,
-        catId: plan.catId,
-        itemId: plan.outputItemId,
-        phase: plan.phase,
-        terminalRevenueCents: plan.terminalRevenueCents,
-        bundleCostCents: plan.bundleCostCents,
-        financingReserveCents: plan.financingReserveCents,
-        alternativeGainCents: plan.alternativeGainCents,
-        expectedProfitCents: plan.expectedProfitCents,
-        bundleOrderIds: plan.bundleOrderIds,
-        blockedReason: plan.blockedReason,
-      })),
-      activeContracts: state.shipmentContracts.filter((contract) => contract.status !== "delivered").map((contract) => ({
-        id: contract.id,
-        orderId: contract.orderId,
-        itemId: contract.itemId,
-        status: contract.status,
-        routeCatIds: contract.routeCatIds,
-        currentLeg: contract.currentLeg,
-        custodianCatId: contract.custodianCatId,
-      })),
-      recentLifecycle: state.marketEvents.slice(-12),
-      discoveryBounties: state.discoveryBounties.map((bounty) => ({
-        itemId: bounty.itemId,
-        amountCents: bounty.amountCents,
-        claimedByCatId: bounty.claimedByCatId,
-        paid: bounty.paid,
-      })),
-      fundingRule: "供应猫逐层给出卖价、路线和运费；直接原料包与最坏借贷费一次性冻结，净收益至少1分才承诺",
-    },
-    marketChallenge: {
-      foundationRange: "前15项基础产业",
-      foundationCompleted: ITEMS.slice(0, 15).every((item) => state.discoveredItems.includes(item.id)),
-      selectionRule: "净资产增益/作业与运输负担",
-      certification: `${certifiedItems.length}/${MARKET_CERTIFICATION_ITEM_IDS.length}`,
-      certifiedItems,
-      missingItems: missingCertificationItems,
-      missingNames: missingCertificationItems.map((id) => ITEM_BY_ID.get(id)?.name ?? id),
-      rule: "前10项开局免费，第11–15项由国库购买；所有已解锁配方统一参加资产收益率竞争，没有按目录位置指定的生产目标；第16–20项要求第11–15项全部实际制造过",
-    },
-    purchasableRecipes: RECIPES.filter((recipe) => canUnlockRecipe(recipe.id, state.unlockedRecipes, craftedItems)).map((recipe) => ({
-      recipeId: recipe.id,
-      costCents: recipeUnlockCost(recipe.id),
-      affordable: state.treasuryCoins >= recipeUnlockCost(recipe.id),
-    })),
-    speechBubbles: state.floatingEvents.filter((event) => event.kind === "speech").map((event) => ({
-      id: event.id,
-      catId: event.catId,
-      text: event.text,
-      lawId: event.lawId ?? null,
-      reason: event.reason ?? null,
-      itemId: event.itemId ?? null,
-      gainCents: event.gainCents ?? null,
-      direction: event.direction ?? null,
-      destinationCatId: event.destinationCatId ?? null,
-      scheduledDelayMs: event.scheduledDelayMs ?? 0,
-      startsInMs: Math.max(0, Math.round(event.createdAt - state.simTime)),
-      visible: speechEventIsVisible(event, state.simTime),
-      remainingMs: state.simTime < event.createdAt
-        ? event.duration
-        : Math.max(0, Math.round(event.createdAt + event.duration - state.simTime)),
-    })),
-    laws: state.laws.map((law, priority) => ({ priority, id: law.id, title: law.title, explanation: law.explanation ?? law.summary, capabilities: lawProgramSummary(law.program, law.sourceCode), immutable: true, astHash: law.astHash, status: law.status, hits: law.hitCount, speechTemplates: safeSpeechTemplates(law.speechTemplates) })),
-    lawbookRevision: state.lawbookRevision,
-    commandAudit: state.commandAudit.slice(-100),
-    prices: Object.fromEntries(state.discoveredItems.map((id) => [id, itemPrice(state, id)])),
-    cats: state.cats.slice(0, 200).map((cat) => ({
-      landmarkEffects: landmarkEffectsAt(state, cat.position),
-      id: cat.id,
-      selected: cat.id === selectedCatId,
-      position: cat.position,
-      cashCents: cat.coins,
-      debtCents: cat.debtCents,
-      liquidation: catLiquidationPreview(state, cat),
-      escrowReservedCents: cat.escrowReservedCents,
-      netWorthCents: netWorthCents(state, cat, (itemId) => itemPrice(state, itemId)),
-      creditAvailableCents: creditAvailableCents(state, cat, (itemId) => itemPrice(state, itemId)),
-      inventory: cat.inventory,
-      playerPurchaseQuote: catStockPurchaseQuote(state, cat.id),
-      action: cat.action ? { type: cat.action.type, itemId: cat.action.itemId, lawId: cat.action.lawId, decisionReason: cat.action.decisionReason ?? null, contractId: cat.action.contractId ?? null, remainingMs: Math.max(0, Math.round(cat.action.endsAt - state.simTime)) } : null,
-      speech: state.floatingEvents.find((event) => event.kind === "speech" && event.catId === cat.id) ?? null,
-      productionPlan: planForCatPublic(state, cat.id) ?? null,
-      ownOrders: state.demandOrders.filter((order) => order.buyerKind === "cat" && order.buyerCatId === cat.id && order.status === "open"),
-      buildingOffers: state.buildingOffers.filter((offer) => offer.sellerCatId === cat.id && offer.status === "open"),
-      localSignals: signalsForCat(state, cat.id).map((signal) => ({
-        orderId: signal.orderId,
-        itemId: state.demandOrders.find((order) => order.id === signal.orderId)?.itemId ?? null,
-        effectiveBidCents: signal.effectiveBidCents,
-        sourceCatId: broadcastsForCat(state, cat.id).find((entry) => entry.kind === "demand-open" && entry.subjectId === signal.orderId)?.sourceCatId ?? null,
-      })),
-      heardBounties: bountyBroadcastsForCat(state, cat.id),
-      heardBuildingOffers: buildingOfferBroadcastsForCat(state, cat.id),
-      receivedBroadcasts: broadcastsForCat(state, cat.id).slice(0, 32),
-      carrying: readyContractForCat(state, cat.id) ?? null,
-      contracts: state.shipmentContracts.filter((contract) => contract.status !== "delivered"
-        && contract.routeCatIds.includes(cat.id)).map((contract) => ({
-          id: contract.id,
-          itemId: contract.itemId,
-          status: contract.status,
-          routeCatIds: contract.routeCatIds,
-          currentLeg: contract.currentLeg,
-          custodianCatId: contract.custodianCatId,
-        })),
-      lastDecision: cat.lastDecision,
-      visibleWorkstations: localVisibleCats(state, cat, positionMap, landmarkEffectsAt(state, cat.position).effectiveVisionRadius).filter((entry) => entry.id !== cat.id).map((entry) => ({
-        id: entry.id,
-        position: entry.position,
-        distance: Math.abs(entry.position.x - cat.position.x) + Math.abs(entry.position.y - cat.position.y),
-      })),
-      localScoreTrace: cat.decisionTrace,
-    })),
-    stargatesBuilt: state.stargatesBuilt,
-    catalogInventory: Object.fromEntries(state.discoveredItems.map((id) => [id, inventoryTotal(state, id)])),
-    itemStats: Object.fromEntries(state.discoveredItems.map((id) => [id, state.itemStats[id]])),
-  });
 }

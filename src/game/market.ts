@@ -29,6 +29,33 @@ import { recordProductionPlan } from "./productionHistory";
 import { positionKey } from "./world";
 import { recordWarehousePurchase } from "./warehouse";
 import { ephemeralLawPolicy } from "./ephemeralLawPolicy";
+import {
+  applyPrivateIncome,
+  buyingPowerCents,
+  creditAvailableCents,
+  externalNetCents,
+  externalNetCentsAt,
+  LOAN_RATE,
+  MIN_PLAN_PROFIT_CENTS,
+} from "./marketEconomics";
+import { estimatedInputCost } from "./marketDemand";
+
+export {
+  applyPrivateIncome,
+  BASE_CREDIT_CENTS,
+  buyingPowerCents,
+  creditAvailableCents,
+  creditLimitCents,
+  externalNetCents,
+  externalNetCentsAt,
+  LOAN_RATE,
+  netWorthCents,
+} from "./marketEconomics";
+export {
+  hasPriceSensitiveJobDemand,
+  productionOrderBidCents,
+  productionOrderBudgetCents,
+} from "./marketDemand";
 
 // Broadcasts are immediate. This interval only wakes idle cats for a periodic
 // market review, so one normal action duration is sufficient.
@@ -39,10 +66,7 @@ export const MAX_SIGNALS_PER_CAT = ITEMS.length;
 // hop at a time. Keeping a separate two-orders-per-item cap silently hid valid
 // lower bids and prevented parallel suppliers from accepting them.
 export const MAX_SIGNALS_PER_ITEM = MAX_SIGNALS_PER_CAT;
-export const BASE_CREDIT_CENTS = 2_500;
-export const LOAN_RATE = 0.02;
 const MAX_CARRIER_FEE_CENTS = 25;
-const MIN_PLAN_PROFIT_CENTS = 1;
 
 
 const DIRECTIONS: Array<[Direction, number, number]> = [
@@ -266,51 +290,6 @@ export function buildingOfferReservedQuantity(state: GameState, catId: string, i
     && offer.sellerCatId === catId && offer.itemId === itemId).length;
 }
 
-export function externalNetCents(_state: GameState, itemId: ItemId, priceOf: (itemId: ItemId) => number): number {
-  return Math.max(0, priceOf(itemId));
-}
-
-/** Net liquidation value at a cat's current site, including landmark sale bonus. */
-export function externalNetCentsAt(state: GameState, itemId: ItemId, priceOf: (itemId: ItemId) => number, cat: CatState): number {
-  const gross = Math.ceil(priceOf(itemId) * (1 + landmarkEffectsAt(state, cat.position).saleValueBonus));
-  return Math.max(0, gross);
-}
-
-export function netWorthCents(state: GameState, cat: CatState, priceOf: (itemId: ItemId) => number): number {
-  const inventoryValue = Object.entries(cat.inventory).reduce((sum, [itemId, quantity]) => (
-    sum + Math.max(0, quantity) * externalNetCents(state, itemId, priceOf)
-  ), 0);
-  const inTransit = state.shipmentContracts.reduce((sum, contract) => (
-    contract.status !== "delivered" && contract.buyerKind === "cat" && contract.buyerCatId === cat.id
-      ? sum + Math.min(contract.escrowCents, externalNetCents(state, contract.itemId, priceOf))
-      : sum
-  ), 0);
-  return cat.coins + inventoryValue + inTransit - cat.debtCents;
-}
-
-export function creditLimitCents(state: GameState, cat: CatState, priceOf: (itemId: ItemId) => number): number {
-  const policy = ephemeralLawPolicy(state, cat);
-  return policy.creditBaseCents
-    + landmarkEffectsAt(state, cat.position).creditBonusCents
-    + Math.round(Math.max(0, netWorthCents(state, cat, priceOf)) * policy.creditNetWorthFactor);
-}
-
-export function creditAvailableCents(state: GameState, cat: CatState, priceOf: (itemId: ItemId) => number): number {
-  return Math.max(0, creditLimitCents(state, cat, priceOf) - cat.debtCents);
-}
-
-export function buyingPowerCents(state: GameState, cat: CatState, priceOf: (itemId: ItemId) => number): number {
-  return Math.max(0, cat.coins + creditAvailableCents(state, cat, priceOf) - cat.escrowReservedCents);
-}
-
-export function applyPrivateIncome(cat: CatState, amountCents: number): void {
-  let remaining = Math.max(0, Math.floor(amountCents));
-  const repaid = Math.min(cat.debtCents, remaining);
-  cat.debtCents -= repaid;
-  remaining -= repaid;
-  cat.coins += remaining;
-}
-
 function pushLifecycle(
   state: GameState,
   order: DemandOrder,
@@ -450,47 +429,6 @@ export function signalsForCat(state: GameState, _catId: string): OrderSignal[] {
 
 function planForCat(state: GameState, catId: string): ProcurementPlan | undefined {
   return state.procurementPlans.find((plan) => plan.catId === catId && plan.status === "active");
-}
-
-function estimatedInputCost(state: GameState, recipeId: string, priceOf: (itemId: ItemId) => number): number {
-  const recipe = RECIPE_BY_ID.get(recipeId);
-  if (!recipe) return Number.POSITIVE_INFINITY;
-  return effectiveRecipeInputs(recipe, state.difficulty).reduce((sum, input) => (
-    sum + input.quantity * externalNetCents(state, input.itemId, priceOf)
-  ), 0);
-}
-
-/**
- * Read-only compatibility estimate for inspectors and older callers. Real
- * plans never fund orders from this estimate: they atomically lock a named
- * supplier, route, freight schedule and whole-basket financing certificate.
- */
-export function productionOrderBidCents(
-  state: GameState,
-  _recipeId: string,
-  inputItemId: ItemId,
-  priceOf: (itemId: ItemId) => number,
-): number {
-  // Compatibility estimate for inspectors. Plans use a firm seller/route
-  // quote and never commit money from this estimate.
-  return externalNetCents(state, inputItemId, priceOf) + MIN_PLAN_PROFIT_CENTS;
-}
-
-export function productionOrderBudgetCents(
-  state: GameState,
-  recipeId: string,
-  priceOf: (itemId: ItemId) => number,
-): number {
-  const recipe = RECIPE_BY_ID.get(recipeId);
-  if (!recipe) return 0;
-  return effectiveRecipeInputs(recipe, state.difficulty).reduce((sum, input) => (
-    sum + input.quantity * productionOrderBidCents(state, recipe.id, input.itemId, priceOf)
-  ), 0);
-}
-
-export function hasPriceSensitiveJobDemand(state: GameState, recipeId: string): boolean {
-  const recipe = RECIPE_BY_ID.get(recipeId);
-  return Boolean(recipe && state.unlockedRecipes.includes(recipe.id));
 }
 
 function maximumLoanFeeCents(principalCents: number): number {

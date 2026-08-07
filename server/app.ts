@@ -8,8 +8,18 @@ import { compileLaw, compileRequestSchema } from "./lawCompiler.js";
 export interface CatWorkshopAppOptions {
   webDist: string;
   apiKey?: string;
+  baseUrl?: string;
   persistApiKey?: (apiKey: string) => boolean | Promise<boolean>;
+  persistBaseUrl?: (baseUrl: string) => boolean | Promise<boolean>;
 }
+
+export const DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com";
+
+const apiKeySchema = z.string()
+  .trim()
+  .min(20, "密钥长度不正确")
+  .max(512, "密钥长度不正确")
+  .regex(/^sk-[A-Za-z0-9_-]+$/, "请输入以 sk- 开头的 API 密钥");
 
 const apiKeyRequestSchema = z.object({
   apiKey: z.string()
@@ -18,6 +28,22 @@ const apiKeyRequestSchema = z.object({
     .max(512, "密钥长度不正确")
     .regex(/^sk-[A-Za-z0-9_-]+$/, "请输入以 sk- 开头的 DeepSeek API 密钥"),
 }).strict();
+
+const deepSeekSettingsRequestSchema = z.object({
+  apiKey: z.union([apiKeySchema, z.literal("")]).optional(),
+  baseUrl: z.string().trim().min(1, "请输入 API URL").max(2_048, "API URL 过长"),
+}).strict();
+
+export function normalizeDeepSeekBaseUrl(value: string | undefined): string {
+  const raw = value?.trim() || DEFAULT_DEEPSEEK_BASE_URL;
+  const parsed = new URL(raw);
+  if (!(["http:", "https:"] as string[]).includes(parsed.protocol)) throw new Error("API URL 只支持 HTTP 或 HTTPS");
+  if (parsed.username || parsed.password) throw new Error("API URL 不能包含用户名或密码");
+  parsed.hash = "";
+  parsed.search = "";
+  parsed.pathname = parsed.pathname.replace(/\/+$/, "").replace(/\/chat\/completions$/i, "") || "";
+  return parsed.toString().replace(/\/$/, "");
+}
 
 function isLoopback(address: string | undefined): boolean {
   if (!address) return false;
@@ -35,9 +61,10 @@ function isLocalBrowserOrigin(origin: string | undefined): boolean {
   }
 }
 
-export function createCatWorkshopApp({ webDist, apiKey, persistApiKey }: CatWorkshopAppOptions): express.Express {
+export function createCatWorkshopApp({ webDist, apiKey, baseUrl, persistApiKey, persistBaseUrl }: CatWorkshopAppOptions): express.Express {
   const app = express();
   let currentApiKey = apiKey?.trim() || undefined;
+  let currentBaseUrl = normalizeDeepSeekBaseUrl(baseUrl);
 
   app.disable("x-powered-by");
   app.use(helmet({ contentSecurityPolicy: false }));
@@ -51,7 +78,47 @@ export function createCatWorkshopApp({ webDist, apiKey, persistApiKey }: CatWork
       model: "deepseek-v4-flash",
       configured: Boolean(currentApiKey),
       keyStorage: persistApiKey ? "secure-local" : "session",
+      baseUrl: currentBaseUrl,
     });
+  });
+
+  app.post("/api/settings/deepseek", async (request, response) => {
+    response.setHeader("Cache-Control", "no-store");
+    if (!isLoopback(request.socket.remoteAddress) || !isLocalBrowserOrigin(request.get("origin"))) {
+      response.status(403).json({ error: "只允许从本机游戏页面设置模型连接" });
+      return;
+    }
+    const parsed = deepSeekSettingsRequestSchema.safeParse(request.body);
+    if (!parsed.success) {
+      response.status(400).json({ error: parsed.error.issues[0]?.message ?? "模型连接设置不正确" });
+      return;
+    }
+    const nextApiKey = parsed.data.apiKey?.trim() || currentApiKey;
+    if (!nextApiKey) {
+      response.status(400).json({ error: "首次配置时必须输入 API 密钥" });
+      return;
+    }
+    let nextBaseUrl: string;
+    try {
+      nextBaseUrl = normalizeDeepSeekBaseUrl(parsed.data.baseUrl);
+    } catch (error) {
+      response.status(400).json({ error: error instanceof Error ? error.message : "API URL 不正确" });
+      return;
+    }
+    try {
+      if (parsed.data.apiKey?.trim() && persistApiKey) await persistApiKey(nextApiKey);
+      if (persistBaseUrl) await persistBaseUrl(nextBaseUrl);
+      currentApiKey = nextApiKey;
+      currentBaseUrl = nextBaseUrl;
+      response.json({
+        ok: true,
+        configured: true,
+        persisted: Boolean(persistApiKey && persistBaseUrl),
+        baseUrl: currentBaseUrl,
+      });
+    } catch {
+      response.status(500).json({ error: "模型连接设置无法保存；未更改当前设置" });
+    }
   });
 
   app.post("/api/settings/deepseek-key", async (request, response) => {
@@ -87,7 +154,7 @@ export function createCatWorkshopApp({ webDist, apiKey, persistApiKey }: CatWork
       return;
     }
     try {
-      const draft = await compileLaw(parsed.data, currentApiKey);
+      const draft = await compileLaw(parsed.data, currentApiKey, { baseUrl: currentBaseUrl });
       response.json(draft);
     } catch (error) {
       response.status(502).json({ error: error instanceof Error ? error.message : "法条编译失败" });

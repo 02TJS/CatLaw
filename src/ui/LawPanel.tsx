@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { EmojiIcon } from "./EmojiIcon";
 import { compileLaw } from "../api";
 import type { GameController } from "../game/controller";
 import { formatMoney, nextEnactmentCost, REPEAL_COST } from "../game/engine";
@@ -69,7 +70,7 @@ export function LawPanel({ controller }: { controller: GameController }) {
         DeepSeek {draft.compileAudit.model} · {draft.compileAudit.durationMs}ms · {draft.compileAudit.callCount ?? draft.compileAudit.attempts} 次调用
         {draft.compileAudit.callCount === 3 ? "（程序 / 台词 / 白话解释）" : ""}
       </small>}
-      {draft.warnings.map((warning) => <div className="warning" key={warning}>⚠ {warning}</div>)}
+      {draft.warnings.map((warning) => <div className="warning" key={warning}><EmojiIcon emoji="⚠️" /> {warning}</div>)}
       {draft.validation.messages.map((item) => <div className="validation-message" key={item}>{item}</div>)}
       <div className="law-explanation" data-testid="law-explanation">
         <strong>DeepSeek 白话解释（完整）</strong>

@@ -547,6 +547,7 @@ interface StageAudit {
 
 async function callDeepSeekJson<T>(
   apiKey: string,
+  baseUrl: string,
   stage: DeepSeekStage,
   messages: Array<{ role: "system" | "user"; content: string }>,
   schema: z.ZodType<T>,
@@ -562,7 +563,6 @@ async function callDeepSeekJson<T>(
     max_tokens: maxTokens,
     stream: false,
   };
-  const baseUrl = (process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com").replace(/\/$/, "");
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
@@ -608,10 +608,10 @@ function buildExplanationSystemPrompt(): string {
 固定输出：{"explanation":"完整白话说明"}`;
 }
 
-async function callDeepSeek(apiKey: string, input: CompileInput): Promise<{ output: ModelOutput; audit: NonNullable<LawDraft["compileAudit"]> }> {
+async function callDeepSeek(apiKey: string, baseUrl: string, input: CompileInput): Promise<{ output: ModelOutput; audit: NonNullable<LawDraft["compileAudit"]> }> {
   const started = Date.now();
   const requestId = randomUUID();
-  const program = await callDeepSeekJson(apiKey, "program", [
+  const program = await callDeepSeekJson(apiKey, baseUrl, "program", [
     { role: "system", content: `${buildLawSystemPrompt(input.existingLaws, input.sharedBehavior, input.landmarks)}\n${EPHEMERAL_LAW_EFFECT_RULES}` },
     { role: "user", content: `把以下玩家需求编译成一条新的统一法规。完整保留可安全表达的组合条件；不要输出program/effects/kind：\n${input.text}` },
   ], programOutputSchema, 8_192);
@@ -664,11 +664,11 @@ async function callDeepSeek(apiKey: string, input: CompileInput): Promise<{ outp
     sourceCode,
   });
   const [speech, explanation] = await Promise.all([
-    callDeepSeekJson(apiKey, "speech", [
+    callDeepSeekJson(apiKey, baseUrl, "speech", [
       { role: "system", content: `${buildSpeechSystemPrompt()}\n${EPHEMERAL_LAW_EFFECT_RULES}` },
       { role: "user", content: `根据这条最终法规生成五句匹配台词：\n${lawMaterial}` },
     ], speechOutputSchema, 2_048),
-    callDeepSeekJson(apiKey, "explanation", [
+    callDeepSeekJson(apiKey, baseUrl, "explanation", [
       { role: "system", content: `${buildExplanationSystemPrompt()}\n${EPHEMERAL_LAW_EFFECT_RULES}` },
       { role: "user", content: `完整解释这条最终法规：\n${lawMaterial}` },
     ], explanationOutputSchema, 4_096),
@@ -714,13 +714,17 @@ async function callDeepSeek(apiKey: string, input: CompileInput): Promise<{ outp
   };
 }
 
-export async function compileLaw(input: CompileInput, apiKey?: string, options: { maxAttempts?: number } = {}): Promise<LawDraft> {
+export async function compileLaw(
+  input: CompileInput,
+  apiKey?: string,
+  options: { maxAttempts?: number; baseUrl?: string } = {},
+): Promise<LawDraft> {
   if (!apiKey) return localFallback(input);
   // Kept for source compatibility with older audit scripts. A successful law
   // now always performs exactly three purpose-specific model calls and never
   // retries one stage behind the player's back.
-  void options;
-  const result = await callDeepSeek(apiKey, input);
+  const baseUrl = (options.baseUrl ?? process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com").replace(/\/$/, "");
+  const result = await callDeepSeek(apiKey, baseUrl, input);
   const draft = buildDraft(input.text, result.output, result.audit);
   if (!draft.validation.safety) throw new Error(`法规未通过统一校验：${draft.validation.messages.join(" ")}`);
   return draft;

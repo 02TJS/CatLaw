@@ -3,6 +3,11 @@ import { clearSave, loadGame, saveGame } from "./persistence";
 import type { GameState, LandmarkId, LawDraft, Position } from "./types";
 import { randomWorldSeed } from "./world";
 import type { DifficultyLevel } from "./types";
+import {
+  normalizeRuntimeSpeedMultiplier,
+  RUNTIME_SPEED_MULTIPLIERS,
+  type RuntimeSpeedMultiplier,
+} from "./domainUnits";
 
 type Listener = () => void;
 
@@ -18,10 +23,12 @@ export class GameController {
   private lastSavedRevision = -1;
   private saveInFlight: Promise<void> | null = null;
   private saveQueued = false;
-  private runtimeSpeedMultiplier = 1;
+  private runtimeSpeedMultiplier: RuntimeSpeedMultiplier = 1;
   private runtimeBlocked = false;
 
-  static readonly SPEED_PRESETS = [1, 2, 4, 8] as const;
+  static readonly RUNTIME_SPEED_PRESETS = RUNTIME_SPEED_MULTIPLIERS;
+  /** @deprecated Compatibility alias; use RUNTIME_SPEED_PRESETS. */
+  static readonly SPEED_PRESETS = GameController.RUNTIME_SPEED_PRESETS;
 
   async initialize(): Promise<void> {
     this.state = await loadGame(randomWorldSeed());
@@ -111,7 +118,11 @@ export class GameController {
     this.emit();
   }
 
-  getSpeedMultiplier(): number {
+  getSpeedMultiplier(): RuntimeSpeedMultiplier {
+    return this.runtimeSpeedMultiplier;
+  }
+
+  getRuntimeSpeedMultiplier(): RuntimeSpeedMultiplier {
     return this.runtimeSpeedMultiplier;
   }
 
@@ -122,13 +133,16 @@ export class GameController {
     this.emit();
   }
 
-  setSpeed(multiplier: number): void {
-    const next = GameController.SPEED_PRESETS.reduce((best, candidate) => (
-      Math.abs(candidate - multiplier) < Math.abs(best - multiplier) ? candidate : best
-    ), 1);
+  setRuntimeSpeedMultiplier(multiplier: RuntimeSpeedMultiplier): void {
+    const next = multiplier;
     if (next === this.runtimeSpeedMultiplier) return;
     this.runtimeSpeedMultiplier = next;
     this.emit();
+  }
+
+  /** Compatibility boundary for the existing QA API and callers with arbitrary numbers. */
+  setSpeed(multiplier: number): void {
+    this.setRuntimeSpeedMultiplier(normalizeRuntimeSpeedMultiplier(multiplier));
   }
 
   togglePause(): void {

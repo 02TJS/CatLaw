@@ -1,6 +1,5 @@
 import {
   canUnlockRecipe,
-  CATALOG_ANALYSIS,
   CATALOG_VERSION,
   DEPLOYABLE_BUILDING_IDS,
   INTRO_RECIPE_IDS,
@@ -13,11 +12,12 @@ import {
   recipePrerequisiteIds,
   recipeUnlockCost,
 } from "./catalog";
+import { SAVE_SCHEMA_VERSION } from "./saveSchema";
 import { DEFAULT_DIFFICULTY, difficultyProfile, effectiveRecipeInputs, normalizeDifficulty } from "./difficulty";
 import { createStarterScenario } from "./starterScenario";
 import { executeLawSource, MAX_LAW_EXECUTION_STEPS } from "./lawInterpreter";
 import { freshLawPolicy, runSharedLawLoop, SHARED_BEHAVIOR_HASH } from "./lawProgram";
-import { clearEphemeralLawPolicy, ephemeralLawPolicy, invalidateEphemeralLawPolicies, setEphemeralLawPolicy } from "./ephemeralLawPolicy";
+import { clearEphemeralLawPolicy, invalidateEphemeralLawPolicies, setEphemeralLawPolicy } from "./ephemeralLawPolicy";
 import { chooseAdjustedLocalDecision, localVisibleCats, planLocalLogistics, type LocalScoreAdjustment } from "./localPlanner";
 import {
   DEFAULT_SPEECH_FREQUENCY,
@@ -67,7 +67,6 @@ import {
   createDiscoveryBounties,
   creditAvailableCents,
   expectedActionGainCents,
-  externalNetCents,
   externalNetCentsAt,
   ensureBountyBroadcasts,
   ensureDirectCraftPlan,
@@ -83,8 +82,6 @@ import {
   settleContractLeg,
   sideWorkCraftFailure,
   signalsForCat,
-  unreservedOwnedQuantity,
-  unofferedOwnedQuantity,
 } from "./market";
 import type {
   CatAction,
@@ -117,14 +114,55 @@ import {
   parcelKey,
   positionKey,
 } from "./world";
-import { consumeWarehousePurchase, recordWarehousePurchase } from "./warehouse";
+import { consumeWarehousePurchase } from "./warehouse";
 import { acknowledgeAchievement as acknowledgeAchievementRecord, unlockProductionAchievements } from "./achievements";
 import { recordCraftCompletion } from "./productionHistory";
+import { formatMoney, itemPrice } from "./marketPricing";
+import { advanceSimulationPipeline, type SimulationPipelineOperations } from "./simulationPipeline";
+import { normalizeInternalSimulationRate } from "./domainUnits";
+import {
+  compactGameStateHistory,
+  compactLawHistory,
+  grossProductionValuePerMinute,
+  recordWealthHistorySample,
+} from "./gameHistory";
+
+export { formatMoney, itemPrice } from "./marketPricing";
+export {
+  catWealthScoreCents,
+  CLOSED_MARKET_HISTORY_LIMIT,
+  compactGameStateHistory,
+  grossProductionValuePerMinute,
+  LAW_HISTORY_LIMIT,
+  normalizeWealthHistory,
+  recordWealthHistorySample,
+  WEALTH_HISTORY_MAX_WINDOW_MS,
+  WEALTH_HISTORY_SAMPLE_INTERVAL_MS,
+} from "./gameHistory";
+
+export {
+  buyAllCatStock,
+  buyAllCatStockAndSell,
+  buyCatItem,
+  buyWarehouseItem,
+  catStockPurchaseQuote,
+  sellAllUnlockedWarehouseItems,
+  sellWarehouseItem,
+  toggleWarehouseItemLock,
+  warehouseBulkSellQuote,
+  warehouseQuote,
+  warehouseSellPrice,
+} from "./marketTransactions";
+export type {
+  CatStockPurchaseLine,
+  CatStockPurchaseQuote,
+  WarehouseBulkSellLine,
+  WarehouseBulkSellQuote,
+  WarehouseQuote,
+} from "./marketTransactions";
 
 export const ACTION_DURATION_MS = 5_000;
 export const REPEAL_COST = 500;
-export const WEALTH_HISTORY_SAMPLE_INTERVAL_MS = 5_000;
-export const WEALTH_HISTORY_MAX_WINDOW_MS = 300_000;
 
 const DIRECTION_OFFSETS: Record<Direction, Position> = {
   north: { x: 0, y: -1 },
@@ -142,9 +180,7 @@ const emptyStats = (): Record<ItemId, ItemStats> => Object.fromEntries(ITEMS.map
 
 export function createInitialState(options: { withStarter?: boolean; worldSeed?: number; simulationSpeed?: number; difficulty?: DifficultyLevel } = {}): GameState {
   const withStarter = options.withStarter ?? true;
-  const simulationSpeed = Number.isFinite(options.simulationSpeed)
-    ? Math.max(1, Math.floor(options.simulationSpeed ?? 1))
-    : 1;
+  const simulationSpeed = normalizeInternalSimulationRate(options.simulationSpeed);
   const worldSeed = normalizeWorldSeed(options.worldSeed ?? DEFAULT_WORLD_SEED);
   const difficulty = normalizeDifficulty(options.difficulty ?? DEFAULT_DIFFICULTY);
   const profile = difficultyProfile(difficulty);
@@ -167,7 +203,7 @@ export function createInitialState(options: { withStarter?: boolean; worldSeed?:
   const laws = starter?.laws ?? [];
   const resourceNodes = structuredClone(starterWorld.resourceNodes);
   const state: GameState = {
-    schemaVersion: 17,
+    schemaVersion: SAVE_SCHEMA_VERSION,
     difficulty,
     catalogVersion: CATALOG_VERSION,
     worldSeed,
@@ -761,7 +797,7 @@ function maybeAddDecisionSpeech(state: GameState, cat: CatState, lawId: string, 
   if (!roll.speaks) return;
 
   const definition = ITEM_BY_ID.get(command.itemId);
-  const item = `${definition?.emoji ?? "📦"}${definition?.name ?? command.itemId}`;
+  const item = definition?.name ?? command.itemId;
   const direction = command.direction ? `${SPEECH_DIRECTION_LABELS[command.direction]}边` : "";
   const contract = command.contractId ? state.shipmentContracts.find((entry) => entry.id === command.contractId) : undefined;
   const destinationCatId = contract?.routeCatIds[contract.currentLeg + 1];
@@ -889,310 +925,7 @@ export function buyBuildingOffer(state: GameState, offerId: string): { ok: boole
   return result;
 }
 
-export interface WarehouseQuote {
-  itemId: ItemId;
-  availableQuantity: number;
-  unitPriceCents: number;
-}
 
-export interface CatStockPurchaseLine {
-  kind: "offer" | "direct";
-  catId: string;
-  itemId: ItemId;
-  quantity: number;
-  unitPriceCents: number;
-  subtotalCents: number;
-  offerId?: string;
-}
-
-export interface CatStockPurchaseQuote {
-  lines: CatStockPurchaseLine[];
-  totalQuantity: number;
-  totalCostCents: number;
-  resaleQuantity: number;
-  resaleRevenueCents: number;
-  netCents: number;
-  requiredTreasuryCents: number;
-}
-
-export interface WarehouseBulkSellLine {
-  itemId: ItemId;
-  quantity: number;
-  unitPriceCents: number;
-  subtotalCents: number;
-}
-
-export interface WarehouseBulkSellQuote {
-  lines: WarehouseBulkSellLine[];
-  totalQuantity: number;
-  totalRevenueCents: number;
-}
-
-function warehouseDirectPrice(state: GameState, itemId: ItemId): number {
-  return Math.ceil(itemPrice(state, itemId) * difficultyProfile(state.difficulty).buildingAskMultiplier);
-}
-
-/** Player warehouse sales always use the immutable catalog base value, never a law or landmark price. */
-export function warehouseSellPrice(itemId: ItemId): number {
-  return ITEM_BY_ID.has(itemId) ? (CATALOG_ANALYSIS.basePrices[itemId] ?? 0) * 100 * 2 : 0;
-}
-
-export function warehouseBulkSellQuote(state: GameState): WarehouseBulkSellQuote {
-  const locked = new Set(state.lockedWarehouseItemIds);
-  const lines = ITEMS.map((item) => {
-    const quantity = locked.has(item.id) ? 0 : state.playerBuildingInventory[item.id] ?? 0;
-    const unitPriceCents = warehouseSellPrice(item.id);
-    return { itemId: item.id, quantity, unitPriceCents, subtotalCents: unitPriceCents * quantity };
-  }).filter((line) => line.quantity > 0);
-  return {
-    lines,
-    totalQuantity: lines.reduce((sum, line) => sum + line.quantity, 0),
-    totalRevenueCents: lines.reduce((sum, line) => sum + line.subtotalCents, 0),
-  };
-}
-
-function catStockLines(state: GameState, onlyCatId?: string, onlyItemId?: ItemId): CatStockPurchaseLine[] {
-  const lines: CatStockPurchaseLine[] = [];
-  const cats = [...state.cats]
-    .filter((cat) => !onlyCatId || cat.id === onlyCatId)
-    .sort((left, right) => left.createdIndex - right.createdIndex);
-  for (const cat of cats) {
-    const itemIds = ITEMS.map((item) => item.id).filter((itemId) => !onlyItemId || itemId === onlyItemId);
-    for (const itemId of itemIds) {
-      const offers = state.buildingOffers
-        .filter((offer) => offer.status === "open" && offer.sellerCatId === cat.id && offer.itemId === itemId)
-        .sort((left, right) => left.askCents - right.askCents || left.createdAt - right.createdAt || left.id.localeCompare(right.id));
-      const validOfferCount = Math.min(cat.inventory[itemId] ?? 0, offers.length);
-      for (const offer of offers.slice(0, validOfferCount)) {
-        lines.push({
-          kind: "offer",
-          catId: cat.id,
-          itemId,
-          quantity: 1,
-          unitPriceCents: offer.askCents,
-          subtotalCents: offer.askCents,
-          offerId: offer.id,
-        });
-      }
-      const directQuantity = unreservedOwnedQuantity(state, cat, itemId);
-      if (directQuantity > 0) {
-        const unitPriceCents = warehouseDirectPrice(state, itemId);
-        lines.push({
-          kind: "direct",
-          catId: cat.id,
-          itemId,
-          quantity: directQuantity,
-          unitPriceCents,
-          subtotalCents: directQuantity * unitPriceCents,
-        });
-      }
-    }
-  }
-  return lines;
-}
-
-export function catStockPurchaseQuote(state: GameState, catId?: string): CatStockPurchaseQuote {
-  const lines = catStockLines(state, catId);
-  const locked = new Set(state.lockedWarehouseItemIds);
-  const totalQuantity = lines.reduce((sum, line) => sum + line.quantity, 0);
-  const totalCostCents = lines.reduce((sum, line) => sum + line.subtotalCents, 0);
-  const resaleQuantity = lines.reduce((sum, line) => sum + (locked.has(line.itemId) ? 0 : line.quantity), 0);
-  const resaleRevenueCents = lines.reduce((sum, line) => (
-    sum + (locked.has(line.itemId) ? 0 : warehouseSellPrice(line.itemId) * line.quantity)
-  ), 0);
-  return {
-    lines,
-    totalQuantity,
-    totalCostCents,
-    resaleQuantity,
-    resaleRevenueCents,
-    netCents: resaleRevenueCents - totalCostCents,
-    requiredTreasuryCents: Math.max(0, totalCostCents - resaleRevenueCents),
-  };
-}
-
-export function warehouseQuote(state: GameState, itemId: ItemId): WarehouseQuote {
-  if (!ITEM_BY_ID.has(itemId)) return { itemId, availableQuantity: 0, unitPriceCents: 0 };
-  const offered = state.buildingOffers.filter((offer) => offer.status === "open" && offer.itemId === itemId
-    && state.cats.some((cat) => cat.id === offer.sellerCatId && (cat.inventory[itemId] ?? 0) >= 1));
-  const directQuantity = state.cats.reduce((total, cat) => total + unreservedOwnedQuantity(state, cat, itemId), 0);
-  const directPrice = warehouseDirectPrice(state, itemId);
-  const prices = [...offered.map((offer) => offer.askCents), ...(directQuantity > 0 ? [directPrice] : [])];
-  return {
-    itemId,
-    availableQuantity: offered.length + directQuantity,
-    unitPriceCents: prices.length > 0 ? Math.min(...prices) : directPrice,
-  };
-}
-
-export function buyWarehouseItem(state: GameState, itemId: ItemId): { ok: boolean; error?: string; cost?: number; sellerCatId?: string } {
-  if (!ITEM_BY_ID.has(itemId)) return { ok: false, error: "商品不存在" };
-  const directPrice = warehouseDirectPrice(state, itemId);
-  const candidates: Array<{ kind: "offer" | "direct"; price: number; seller: CatState; offerId?: string }> = [];
-  for (const offer of state.buildingOffers.filter((entry) => entry.status === "open" && entry.itemId === itemId)) {
-    const seller = state.cats.find((cat) => cat.id === offer.sellerCatId);
-    if (seller && (seller.inventory[itemId] ?? 0) >= 1) candidates.push({ kind: "offer", price: offer.askCents, seller, offerId: offer.id });
-  }
-  for (const seller of state.cats) {
-    if (unreservedOwnedQuantity(state, seller, itemId) >= 1) candidates.push({ kind: "direct", price: directPrice, seller });
-  }
-  candidates.sort((left, right) => left.price - right.price
-    || left.seller.createdIndex - right.seller.createdIndex
-    || Number(left.kind === "direct") - Number(right.kind === "direct"));
-  const selected = candidates[0];
-  if (!selected) return { ok: false, error: "猫咪目前没有可收购的现货" };
-  if (state.treasuryCoins < selected.price) return { ok: false, error: `国库还差 ${formatMoney(selected.price - state.treasuryCoins)}` };
-  if (selected.kind === "offer") {
-    const result = purchaseBuildingOffer(state, selected.offerId!);
-    return result.ok ? { ok: true, cost: selected.price, sellerCatId: selected.seller.id } : result;
-  }
-  state.treasuryCoins -= selected.price;
-  take(selected.seller.inventory, itemId, 1);
-  applyPrivateIncome(selected.seller, selected.price);
-  state.playerBuildingInventory[itemId] = (state.playerBuildingInventory[itemId] ?? 0) + 1;
-  recordWarehousePurchase(state, itemId, 1);
-  publishWarehouseBroadcast(state, selected.seller.id, itemId);
-  state.dirtyDecisions = true;
-  return { ok: true, cost: selected.price, sellerCatId: selected.seller.id };
-}
-
-export function buyCatItem(state: GameState, catId: string, itemId: ItemId): { ok: boolean; error?: string; cost?: number; sellerCatId?: string } {
-  if (!ITEM_BY_ID.has(itemId)) return { ok: false, error: "商品不存在" };
-  const seller = state.cats.find((cat) => cat.id === catId);
-  if (!seller) return { ok: false, error: "猫咪不存在" };
-  const selected = catStockLines(state, catId, itemId).sort((left, right) => (
-    left.unitPriceCents - right.unitPriceCents
-    || Number(left.kind === "direct") - Number(right.kind === "direct")
-    || (left.offerId ?? "").localeCompare(right.offerId ?? "")
-  ))[0];
-  if (!selected) return { ok: false, error: "这件商品正在被作业、计划、合同或报价占用，暂无可收购现货" };
-  if (state.treasuryCoins < selected.unitPriceCents) {
-    return { ok: false, error: `国库还差 ${formatMoney(selected.unitPriceCents - state.treasuryCoins)}` };
-  }
-  if (selected.kind === "offer") {
-    const result = purchaseBuildingOffer(state, selected.offerId!);
-    return result.ok ? { ok: true, cost: selected.unitPriceCents, sellerCatId: seller.id } : result;
-  }
-  state.treasuryCoins -= selected.unitPriceCents;
-  take(seller.inventory, itemId, 1);
-  applyPrivateIncome(seller, selected.unitPriceCents);
-  give(state.playerBuildingInventory, itemId, 1);
-  recordWarehousePurchase(state, itemId, 1);
-  publishWarehouseBroadcast(state, seller.id, itemId);
-  state.dirtyDecisions = true;
-  return { ok: true, cost: selected.unitPriceCents, sellerCatId: seller.id };
-}
-
-function buyQuotedCatStock(state: GameState, quote: CatStockPurchaseQuote): { ok: boolean; error?: string } {
-  for (const line of quote.lines) {
-    const seller = state.cats.find((cat) => cat.id === line.catId);
-    if (!seller) return { ok: false, error: "报价中的猫咪已不存在" };
-    if (line.kind === "offer") {
-      const result = purchaseBuildingOffer(state, line.offerId!);
-      if (!result.ok) return result;
-      continue;
-    }
-    if (unreservedOwnedQuantity(state, seller, line.itemId) < line.quantity) {
-      return { ok: false, error: "猫咪现货在结算前发生变化" };
-    }
-    state.treasuryCoins -= line.subtotalCents;
-    take(seller.inventory, line.itemId, line.quantity);
-    applyPrivateIncome(seller, line.subtotalCents);
-    give(state.playerBuildingInventory, line.itemId, line.quantity);
-    recordWarehousePurchase(state, line.itemId, line.quantity);
-    publishWarehouseBroadcast(state, seller.id, line.itemId);
-  }
-  state.dirtyDecisions = true;
-  return { ok: true };
-}
-
-export function buyAllCatStock(state: GameState): { ok: boolean; error?: string; costCents?: number; quantity?: number } {
-  const quote = catStockPurchaseQuote(state);
-  if (quote.totalQuantity === 0) return { ok: false, error: "所有猫咪目前都没有可收购现货" };
-  if (state.treasuryCoins < quote.totalCostCents) {
-    return { ok: false, error: `国库还差 ${formatMoney(quote.totalCostCents - state.treasuryCoins)}` };
-  }
-  const result = buyQuotedCatStock(state, quote);
-  return result.ok
-    ? { ok: true, costCents: quote.totalCostCents, quantity: quote.totalQuantity }
-    : result;
-}
-
-function recordWarehouseSale(state: GameState, itemId: ItemId, quantity: number, creditTreasury = true): number {
-  const revenueCents = warehouseSellPrice(itemId) * quantity;
-  if (creditTreasury) state.treasuryCoins += revenueCents;
-  state.totalSales += revenueCents;
-  state.itemStats[itemId].sold += quantity;
-  state.itemStats[itemId].revenue += revenueCents;
-  return revenueCents;
-}
-
-export function buyAllCatStockAndSell(state: GameState): { ok: boolean; error?: string; costCents?: number; revenueCents?: number; netCents?: number; quantity?: number } {
-  const quote = catStockPurchaseQuote(state);
-  if (quote.totalQuantity === 0) return { ok: false, error: "所有猫咪目前都没有可收购现货" };
-  if (state.treasuryCoins < quote.requiredTreasuryCents) {
-    return { ok: false, error: `完成净额结算还差 ${formatMoney(quote.requiredTreasuryCents - state.treasuryCoins)}` };
-  }
-
-  // Treat the resale proceeds as same-transaction settlement funds. This is why
-  // only the positive purchase/resale difference must exist in the treasury.
-  state.treasuryCoins += quote.resaleRevenueCents;
-  const result = buyQuotedCatStock(state, quote);
-  if (!result.ok) return result;
-  const locked = new Set(state.lockedWarehouseItemIds);
-  for (const line of quote.lines) {
-    if (locked.has(line.itemId)) continue;
-    take(state.playerBuildingInventory, line.itemId, line.quantity);
-    consumeWarehousePurchase(state, line.itemId, line.quantity);
-    recordWarehouseSale(state, line.itemId, line.quantity, false);
-    publishWarehouseBroadcast(state, state.cats[0]?.id ?? "", line.itemId);
-  }
-  return {
-    ok: true,
-    costCents: quote.totalCostCents,
-    revenueCents: quote.resaleRevenueCents,
-    netCents: quote.netCents,
-    quantity: quote.totalQuantity,
-  };
-}
-
-export function sellWarehouseItem(state: GameState, itemId: ItemId, quantity = 1): { ok: boolean; error?: string; revenueCents?: number; quantity?: number } {
-  if (!ITEM_BY_ID.has(itemId)) return { ok: false, error: "商品不存在" };
-  if (!Number.isInteger(quantity) || quantity <= 0) return { ok: false, error: "出售数量必须是正整数" };
-  if ((state.playerBuildingInventory[itemId] ?? 0) < quantity) return { ok: false, error: "仓库库存不足" };
-  take(state.playerBuildingInventory, itemId, quantity);
-  consumeWarehousePurchase(state, itemId, quantity);
-  const revenueCents = recordWarehouseSale(state, itemId, quantity);
-  publishWarehouseBroadcast(state, state.cats[0]?.id ?? "", itemId);
-  state.dirtyDecisions = true;
-  return { ok: true, revenueCents, quantity };
-}
-
-export function sellAllUnlockedWarehouseItems(state: GameState): { ok: boolean; error?: string; revenueCents?: number; quantity?: number } {
-  const quote = warehouseBulkSellQuote(state);
-  if (quote.lines.length === 0) return { ok: false, error: "没有可一键出售的未锁定商品" };
-  let revenueCents = 0;
-  let quantity = 0;
-  for (const line of quote.lines) {
-    take(state.playerBuildingInventory, line.itemId, line.quantity);
-    consumeWarehousePurchase(state, line.itemId, line.quantity);
-    revenueCents += recordWarehouseSale(state, line.itemId, line.quantity);
-    publishWarehouseBroadcast(state, state.cats[0]?.id ?? "", line.itemId);
-    quantity += line.quantity;
-  }
-  state.dirtyDecisions = true;
-  return { ok: true, revenueCents, quantity };
-}
-
-export function toggleWarehouseItemLock(state: GameState, itemId: ItemId): { ok: boolean; error?: string; locked?: boolean } {
-  if (!ITEM_BY_ID.has(itemId)) return { ok: false, error: "商品不存在" };
-  const locked = new Set(state.lockedWarehouseItemIds);
-  const nextLocked = !locked.has(itemId);
-  if (nextLocked) locked.add(itemId);
-  else locked.delete(itemId);
-  state.lockedWarehouseItemIds = ITEMS.map((item) => item.id).filter((id) => locked.has(id));
-  return { ok: true, locked: nextLocked };
-}
 
 function resolveBuildingOrders(state: GameState): void {
   const completed: string[] = [];
@@ -1434,38 +1167,8 @@ export function sharedBehaviorHash(): string {
   return SHARED_BEHAVIOR_HASH;
 }
 
-export function itemPrice(state: GameState, itemId: ItemId, cat: CatState | undefined = state.cats[0]): number {
-  const base = CATALOG_ANALYSIS.basePrices[itemId] ?? 1;
-  const policy = ephemeralLawPolicy(state, cat);
-  const multiplier = policy.priceMultipliers[itemId]
-    ?? policy.priceMultipliers["*"]
-    ?? 1;
-  const additionCents = policy.priceAdditionsCents[itemId]
-    ?? policy.priceAdditionsCents["*"]
-    ?? 0;
-  return Math.max(1, Math.ceil(base * 100 * multiplier + additionCents));
-}
-
-export function formatMoney(cents: number): string {
-  return `${(Math.max(0, cents) / 100).toFixed(2)} 🪙`;
-}
-
 export function acknowledgeAchievement(state: GameState, achievementId: string): boolean {
   return acknowledgeAchievementRecord(state, achievementId);
-}
-
-/** Rolling gross production value, annualized to one logical production minute. */
-export function grossProductionValuePerMinute(state: GameState): number {
-  const logicalMinuteMs = 60_000 / Math.max(1, state.simulationSpeed);
-  const observedMs = Math.max(1, Math.min(logicalMinuteMs, state.simTime));
-  const cutoff = state.simTime - logicalMinuteMs;
-  const valueCents = state.recentProductionEvents.reduce((sum, event) => {
-    if (event.at < cutoff) return sum;
-    if (Number.isFinite(event.valueCents)) return sum + Math.max(0, Math.round(event.valueCents ?? 0));
-    const producer = state.cats.find((cat) => cat.id === event.catId);
-    return sum + itemPrice(state, event.itemId, producer);
-  }, 0);
-  return Math.round(valueCents * logicalMinuteMs / observedMs);
 }
 
 function addFloating(state: GameState, catId: string, text: string, kind: "gain" | "sale" | "milestone"): void {
@@ -1528,78 +1231,18 @@ function resolveAction(state: GameState, cat: CatState, map: Map<string, CatStat
   }
 }
 
-/**
- * Reproduce the exact score used by the Wealth & Credit map lens.
- * Inventory is liquidated at this cat's current lawful price; debt, escrow and
- * available credit remain visible instead of reducing the metric to cash flow.
- */
-export function catWealthScoreCents(state: GameState, cat: CatState): number {
-  const priceOf = (itemId: ItemId) => itemPrice(state, itemId, cat);
-  return Math.round(
-    netWorthCents(state, cat, priceOf)
-    + creditAvailableCents(state, cat, priceOf)
-    - cat.escrowReservedCents,
-  );
-}
 
-function pruneWealthHistory(state: GameState): void {
-  const cutoff = state.simTime - WEALTH_HISTORY_MAX_WINDOW_MS - WEALTH_HISTORY_SAMPLE_INTERVAL_MS;
-  state.wealthHistory = state.wealthHistory.filter((sample) => sample.at >= cutoff && sample.at <= state.simTime);
-}
-
-/** Capture or replace one deterministic wealth snapshot at the current sim time. */
-export function recordWealthHistorySample(state: GameState, force = false): void {
-  if (!Array.isArray(state.wealthHistory)) state.wealthHistory = [];
-  const last = state.wealthHistory.at(-1);
-  if (!force && last && state.simTime - last.at < WEALTH_HISTORY_SAMPLE_INTERVAL_MS) return;
-  const sample = {
-    at: state.simTime,
-    values: Object.fromEntries(state.cats.map((cat) => [cat.id, catWealthScoreCents(state, cat)])),
-  };
-  if (last?.at === state.simTime) state.wealthHistory[state.wealthHistory.length - 1] = sample;
-  else state.wealthHistory.push(sample);
-  pruneWealthHistory(state);
-}
-
-/** Sanitize persisted samples and anchor the restored world at its load time. */
-export function normalizeWealthHistory(state: GameState, rawHistory: unknown): void {
-  const currentCatIds = new Set(state.cats.map((cat) => cat.id));
-  const byTime = new Map<number, Record<string, number>>();
-  for (const raw of Array.isArray(rawHistory) ? rawHistory : []) {
-    if (!raw || !Number.isFinite(raw.at) || raw.at < 0 || raw.at > state.simTime || typeof raw.values !== "object") continue;
-    const values: Record<string, number> = {};
-    for (const [catId, value] of Object.entries(raw.values as Record<string, unknown>)) {
-      if (currentCatIds.has(catId) && Number.isFinite(value)) values[catId] = Math.round(Number(value));
-    }
-    byTime.set(Number(raw.at), values);
-  }
-  state.wealthHistory = [...byTime]
-    .sort(([left], [right]) => left - right)
-    .map(([at, values]) => ({ at, values }));
-  pruneWealthHistory(state);
-  recordWealthHistorySample(state, true);
-}
+const SIMULATION_PIPELINE_OPERATIONS: SimulationPipelineOperations = {
+  catMap,
+  resolveAction,
+  pruneEphemeralState,
+  decideIdleCats,
+  recordWealthHistorySample,
+  compactGameStateHistory,
+};
 
 export function advanceGame(state: GameState, milliseconds: number): void {
-  if (state.paused || !Number.isFinite(milliseconds) || milliseconds <= 0) return;
-  const target = state.simTime + milliseconds;
-  while (true) {
-    const nextAction = state.cats.reduce((time, cat) => cat.action && cat.action.endsAt < time ? cat.action.endsAt : time, Number.POSITIVE_INFINITY);
-    const nextWealthSample = (state.wealthHistory.at(-1)?.at ?? state.simTime) + WEALTH_HISTORY_SAMPLE_INTERVAL_MS;
-    const next = Math.min(nextAction, nextWealthSample);
-    if (next > target) break;
-    state.simTime = next;
-    const map = catMap(state);
-    const completing = state.cats.filter((cat) => cat.action?.endsAt === next).sort((a, b) => a.createdIndex - b.createdIndex);
-    for (const cat of completing) resolveAction(state, cat, map);
-    pruneEphemeralState(state);
-    if (completing.length > 0) decideIdleCats(state, new Set(completing.map((cat) => cat.id)));
-    if (next === nextWealthSample) recordWealthHistorySample(state, true);
-    compactGameStateHistory(state);
-  }
-  state.simTime = target;
-  pruneEphemeralState(state);
-  compactGameStateHistory(state);
+  advanceSimulationPipeline(state, milliseconds, SIMULATION_PIPELINE_OPERATIONS);
 }
 
 function pruneEphemeralState(state: GameState): void {
@@ -1611,75 +1254,6 @@ function pruneEphemeralState(state: GameState): void {
   state.floatingEvents = state.floatingEvents.filter((event) => state.simTime - event.createdAt < event.duration);
 }
 
-export const CLOSED_MARKET_HISTORY_LIMIT = 256;
-export const LAW_HISTORY_LIMIT = 512;
-
-function compactLawHistory(state: GameState): void {
-  if (state.lawHistory.length > LAW_HISTORY_LIMIT) {
-    state.lawHistory.splice(0, state.lawHistory.length - LAW_HISTORY_LIMIT);
-  }
-}
-
-export function compactGameStateHistory(state: GameState): void {
-  compactLawHistory(state);
-  pruneWealthHistory(state);
-  if (state.commandAudit.length > 2_000) state.commandAudit.splice(0, state.commandAudit.length - 2_000);
-  if (state.marketEvents.length > 64) state.marketEvents = state.marketEvents.slice(-64);
-
-  const liveContracts = state.shipmentContracts.filter((contract) => contract.status !== "delivered");
-  const requiredOrderIds = new Set<string>([
-    ...liveContracts.map((contract) => contract.orderId),
-    ...state.buildingOrders.flatMap((order) => order.demandOrderId ? [order.demandOrderId] : []),
-  ]);
-  for (const order of state.demandOrders) if (order.status === "open") requiredOrderIds.add(order.id);
-
-  const requiredPlanIds = new Set(state.demandOrders
-    .filter((order) => requiredOrderIds.has(order.id) && order.planId)
-    .map((order) => order.planId!));
-  const archivedPlans = state.procurementPlans.filter((plan) => plan.status !== "active" && !requiredPlanIds.has(plan.id));
-  const retainedArchivedPlanIds = new Set(archivedPlans.slice(-CLOSED_MARKET_HISTORY_LIMIT).map((plan) => plan.id));
-  state.procurementPlans = state.procurementPlans.filter((plan) => (
-    plan.status === "active" || requiredPlanIds.has(plan.id) || retainedArchivedPlanIds.has(plan.id)
-  ));
-
-  const retainedPlanIds = new Set(state.procurementPlans.map((plan) => plan.id));
-  const archivedOrders = state.demandOrders.filter((order) => (
-    !requiredOrderIds.has(order.id) && !(order.planId && retainedPlanIds.has(order.planId))
-  ));
-  const retainedArchivedOrderIds = new Set(archivedOrders.slice(-CLOSED_MARKET_HISTORY_LIMIT).map((order) => order.id));
-  state.demandOrders = state.demandOrders.filter((order) => (
-    requiredOrderIds.has(order.id)
-      || Boolean(order.planId && retainedPlanIds.has(order.planId))
-      || retainedArchivedOrderIds.has(order.id)
-  ));
-
-  const requiredContractIds = new Set(state.buildingOrders.flatMap((order) => order.contractId ? [order.contractId] : []));
-  const archivedContracts = state.shipmentContracts.filter((contract) => (
-    contract.status === "delivered" && !requiredContractIds.has(contract.id)
-  ));
-  const retainedArchivedContractIds = new Set(archivedContracts.slice(-CLOSED_MARKET_HISTORY_LIMIT).map((contract) => contract.id));
-  state.shipmentContracts = state.shipmentContracts.filter((contract) => (
-    contract.status !== "delivered" || requiredContractIds.has(contract.id) || retainedArchivedContractIds.has(contract.id)
-  ));
-
-  const closedOffers = state.buildingOffers.filter((offer) => offer.status !== "open");
-  const retainedClosedOfferIds = new Set(closedOffers.slice(-CLOSED_MARKET_HISTORY_LIMIT).map((offer) => offer.id));
-  state.buildingOffers = state.buildingOffers.filter((offer) => offer.status === "open" || retainedClosedOfferIds.has(offer.id));
-
-  const retainedDemandSubjects = new Set(state.demandOrders.map((order) => order.id));
-  const demandBroadcasts = state.marketBroadcasts.filter((broadcast) => broadcast.kind.startsWith("demand-")
-    && !retainedDemandSubjects.has(broadcast.subjectId));
-  const retainedDemandBroadcastIds = new Set(demandBroadcasts.slice(-CLOSED_MARKET_HISTORY_LIMIT).map((broadcast) => broadcast.id));
-  state.marketBroadcasts = state.marketBroadcasts.filter((broadcast) => (
-    !broadcast.kind.startsWith("demand-")
-      || retainedDemandSubjects.has(broadcast.subjectId)
-      || retainedDemandBroadcastIds.has(broadcast.id)
-  ));
-  const retainedBuildingOfferSubjects = new Set(state.buildingOffers.map((offer) => offer.id));
-  state.marketBroadcasts = state.marketBroadcasts.filter((broadcast) => (
-    !broadcast.kind.startsWith("building-offer") || retainedBuildingOfferSubjects.has(broadcast.subjectId)
-  ));
-}
 
 export function nextEnactmentCost(state: GameState): number {
   return Math.max(0, 500 * (state.enactmentCount + 1 - 5));
